@@ -1,4 +1,4 @@
-import { supabase } from '../config/supabase.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
 
 // @desc    Get dashboard metrics & summary
 // @route   GET /api/dashboard/summary

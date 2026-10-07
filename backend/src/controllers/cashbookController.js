@@ -1,4 +1,4 @@
-import { supabase } from '../config/supabase.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
 
 // @desc    Get cash transactions (filter by date, type, category)
 // @route   GET /api/cashbook/transactions

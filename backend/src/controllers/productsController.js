@@ -1,4 +1,4 @@
-import { supabase } from '../config/supabase.js';
+import { supabaseAdmin as supabase } from '../config/supabase.js';
 
 // @desc    Get all furniture products (with optional search, category, stock filter)
 // @route   GET /api/products
