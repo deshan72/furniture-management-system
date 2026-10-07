@@ -1,0 +1,18 @@
+{
+  "name": "furniture-management-system",
+  "version": "1.0.0",
+  "description": "D & D Furniture Business Management System",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install"
+  },
+  "keywords": [
+    "furniture",
+    "erp",
+    "pos",
+    "cash-management"
+  ],
+  "author": "",
+  "license": "ISC"
+}
