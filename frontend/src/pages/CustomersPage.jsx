@@ -36,7 +36,12 @@ import { apiRequest } from '../services/api';
 const INITIAL_CUSTOMERS = [
   {
     id: 'cust-1',
+    customer_id: 'CUST-1001',
+    first_name: 'Sunil',
+    last_name: 'Jayawardena',
     name: 'Sunil Jayawardena',
+    civil_status: 'Married',
+    dob: '1978-05-14',
     phone: '0771234567',
     whatsapp: '0771234567',
     nic: '197814502391',
@@ -51,7 +56,12 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-2',
+    customer_id: 'CUST-1002',
+    first_name: 'Chamari',
+    last_name: 'Perera',
     name: 'Chamari Perera',
+    civil_status: 'Married',
+    dob: '1985-09-22',
     phone: '0718899221',
     whatsapp: '0718899221',
     nic: '198578901234',
@@ -66,7 +76,12 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-3',
+    customer_id: 'CUST-1003',
+    first_name: 'Nimal',
+    last_name: 'Karunaratne',
     name: 'Nimal Karunaratne',
+    civil_status: 'Married',
+    dob: '1969-11-03',
     phone: '0763344552',
     whatsapp: '0763344552',
     nic: '196923405678',
@@ -81,7 +96,12 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-4',
+    customer_id: 'CUST-1004',
+    first_name: 'Dilshan',
+    last_name: 'Fernando',
     name: 'Dilshan Fernando (Beach Resort)',
+    civil_status: 'Single',
+    dob: '1994-03-18',
     phone: '0704455667',
     whatsapp: '0704455667',
     nic: '199412308976',
@@ -96,7 +116,12 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-5',
+    customer_id: 'CUST-1005',
+    first_name: 'Kasun',
+    last_name: 'Madushanka',
     name: 'Kasun Madushanka',
+    civil_status: 'Single',
+    dob: '1991-07-30',
     phone: '0785566778',
     whatsapp: '0785566778',
     nic: '199145607890',
@@ -111,7 +136,12 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-6',
+    customer_id: 'CUST-1006',
+    first_name: 'Priyantha',
+    last_name: 'Wickramasinghe',
     name: 'Priyantha Wickramasinghe',
+    civil_status: 'Married',
+    dob: '1972-12-10',
     phone: '0751122334',
     whatsapp: '0751122334',
     nic: '197234509812',
@@ -131,7 +161,19 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
   const [customers, setCustomers] = useState(() => {
     try {
       const saved = localStorage.getItem('dnd_customers_list');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((c, idx) => ({
+            ...c,
+            customer_id: c.customer_id || `CUST-${1000 + idx + 1}`,
+            first_name: c.first_name || (c.name ? c.name.split(' ')[0] : ''),
+            last_name: c.last_name || (c.name ? c.name.split(' ').slice(1).join(' ') : ''),
+            civil_status: c.civil_status || 'Single',
+            dob: c.dob || '',
+          }));
+        }
+      }
     } catch {
       // fallback
     }
@@ -165,7 +207,12 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
 
   // Form State for Add Customer
   const [newCustomer, setNewCustomer] = useState({
+    customer_id: '',
+    first_name: '',
+    last_name: '',
     name: '',
+    civil_status: 'Single',
+    dob: '',
     phone: '',
     whatsapp: '',
     nic: '',
@@ -251,11 +298,15 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
   const filteredCustomers = useMemo(() => {
     return customers
       .filter((cust) => {
-        // 1. Text Search (Name, Phone, WhatsApp, NIC, City, Address, Notes)
+        // 1. Text Search (Customer ID, Name, Phone, WhatsApp, NIC, City, Address, Notes)
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
           const matches =
+            cust.customer_id?.toLowerCase().includes(q) ||
             cust.name?.toLowerCase().includes(q) ||
+            cust.first_name?.toLowerCase().includes(q) ||
+            cust.last_name?.toLowerCase().includes(q) ||
+            cust.civil_status?.toLowerCase().includes(q) ||
             cust.phone?.toLowerCase().includes(q) ||
             cust.whatsapp?.toLowerCase().includes(q) ||
             cust.nic?.toLowerCase().includes(q) ||
@@ -318,27 +369,64 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
     cityFilter !== 'all' ||
     sortBy !== 'recent';
 
+  // Open Add New Customer Modal with auto-generated ID
+  const handleOpenAddModal = () => {
+    const nextIdNum = 1000 + customers.length + 1;
+    setNewCustomer({
+      customer_id: `CUST-${nextIdNum}`,
+      first_name: '',
+      last_name: '',
+      name: '',
+      civil_status: 'Single',
+      dob: '',
+      phone: '',
+      whatsapp: '',
+      nic: '',
+      city: 'Maharagama',
+      address: '',
+      category: 'custom_order',
+      outstanding_balance: '',
+      notes: '',
+    });
+    setIsAddModalOpen(true);
+  };
+
   // Add new customer handler
   const handleAddCustomer = async (e) => {
     e.preventDefault();
-    if (!newCustomer.name || !newCustomer.phone) {
-      alert('Please fill in Customer Name and Phone Number.');
+    const fullName = `${newCustomer.first_name || ''} ${newCustomer.last_name || ''}`.trim() || newCustomer.name;
+    if (!newCustomer.first_name && !newCustomer.name) {
+      alert('Please fill in First Name.');
+      return;
+    }
+    if (!newCustomer.phone) {
+      alert('Please fill in Phone Number.');
       return;
     }
 
+    const nextIdNum = 1000 + customers.length + 1;
+    const assignedCustomerId = (newCustomer.customer_id && newCustomer.customer_id.trim())
+      ? newCustomer.customer_id.trim()
+      : `CUST-${nextIdNum}`;
+
     const createdRecord = {
       id: `cust-${Date.now()}`,
-      name: newCustomer.name,
+      customer_id: assignedCustomerId,
+      first_name: newCustomer.first_name || '',
+      last_name: newCustomer.last_name || '',
+      name: fullName,
+      civil_status: newCustomer.civil_status || 'Single',
+      dob: newCustomer.dob || '',
       phone: newCustomer.phone,
       whatsapp: newCustomer.whatsapp || newCustomer.phone,
-      nic: newCustomer.nic,
+      nic: newCustomer.nic || '',
       city: newCustomer.city || 'Maharagama',
-      address: newCustomer.address,
+      address: newCustomer.address || '',
       category: newCustomer.category || 'custom_order',
       outstanding_balance: Number(newCustomer.outstanding_balance) || 0,
       total_spent: Number(newCustomer.outstanding_balance) || 0,
       total_orders: 1,
-      notes: newCustomer.notes,
+      notes: newCustomer.notes || '',
       created_at: new Date().toISOString(),
     };
 
@@ -355,7 +443,12 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
     setCustomers((prev) => [createdRecord, ...prev]);
     setIsAddModalOpen(false);
     setNewCustomer({
+      customer_id: '',
+      first_name: '',
+      last_name: '',
       name: '',
+      civil_status: 'Single',
+      dob: '',
       phone: '',
       whatsapp: '',
       nic: '',
@@ -417,9 +510,12 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
       return;
     }
 
-    const headers = ['Name', 'Phone', 'WhatsApp', 'NIC', 'City', 'Address', 'Category', 'Outstanding Balance (LKR)', 'Notes'];
+    const headers = ['Customer ID', 'Full Name', 'Civil Status', 'Date of Birth', 'Phone', 'WhatsApp', 'NIC', 'City', 'Address', 'Category', 'Outstanding Balance (LKR)', 'Notes'];
     const rows = filteredCustomers.map((c) => [
+      `"${c.customer_id || ''}"`,
       `"${c.name?.replace(/"/g, '""') || ''}"`,
+      `"${c.civil_status || ''}"`,
+      `"${c.dob || ''}"`,
       `"${c.phone || ''}"`,
       `"${c.whatsapp || ''}"`,
       `"${c.nic || ''}"`,
@@ -586,20 +682,46 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
 
   // Open Edit Customer Modal
   const handleOpenEdit = (customer) => {
-    setEditingCustomer({ ...customer });
+    let firstName = customer.first_name || '';
+    let lastName = customer.last_name || '';
+    if (!firstName && customer.name) {
+      const parts = customer.name.split(' ');
+      firstName = parts[0] || '';
+      lastName = parts.slice(1).join(' ') || '';
+    }
+    setEditingCustomer({
+      ...customer,
+      customer_id: customer.customer_id || `CUST-${customer.id?.replace(/\D/g, '') || '1000'}`,
+      first_name: firstName,
+      last_name: lastName,
+      name: customer.name || `${firstName} ${lastName}`.trim(),
+      civil_status: customer.civil_status || 'Single',
+      dob: customer.dob || '',
+    });
     setIsEditModalOpen(true);
   };
 
   // Save Updated Customer Details
   const handleUpdateCustomer = async (e) => {
     e.preventDefault();
-    if (!editingCustomer?.name || !editingCustomer?.phone) {
-      alert('Please fill in Customer Name and Phone Number.');
+    const fullName = `${editingCustomer.first_name || ''} ${editingCustomer.last_name || ''}`.trim() || editingCustomer.name;
+    if (!editingCustomer?.first_name && !editingCustomer?.name) {
+      alert('Please fill in First Name.');
+      return;
+    }
+    if (!editingCustomer?.phone) {
+      alert('Please fill in Phone Number.');
       return;
     }
 
     const updated = {
       ...editingCustomer,
+      name: fullName,
+      first_name: editingCustomer.first_name || '',
+      last_name: editingCustomer.last_name || '',
+      customer_id: editingCustomer.customer_id || `CUST-${editingCustomer.id}`,
+      civil_status: editingCustomer.civil_status || 'Single',
+      dob: editingCustomer.dob || '',
       outstanding_balance: Number(editingCustomer.outstanding_balance) || 0,
     };
 
@@ -773,7 +895,7 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
             {/* + Add New Customer Button */}
             <button
               className="btn btn-primary"
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={handleOpenAddModal}
               style={{ padding: '9px 16px', fontSize: '0.86rem' }}
             >
               <Plus size={16} /> Add Customer
@@ -971,9 +1093,27 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
                         <div className="table-user-cell">
                           <div className="user-avatar">{initials}</div>
                           <div>
-                            <span className="customer-name">{cust.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="customer-name">{cust.name}</span>
+                              {cust.customer_id && (
+                                <span style={{
+                                  background: 'var(--primary-tint)',
+                                  color: 'var(--primary)',
+                                  padding: '1px 7px',
+                                  borderRadius: '5px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: '700',
+                                  fontFamily: 'monospace',
+                                  border: '1px solid var(--primary-border)',
+                                }}>
+                                  {cust.customer_id}
+                                </span>
+                              )}
+                            </div>
                             <div className="customer-meta">
                               {cust.nic && <span className="nic-pill">NIC: {cust.nic}</span>}
+                              {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
+                              {cust.dob && <span className="nic-pill">DOB: {cust.dob}</span>}
                               <span>Added {new Date(cust.created_at || Date.now()).toLocaleDateString()}</span>
                             </div>
                           </div>
@@ -1154,9 +1294,26 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div className="user-avatar">{initials}</div>
                       <div>
-                        <span className="customer-name" style={{ fontSize: '0.95rem' }}>{cust.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="customer-name" style={{ fontSize: '0.95rem' }}>{cust.name}</span>
+                          {cust.customer_id && (
+                            <span style={{
+                              background: 'var(--primary-tint)',
+                              color: 'var(--primary)',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              fontSize: '0.66rem',
+                              fontWeight: '700',
+                              fontFamily: 'monospace',
+                              border: '1px solid var(--primary-border)',
+                            }}>
+                              {cust.customer_id}
+                            </span>
+                          )}
+                        </div>
                         <div className="customer-meta">
                           {cust.nic && <span className="nic-pill">NIC: {cust.nic}</span>}
+                          {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
                           <span>{cust.city}</span>
                         </div>
                       </div>
@@ -1295,18 +1452,95 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
       >
         <form onSubmit={handleAddCustomer}>
           <div className="form-grid">
-            <div className="form-group full-width">
-              <label className="form-label">Full Name *</label>
+            {/* Row 1: Customer ID & Civil Status */}
+            <div className="form-group">
+              <label className="form-label">Customer ID * (පාරිභෝගික අංකය)</label>
               <input
                 type="text"
                 className="form-input"
                 required
-                placeholder="e.g. Sunil Jayawardena"
-                value={newCustomer.name}
-                onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
+                placeholder="e.g. CUST-1007"
+                value={newCustomer.customer_id || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, customer_id: e.target.value })}
               />
             </div>
 
+            <div className="form-group">
+              <label className="form-label">Civil Status (සිවිල් තත්ත්වය)</label>
+              <select
+                className="form-select-full"
+                value={newCustomer.civil_status || 'Single'}
+                onChange={(e) => setNewCustomer({ ...newCustomer, civil_status: e.target.value })}
+              >
+                <option value="Single">Single (අවිවාහක)</option>
+                <option value="Married">Married (විවාහක)</option>
+                <option value="Divorced">Divorced (දික්කසාද)</option>
+                <option value="Widowed">Widowed (වැන්දඹු)</option>
+                <option value="Other">Other (වෙනත්)</option>
+              </select>
+            </div>
+
+            {/* Row 2: First Name & Last Name */}
+            <div className="form-group">
+              <label className="form-label">First Name * (මුල් නම)</label>
+              <input
+                type="text"
+                className="form-input"
+                required
+                placeholder="e.g. Sunil"
+                value={newCustomer.first_name || ''}
+                onChange={(e) => {
+                  const fn = e.target.value;
+                  setNewCustomer({
+                    ...newCustomer,
+                    first_name: fn,
+                    name: `${fn} ${newCustomer.last_name || ''}`.trim(),
+                  });
+                }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Last Name (වාසගම / අග නම)</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Jayawardena"
+                value={newCustomer.last_name || ''}
+                onChange={(e) => {
+                  const ln = e.target.value;
+                  setNewCustomer({
+                    ...newCustomer,
+                    last_name: ln,
+                    name: `${newCustomer.first_name || ''} ${ln}`.trim(),
+                  });
+                }}
+              />
+            </div>
+
+            {/* Row 3: Date of Birth & NIC */}
+            <div className="form-group">
+              <label className="form-label">Date of Birth (උපන් දිනය)</label>
+              <input
+                type="date"
+                className="form-input"
+                value={newCustomer.dob || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">NIC (National Identity Card)</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. 198512345678 or 851234567V"
+                value={newCustomer.nic || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, nic: e.target.value })}
+              />
+            </div>
+
+            {/* Row 4: Phone & WhatsApp */}
             <div className="form-group">
               <label className="form-label">Phone Number *</label>
               <input
@@ -1314,7 +1548,7 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
                 className="form-input"
                 required
                 placeholder="077XXXXXXX"
-                value={newCustomer.phone}
+                value={newCustomer.phone || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
               />
             </div>
@@ -1325,41 +1559,20 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
                 type="text"
                 className="form-input"
                 placeholder="077XXXXXXX"
-                value={newCustomer.whatsapp}
+                value={newCustomer.whatsapp || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, whatsapp: e.target.value })}
               />
             </div>
 
-            <div className="form-group">
-              <label className="form-label">NIC (National Identity Card)</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. 198512345678 or 851234567V"
-                value={newCustomer.nic}
-                onChange={(e) => setNewCustomer({ ...newCustomer, nic: e.target.value })}
-              />
-            </div>
-
+            {/* Row 5: City & Category */}
             <div className="form-group">
               <label className="form-label">City / Town</label>
               <input
                 type="text"
                 className="form-input"
                 placeholder="e.g. Maharagama, Kottawa, Negombo"
-                value={newCustomer.city}
+                value={newCustomer.city || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, city: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group full-width">
-              <label className="form-label">Full Delivery Address</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="House No, Street, Road, City"
-                value={newCustomer.address}
-                onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
               />
             </div>
 
@@ -1367,7 +1580,7 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
               <label className="form-label">Customer Category</label>
               <select
                 className="form-select-full"
-                value={newCustomer.category}
+                value={newCustomer.category || 'custom_order'}
                 onChange={(e) => setNewCustomer({ ...newCustomer, category: e.target.value })}
               >
                 <option value="custom_order">Custom Made Furniture (ඇණවුම්)</option>
@@ -1376,7 +1589,20 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
               </select>
             </div>
 
-            <div className="form-group">
+            {/* Row 6: Delivery Address */}
+            <div className="form-group full-width">
+              <label className="form-label">Full Delivery Address</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="House No, Street, Road, City"
+                value={newCustomer.address || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
+              />
+            </div>
+
+            {/* Row 7: Initial Outstanding Balance */}
+            <div className="form-group full-width">
               <label className="form-label">Initial Outstanding Balance (LKR)</label>
               <input
                 type="number"
@@ -1384,17 +1610,18 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
                 placeholder="0.00"
                 min="0"
                 step="500"
-                value={newCustomer.outstanding_balance}
+                value={newCustomer.outstanding_balance ?? ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, outstanding_balance: e.target.value })}
               />
             </div>
 
+            {/* Row 8: Notes */}
             <div className="form-group full-width">
               <label className="form-label">Wood / Furniture Preferences & Notes</label>
               <textarea
                 className="form-textarea"
                 placeholder="e.g., Requested Teak wood living room suite, delivery promised for October 25th."
-                value={newCustomer.notes}
+                value={newCustomer.notes || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, notes: e.target.value })}
               />
             </div>
@@ -1447,9 +1674,27 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
                   .toUpperCase()}
               </div>
               <div style={{ flex: 1 }}>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{selectedCustomer.name}</h3>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{selectedCustomer.name}</h3>
+                  {selectedCustomer.customer_id && (
+                    <span style={{
+                      background: 'var(--primary-tint)',
+                      color: 'var(--primary)',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.74rem',
+                      fontWeight: '700',
+                      fontFamily: 'monospace',
+                      border: '1px solid var(--primary-border)',
+                    }}>
+                      {selectedCustomer.customer_id}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
                   {renderCategoryBadge(selectedCustomer.category)}
+                  {selectedCustomer.civil_status && <span className="nic-pill">Status: {selectedCustomer.civil_status}</span>}
+                  {selectedCustomer.dob && <span className="nic-pill">DOB: {selectedCustomer.dob}</span>}
                   {selectedCustomer.nic && <span className="nic-pill">NIC: {selectedCustomer.nic}</span>}
                 </div>
               </div>
@@ -1675,15 +1920,91 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
         {editingCustomer && (
           <form onSubmit={handleUpdateCustomer}>
             <div className="form-grid">
-              <div className="form-group full-width">
-                <label className="form-label">Full Name *</label>
+              {/* Row 1: Customer ID & Civil Status */}
+              <div className="form-group">
+                <label className="form-label">Customer ID * (පාරිභෝගික අංකය)</label>
                 <input
                   type="text"
                   className="form-input"
                   required
-                  placeholder="e.g. Sunil Jayawardena"
-                  value={editingCustomer.name || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })}
+                  placeholder="e.g. CUST-1001"
+                  value={editingCustomer.customer_id || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, customer_id: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Civil Status (සිවිල් තත්ත්වය)</label>
+                <select
+                  className="form-select-full"
+                  value={editingCustomer.civil_status || 'Single'}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, civil_status: e.target.value })}
+                >
+                  <option value="Single">Single (අවිවාහක)</option>
+                  <option value="Married">Married (විවාහක)</option>
+                  <option value="Divorced">Divorced (දික්කසාද)</option>
+                  <option value="Widowed">Widowed (වැන්දඹු)</option>
+                  <option value="Other">Other (වෙනත්)</option>
+                </select>
+              </div>
+
+              {/* Row 2: First Name & Last Name */}
+              <div className="form-group">
+                <label className="form-label">First Name * (මුල් නම)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  required
+                  placeholder="e.g. Sunil"
+                  value={editingCustomer.first_name || ''}
+                  onChange={(e) => {
+                    const fn = e.target.value;
+                    setEditingCustomer({
+                      ...editingCustomer,
+                      first_name: fn,
+                      name: `${fn} ${editingCustomer.last_name || ''}`.trim(),
+                    });
+                  }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Last Name (වාසගම / අග නම)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Jayawardena"
+                  value={editingCustomer.last_name || ''}
+                  onChange={(e) => {
+                    const ln = e.target.value;
+                    setEditingCustomer({
+                      ...editingCustomer,
+                      last_name: ln,
+                      name: `${editingCustomer.first_name || ''} ${ln}`.trim(),
+                    });
+                  }}
+                />
+              </div>
+
+              {/* Row 3: Date of Birth & NIC */}
+              <div className="form-group">
+                <label className="form-label">Date of Birth (උපන් දිනය)</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={editingCustomer.dob || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">NIC (National Identity Card)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 198512345678 or 851234567V"
+                  value={editingCustomer.nic || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, nic: e.target.value })}
                 />
               </div>
 

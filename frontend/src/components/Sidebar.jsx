@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   Users,
   CircleDollarSign,
-  Factory,
   ShoppingCart,
   WalletCards,
   Calculator,
@@ -89,7 +88,6 @@ export default function Sidebar({
     {
       title: 'Purchasing',
       items: [
-        { id: 'suppliers', label: 'Timber Suppliers', icon: Factory, isPhase2: true },
         { id: 'purchases', label: 'Stock Purchases', icon: ShoppingCart, isPhase2: true },
       ],
     },

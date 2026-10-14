@@ -204,12 +204,8 @@ export default function App() {
               'Furniture Categories Directory',
               'Organize products into Living Room, Bedroom, Dining, Office, and Custom lines.'
             )}
-          {activeTab === 'stock' && <ProductsPage />}
-          {activeTab === 'low-stock' &&
-            renderGenericPlaceholder(
-              'Low Stock Reorder Alerts',
-              'Review furniture items that have 2 or fewer units in the showroom or workshop.'
-            )}
+          {activeTab === 'stock' && <ProductsPage initialStockFilter="all" />}
+          {activeTab === 'low-stock' && <ProductsPage initialStockFilter="low_stock" />}
 
           {/* Customers */}
           {activeTab === 'customers' && <CustomersPage initialDebtFilter="all" />}
