@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function StatCard({ title, value, subtitle, icon: Icon, color = 'var(--accent-gold)', bg = 'var(--accent-gold-glow)' }) {
+export default function StatCard({ title, value, subtitle, icon: Icon, color = 'var(--primary)', bg = 'var(--primary-tint)' }) {
   return (
     <div className="stat-card">
       <div>

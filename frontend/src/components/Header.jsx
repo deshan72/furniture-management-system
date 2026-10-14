@@ -21,13 +21,15 @@ export default function Header({ title, subtitle, onQuickAction, quickActionLabe
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
-          background: 'rgba(255, 255, 255, 0.05)',
+          background: 'rgba(255, 255, 255, 0.14)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
           padding: '6px 14px',
           borderRadius: '8px',
           fontSize: '0.82rem',
-          color: 'var(--text-muted)'
+          color: '#ffffff',
+          fontWeight: '500'
         }}>
-          <Calendar size={15} color="var(--accent-gold)" />
+          <Calendar size={15} color="var(--accent)" />
           <span>{todayFormatted}</span>
         </div>
 

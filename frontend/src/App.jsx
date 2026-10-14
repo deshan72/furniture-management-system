@@ -149,14 +149,14 @@ export default function App() {
         style={{
           marginTop: '20px',
           padding: '16px',
-          background: 'rgba(255, 255, 255, 0.02)',
+          background: 'var(--ash-50)',
           border: '1px dashed var(--border-subtle)',
           borderRadius: '10px',
           display: 'inline-flex',
           alignItems: 'center',
           gap: '10px',
           fontSize: '0.85rem',
-          color: 'var(--accent-gold)',
+          color: 'var(--primary)',
         }}
       >
         <span>🛠️ This module is ready for step-by-step feature implementation.</span>
@@ -212,8 +212,8 @@ export default function App() {
             )}
 
           {/* Customers */}
-          {activeTab === 'customers' && <CustomersPage />}
-          {activeTab === 'outstanding' && <CustomersPage />}
+          {activeTab === 'customers' && <CustomersPage initialDebtFilter="all" />}
+          {activeTab === 'outstanding' && <CustomersPage initialDebtFilter="debt" />}
 
           {/* Purchasing */}
           {activeTab === 'suppliers' &&
