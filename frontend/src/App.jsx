@@ -1,15 +1,78 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import DashboardPage from './pages/DashboardPage';
 import ProductsPage from './pages/ProductsPage';
 import CustomersPage from './pages/CustomersPage';
+import CentersPage from './pages/CentersPage';
 import OrdersPage from './pages/OrdersPage';
 import CashHandlingPage from './pages/CashHandlingPage';
+import { loadSavedCenters } from './utils/centersData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Theme State: 'light' | 'dark'
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dnd_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+      }
+    } catch {
+      // fallback
+    }
+    return 'light';
+  });
+
+  // Selected Regional Center State: 'all' | 'BRANCH/C001'
+  const [selectedCenter, setSelectedCenter] = useState(() => {
+    try {
+      return localStorage.getItem('dnd_active_center') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+
+  // Available Centers list
+  const [centers, setCenters] = useState(() => loadSavedCenters());
+
+  // Apply theme to HTML root & persist to localStorage
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem('dnd_theme', theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
+
+  // Persist selected center
+  const handleSelectCenter = (centerKey) => {
+    setSelectedCenter(centerKey);
+    try {
+      localStorage.setItem('dnd_active_center', centerKey);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  // Sync centers from localStorage if updated elsewhere
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (!e || e.key === 'dnd_centers_list') {
+        setCenters(loadSavedCenters());
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // Live badge counts
   const badges = {
@@ -72,6 +135,17 @@ export default function App() {
         return {
           title: 'Outstanding Balances (ණය / හිඟ මුදල්)',
           subtitle: 'Track pending customer credit, delivery balances, and due dates',
+        };
+      // Centers
+      case 'centers':
+        return {
+          title: 'Center Directory (මධ්‍යස්ථාන නාමාවලිය)',
+          subtitle: 'Manage regional distribution centers, center codes, and field branch officers',
+        };
+      case 'create-center':
+        return {
+          title: 'Create New Center (නව මධ්‍යස්ථානයක් ඇතුළත් කිරීම)',
+          subtitle: 'Register new regional centers and branch codes for customer identification',
         };
       // Purchasing
       case 'suppliers':
@@ -178,11 +252,22 @@ export default function App() {
         <Header
           title={pageInfo.title}
           subtitle={pageInfo.subtitle}
+          selectedCenter={selectedCenter}
+          onSelectCenter={handleSelectCenter}
+          centers={centers}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
         />
 
         <main className="content-area">
           {/* Main */}
-          {activeTab === 'dashboard' && <DashboardPage />}
+          {activeTab === 'dashboard' && (
+            <DashboardPage
+              selectedCenter={selectedCenter}
+              centers={centers}
+              onNavigate={setActiveTab}
+            />
+          )}
 
           {/* Orders & Billing */}
           {activeTab === 'orders' && <OrdersPage />}
@@ -208,8 +293,28 @@ export default function App() {
           {activeTab === 'low-stock' && <ProductsPage initialStockFilter="low_stock" />}
 
           {/* Customers */}
-          {activeTab === 'customers' && <CustomersPage initialDebtFilter="all" />}
-          {activeTab === 'outstanding' && <CustomersPage initialDebtFilter="debt" />}
+          {activeTab === 'customers' && (
+            <CustomersPage
+              initialDebtFilter="all"
+              selectedCenter={selectedCenter}
+            />
+          )}
+          {activeTab === 'outstanding' && (
+            <CustomersPage
+              initialDebtFilter="debt"
+              selectedCenter={selectedCenter}
+            />
+          )}
+
+          {/* Centers */}
+          {(activeTab === 'centers' || activeTab === 'create-center') && (
+            <CentersPage
+              key={activeTab}
+              initialOpenCreate={activeTab === 'create-center'}
+              headerCenter={selectedCenter}
+              onNavigate={setActiveTab}
+            />
+          )}
 
           {/* Purchasing */}
           {activeTab === 'suppliers' &&

@@ -26,16 +26,35 @@ CREATE TABLE IF NOT EXISTS products (
 -- 3. CUSTOMERS TABLE
 CREATE TABLE IF NOT EXISTS customers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    customer_id VARCHAR(50) UNIQUE, -- Format: BRANCH/CENTER/CONTRACT/ITEM (e.g. MHG/C001/1/DT001)
+    branch_code VARCHAR(20),        -- e.g. MHG
+    center_code VARCHAR(20),        -- e.g. C001
+    contract_no VARCHAR(20),        -- Contract number / item order count (1, 2, 3...)
+    item_code VARCHAR(50),          -- Furniture item code (e.g. DT001)
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    civil_status VARCHAR(50) DEFAULT 'Single',
+    dob DATE,
     name VARCHAR(255) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     whatsapp VARCHAR(20),
-    address TEXT,
     nic VARCHAR(20),
+    city VARCHAR(100),
+    address TEXT,
+    category VARCHAR(50) DEFAULT 'custom_order', -- 'custom_order', 'showroom', 'wholesale'
     outstanding_balance NUMERIC(12, 2) DEFAULT 0.00, -- Amount customer owes
+    total_spent NUMERIC(12, 2) DEFAULT 0.00,
+    total_orders INT DEFAULT 1,
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Indexes for Customer Searches
+CREATE INDEX IF NOT EXISTS idx_customers_customer_id ON customers(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+CREATE INDEX IF NOT EXISTS idx_customers_nic ON customers(nic);
+CREATE INDEX IF NOT EXISTS idx_customers_branch_center ON customers(branch_code, center_code);
 
 -- 4. ORDERS TABLE (Ready Stock & Made-to-order)
 CREATE TABLE IF NOT EXISTS orders (
@@ -96,7 +115,28 @@ CREATE TABLE IF NOT EXISTS cash_transactions (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. HELPER FUNCTION: DECREMENT PRODUCT STOCK SAFELY
+-- 8. REGIONAL CENTERS TABLE (මධ්‍යස්ථාන)
+CREATE TABLE IF NOT EXISTS centers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    center_code VARCHAR(20) NOT NULL, -- e.g. C001, C002, C003
+    branch_code VARCHAR(20) NOT NULL, -- e.g. MHG, MRT, CMB
+    name VARCHAR(255) NOT NULL,
+    name_si VARCHAR(255),
+    city VARCHAR(100),
+    address TEXT,
+    contact_person VARCHAR(100),
+    phone VARCHAR(20),
+    status VARCHAR(20) DEFAULT 'active', -- 'active', 'inactive'
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(branch_code, center_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_centers_branch_code ON centers(branch_code);
+CREATE INDEX IF NOT EXISTS idx_centers_center_code ON centers(center_code);
+
+-- 9. HELPER FUNCTION: DECREMENT PRODUCT STOCK SAFELY
 CREATE OR REPLACE FUNCTION decrement_product_stock(prod_id UUID, qty INT)
 RETURNS VOID AS $$
 BEGIN

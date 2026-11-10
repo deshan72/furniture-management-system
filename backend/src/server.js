@@ -13,6 +13,7 @@ dotenv.config();
 
 import productRoutes from './routes/productRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
+import centerRoutes from './routes/centerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import cashbookRoutes from './routes/cashbookRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
@@ -42,6 +43,7 @@ app.get('/api/health', (req, res) => {
 // API Routes
 app.use('/api/products', productRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/centers', centerRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/cashbook', cashbookRoutes);
 app.use('/api/dashboard', dashboardRoutes);

@@ -23,6 +23,8 @@ import {
   ChevronRight,
   LogOut,
   ClipboardList,
+  Building2,
+  PlusCircle,
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -74,6 +76,13 @@ export default function Sidebar({
           badge: badges.outstanding,
           badgeType: 'warning',
         },
+      ],
+    },
+    {
+      title: 'Centers',
+      items: [
+        { id: 'centers', label: 'Center Directory', icon: Building2 },
+        { id: 'create-center', label: 'Create Center', icon: PlusCircle },
       ],
     },
     {
