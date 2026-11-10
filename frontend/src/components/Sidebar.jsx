@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   LayoutDashboard,
-  FileText,
   CreditCard,
   RotateCcw,
   Armchair,
@@ -21,11 +20,12 @@ import {
   Database,
   ChevronLeft,
   ChevronRight,
-  LogOut,
   ClipboardList,
   Building2,
   PlusCircle,
+  UserCheck,
 } from 'lucide-react';
+import { hasPageAccess, ROLES_METADATA } from '../utils/rolesData';
 
 export default function Sidebar({
   activeTab,
@@ -33,6 +33,7 @@ export default function Sidebar({
   isCollapsed,
   setIsCollapsed,
   badges = { lowStock: 2, outstanding: 1 },
+  currentUser,
 }) {
   // Navigation sections customized for Furniture Management (No POS)
   const navigationGroups = [
@@ -47,7 +48,7 @@ export default function Sidebar({
       items: [
         { id: 'orders', label: 'Orders & Invoices', icon: ClipboardList },
         { id: 'payments', label: 'Payments & Advances', icon: CreditCard },
-        { id: 'returns', label: 'Returns & Repairs', icon: RotateCcw, isPhase2: true },
+        { id: 'returns', label: 'Returns & Repairs', icon: RotateCcw },
       ],
     },
     {
@@ -96,7 +97,7 @@ export default function Sidebar({
     {
       title: 'Purchasing',
       items: [
-        { id: 'purchases', label: 'Stock Purchases', icon: ShoppingCart, isPhase2: true },
+        { id: 'purchases', label: 'Stock Purchases', icon: ShoppingCart },
       ],
     },
     {
@@ -110,11 +111,22 @@ export default function Sidebar({
       title: 'Administration',
       items: [
         { id: 'settings', label: 'Store Settings', icon: Settings },
-        { id: 'users', label: 'Users & Roles', icon: ShieldCheck, isPhase2: true },
-        { id: 'backup', label: 'Backup / Export', icon: Database, isPhase2: true },
+        { id: 'users', label: 'Users & Roles', icon: ShieldCheck },
+        { id: 'backup', label: 'Backup / Export', icon: Database },
       ],
     },
   ];
+
+  // User meta
+  const roleMeta = currentUser ? ROLES_METADATA[currentUser.role] : null;
+  const initials = currentUser?.name
+    ? currentUser.name
+        .split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : 'DS';
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -155,13 +167,17 @@ export default function Sidebar({
             {group.items.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
+              const isAllowed = hasPageAccess(currentUser, item.id);
 
               return (
                 <button
                   key={item.id}
-                  className={`nav-item-btn ${isActive ? 'active' : ''}`}
-                  title={isCollapsed ? item.label : undefined}
+                  className={`nav-item-btn ${isActive ? 'active' : ''} ${!isAllowed ? 'nav-item-locked' : ''}`}
+                  title={isCollapsed ? `${item.label}${!isAllowed ? ' (Locked - Admin Required)' : ''}` : undefined}
                   onClick={() => setActiveTab(item.id)}
+                  style={{
+                    opacity: !isAllowed ? 0.6 : 1,
+                  }}
                 >
                   <div className="nav-item-content">
                     <span className="nav-icon">
@@ -171,14 +187,27 @@ export default function Sidebar({
                   </div>
 
                   {/* Badges / Chips */}
-                  {item.badge !== undefined && item.badge > 0 && (
+                  {item.badge !== undefined && item.badge > 0 && isAllowed && (
                     <span className={`nav-badge ${item.badgeType || 'info'}`}>
                       {item.badge}
                     </span>
                   )}
 
-                  {item.isPhase2 && (
-                    <span className="nav-badge phase2">v2</span>
+                  {/* Lock Indicator if role restricted */}
+                  {!isAllowed && (
+                    <span
+                      title="Admin Authorization Required"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)',
+                        padding: '2px 4px',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      <Lock size={12} strokeWidth={2.5} />
+                    </span>
                   )}
                 </button>
               );
@@ -187,24 +216,51 @@ export default function Sidebar({
         ))}
       </nav>
 
-      {/* Bottom Profile Card & Logout */}
-      <div className="sidebar-footer-card">
+      {/* Bottom Profile Card */}
+      <div
+        className="sidebar-footer-card"
+        style={{ cursor: 'pointer' }}
+        onClick={() => setActiveTab('users')}
+        title="Manage Users & Active Persona"
+      >
         <div className="user-profile-info">
-          <div className="user-avatar-circle" title="D&S Furniture (Owner)">
-            DS
+          <div
+            className="user-avatar-circle"
+            title={`${currentUser?.name || 'D&S Staff'} (${roleMeta?.shortLabel || 'Admin'})`}
+            style={{
+              backgroundColor: roleMeta?.bg || 'var(--primary)',
+              color: roleMeta?.color || '#ffffff',
+              border: `1.5px solid ${roleMeta?.border || 'transparent'}`,
+              fontWeight: 700,
+            }}
+          >
+            {initials}
           </div>
           <div className="user-details">
-            <span className="user-name">D&S Furniture</span>
-            <span className="user-role-badge">Owner / Admin</span>
+            <span className="user-name">{currentUser?.name || 'D&S Furniture'}</span>
+            <span
+              className="user-role-badge"
+              style={{
+                color: roleMeta?.color || 'inherit',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              {roleMeta?.shortLabel || 'Owner / Admin'}
+            </span>
           </div>
         </div>
 
         <button
           className="logout-icon-btn"
-          title="Exit / Lock Dashboard"
-          onClick={() => alert('D&S Furniture Session Locked')}
+          title="Switch User Persona / Manage Roles"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveTab('users');
+          }}
         >
-          <LogOut size={16} />
+          <UserCheck size={16} />
         </button>
       </div>
     </aside>

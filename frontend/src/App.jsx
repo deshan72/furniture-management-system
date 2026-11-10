@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import DashboardPage from './pages/DashboardPage';
@@ -7,11 +8,18 @@ import CustomersPage from './pages/CustomersPage';
 import CentersPage from './pages/CentersPage';
 import OrdersPage from './pages/OrdersPage';
 import CashHandlingPage from './pages/CashHandlingPage';
+import UsersPage from './pages/UsersPage';
+import SettingsPage from './pages/SettingsPage';
+import BackupPage from './pages/BackupPage';
 import { loadSavedCenters } from './utils/centersData';
+import { getActiveUser, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Active User / Persona State
+  const [currentUser, setCurrentUser] = useState(() => getActiveUser());
 
   // Theme State: 'light' | 'dark'
   const [theme, setTheme] = useState(() => {
@@ -63,11 +71,14 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Sync centers from localStorage if updated elsewhere
+  // Sync centers & active user from localStorage if updated elsewhere
   useEffect(() => {
     const handleStorage = (e) => {
       if (!e || e.key === 'dnd_centers_list') {
         setCenters(loadSavedCenters());
+      }
+      if (!e || e.key === 'ds_furniture_active_user_id') {
+        setCurrentUser(getActiveUser());
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -102,7 +113,7 @@ export default function App() {
       case 'returns':
         return {
           title: 'Returns & Repairs',
-          subtitle: 'Manage damaged items, customer repairs, or replacement orders (Phase 2)',
+          subtitle: 'Manage damaged items, customer repairs, or replacement orders',
         };
       // Inventory
       case 'products':
@@ -151,12 +162,12 @@ export default function App() {
       case 'suppliers':
         return {
           title: 'Timber & Material Suppliers',
-          subtitle: 'Timber depots, hardware suppliers, and vendor ledger (Phase 2)',
+          subtitle: 'Timber depots, hardware suppliers, and vendor ledger',
         };
       case 'purchases':
         return {
           title: 'Stock Purchases & Inward Goods',
-          subtitle: 'Raw timber planks, varnish, fabric, and hardware purchases (Phase 2)',
+          subtitle: 'Raw timber planks, varnish, fabric, and hardware purchases',
         };
       // Finance & Cash
       case 'cashbook':
@@ -188,18 +199,18 @@ export default function App() {
       // Administration
       case 'settings':
         return {
-          title: 'Store Settings & Branding',
-          subtitle: 'Business name, invoice header details, phone numbers, and defaults',
+          title: 'Store Settings & Invoice Configurations',
+          subtitle: 'Business legal details, 10-year Teak warranty statement, and deposit bank accounts',
         };
       case 'users':
         return {
           title: 'Users & Roles Management',
-          subtitle: 'Owner, cashier, and workshop staff access privileges (Phase 2)',
+          subtitle: 'Staff credentials, role permissions matrix, and page access control',
         };
       case 'backup':
         return {
-          title: 'Data Backup & Export',
-          subtitle: 'Export tables to Excel / CSV or backup Supabase records (Phase 2)',
+          title: 'Data Backup & Export Facility',
+          subtitle: 'One-click full system JSON backup downloads, CSV table exports, and safe restore',
         };
       default:
         return {
@@ -210,6 +221,9 @@ export default function App() {
   };
 
   const pageInfo = getPageInfo();
+
+  // Check if current user is allowed to access the activeTab
+  const isPageAllowed = hasPageAccess(currentUser, activeTab);
 
   const renderGenericPlaceholder = (title, description) => (
     <div className="panel">
@@ -238,6 +252,99 @@ export default function App() {
     </div>
   );
 
+  // Render Access Denied Screen when a restricted page is opened
+  const renderAccessRestricted = () => {
+    const roleMeta = ROLES_METADATA[currentUser?.role];
+    return (
+      <div
+        className="panel"
+        style={{
+          padding: '48px 32px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '16px',
+          maxWidth: '680px',
+          margin: '40px auto',
+          borderRadius: '16px',
+          border: '1.5px solid var(--border-subtle)',
+          boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
+        }}
+      >
+        <div
+          style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'rgba(239, 68, 68, 0.12)',
+            color: 'var(--error)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ShieldAlert size={36} />
+        </div>
+
+        <div>
+          <h2 style={{ margin: '0 0 6px', fontSize: '1.35rem', color: 'var(--text-main)' }}>
+            Access Restricted (ප්‍රවේශය සීමා කර ඇත)
+          </h2>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Administrator authorization is required to access the <strong>{pageInfo.title}</strong> module.
+          </span>
+        </div>
+
+        <div
+          style={{
+            padding: '12px 18px',
+            borderRadius: '10px',
+            background: 'var(--ash-50)',
+            border: '1px solid var(--border-subtle)',
+            fontSize: '0.85rem',
+            color: 'var(--text-main)',
+            maxWidth: '500px',
+            lineHeight: '1.5',
+          }}
+        >
+          Your active persona is currently logged in as: <br />
+          <strong>{currentUser?.name}</strong> (
+          <span style={{ color: roleMeta?.color || 'var(--primary)', fontWeight: 600 }}>
+            {roleMeta?.label}
+          </span>
+          ).<br />
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            This role does not have operational permissions assigned for this page.
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+          <button
+            type="button"
+            className="btn btn-outline"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <ArrowLeft size={16} />
+            <span>Return to Dashboard</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+            onClick={() => setActiveTab('users')}
+          >
+            <Lock size={16} />
+            <span>Switch User / Manage Roles</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="app-container">
       <Sidebar
@@ -246,6 +353,7 @@ export default function App() {
         isCollapsed={isCollapsed}
         setIsCollapsed={setIsCollapsed}
         badges={badges}
+        currentUser={currentUser}
       />
 
       <div className={`main-wrapper ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -260,107 +368,107 @@ export default function App() {
         />
 
         <main className="content-area">
-          {/* Main */}
-          {activeTab === 'dashboard' && (
-            <DashboardPage
-              selectedCenter={selectedCenter}
-              centers={centers}
-              onNavigate={setActiveTab}
-            />
+          {/* Access Control Enforcement: If page is restricted for current role, block and show friendly notification */}
+          {!isPageAllowed ? (
+            renderAccessRestricted()
+          ) : (
+            <>
+              {/* Main */}
+              {activeTab === 'dashboard' && (
+                <DashboardPage
+                  selectedCenter={selectedCenter}
+                  centers={centers}
+                  onNavigate={setActiveTab}
+                />
+              )}
+
+              {/* Orders & Billing */}
+              {activeTab === 'orders' && <OrdersPage />}
+              {activeTab === 'payments' &&
+                renderGenericPlaceholder(
+                  'Payments & Customer Advances',
+                  'Log and inspect customer advance payments, cash receipts, and bank deposit slips.'
+                )}
+              {activeTab === 'returns' &&
+                renderGenericPlaceholder(
+                  'Returns & Repair Handling',
+                  'Record defective furniture returns, wood polish repairs, and replacements.'
+                )}
+
+              {/* Inventory */}
+              {activeTab === 'products' && <ProductsPage />}
+              {activeTab === 'categories' &&
+                renderGenericPlaceholder(
+                  'Product Categories Directory',
+                  'Organize products into Wood, Melamine, and Electrical Items lines.'
+                )}
+              {activeTab === 'stock' && <ProductsPage initialStockFilter="all" />}
+              {activeTab === 'low-stock' && <ProductsPage initialStockFilter="low_stock" />}
+
+              {/* Customers */}
+              {activeTab === 'customers' && (
+                <CustomersPage
+                  initialDebtFilter="all"
+                  selectedCenter={selectedCenter}
+                />
+              )}
+              {activeTab === 'outstanding' && (
+                <CustomersPage
+                  initialDebtFilter="debt"
+                  selectedCenter={selectedCenter}
+                />
+              )}
+
+              {/* Centers */}
+              {(activeTab === 'centers' || activeTab === 'create-center') && (
+                <CentersPage
+                  key={activeTab}
+                  initialOpenCreate={activeTab === 'create-center'}
+                  headerCenter={selectedCenter}
+                  onNavigate={setActiveTab}
+                />
+              )}
+
+              {/* Purchasing */}
+              {activeTab === 'suppliers' &&
+                renderGenericPlaceholder(
+                  'Timber & Material Suppliers',
+                  'Maintain vendor records for timber mills, paint dealers, and fabric suppliers.'
+                )}
+              {activeTab === 'purchases' &&
+                renderGenericPlaceholder(
+                  'Stock Purchases & Inward Goods',
+                  'Record timber cubic feet, plywood sheets, and hardware bought into workshop.'
+                )}
+
+              {/* Finance */}
+              {activeTab === 'cashbook' && <CashHandlingPage />}
+              {activeTab === 'expenses' && <CashHandlingPage />}
+              {activeTab === 'day-close' && <CashHandlingPage />}
+
+              {/* Reports */}
+              {activeTab === 'reports-sales' &&
+                renderGenericPlaceholder(
+                  'Sales Turnover & Volume Reports',
+                  'Generate sales turnover summaries by date range, payment mode, and furniture line.'
+                )}
+              {activeTab === 'reports-profit' &&
+                renderGenericPlaceholder(
+                  'Gross Profit & Cost Analysis',
+                  'Compare selling prices against timber and labor cost to verify profit margins.'
+                )}
+
+              {/* Administration */}
+              {activeTab === 'settings' && <SettingsPage />}
+              {activeTab === 'users' && (
+                <UsersPage
+                  currentUser={currentUser}
+                  onUserChange={setCurrentUser}
+                />
+              )}
+              {activeTab === 'backup' && <BackupPage />}
+            </>
           )}
-
-          {/* Orders & Billing */}
-          {activeTab === 'orders' && <OrdersPage />}
-          {activeTab === 'payments' &&
-            renderGenericPlaceholder(
-              'Payments & Customer Advances',
-              'Log and inspect customer advance payments, cash receipts, and bank deposit slips.'
-            )}
-          {activeTab === 'returns' &&
-            renderGenericPlaceholder(
-              'Returns & Repair Handling',
-              'Record defective furniture returns, wood polish repairs, and replacements.'
-            )}
-
-          {/* Inventory */}
-          {activeTab === 'products' && <ProductsPage />}
-          {activeTab === 'categories' &&
-            renderGenericPlaceholder(
-              'Product Categories Directory',
-              'Organize products into Wood, Melamine, and Electrical Items lines.'
-            )}
-          {activeTab === 'stock' && <ProductsPage initialStockFilter="all" />}
-          {activeTab === 'low-stock' && <ProductsPage initialStockFilter="low_stock" />}
-
-          {/* Customers */}
-          {activeTab === 'customers' && (
-            <CustomersPage
-              initialDebtFilter="all"
-              selectedCenter={selectedCenter}
-            />
-          )}
-          {activeTab === 'outstanding' && (
-            <CustomersPage
-              initialDebtFilter="debt"
-              selectedCenter={selectedCenter}
-            />
-          )}
-
-          {/* Centers */}
-          {(activeTab === 'centers' || activeTab === 'create-center') && (
-            <CentersPage
-              key={activeTab}
-              initialOpenCreate={activeTab === 'create-center'}
-              headerCenter={selectedCenter}
-              onNavigate={setActiveTab}
-            />
-          )}
-
-          {/* Purchasing */}
-          {activeTab === 'suppliers' &&
-            renderGenericPlaceholder(
-              'Timber & Material Suppliers',
-              'Maintain vendor records for timber mills, paint dealers, and fabric suppliers.'
-            )}
-          {activeTab === 'purchases' &&
-            renderGenericPlaceholder(
-              'Stock Purchases & Inward Goods',
-              'Record timber cubic feet, plywood sheets, and hardware bought into workshop.'
-            )}
-
-          {/* Finance */}
-          {activeTab === 'cashbook' && <CashHandlingPage />}
-          {activeTab === 'expenses' && <CashHandlingPage />}
-          {activeTab === 'day-close' && <CashHandlingPage />}
-
-          {/* Reports */}
-          {activeTab === 'reports-sales' &&
-            renderGenericPlaceholder(
-              'Sales Turnover & Volume Reports',
-              'Generate sales turnover summaries by date range, payment mode, and furniture line.'
-            )}
-          {activeTab === 'reports-profit' &&
-            renderGenericPlaceholder(
-              'Gross Profit & Cost Analysis',
-              'Compare selling prices against timber and labor cost to verify profit margins.'
-            )}
-
-          {/* Administration */}
-          {activeTab === 'settings' &&
-            renderGenericPlaceholder(
-              'Store Profile & Invoice Configurations',
-              'Configure showroom contact numbers, invoice header text, workshop address, and currencies.'
-            )}
-          {activeTab === 'users' &&
-            renderGenericPlaceholder(
-              'User Roles & Permissions',
-              'Manage access for store owners, sales staff, and inventory managers.'
-            )}
-          {activeTab === 'backup' &&
-            renderGenericPlaceholder(
-              'Data Backup & Export Facility',
-              'One-click download of all sales records, inventory tables, and customer contacts.'
-            )}
         </main>
       </div>
     </div>
