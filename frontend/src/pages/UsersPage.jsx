@@ -347,6 +347,12 @@ export default function UsersPage({
     }
   };
 
+  // Reset Filters
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setRoleFilter('all');
+  };
+
   // Toggle single module in Modal form
   const handleToggleModalPermission = (moduleId) => {
     if (formData.id === 'admin') {
@@ -416,8 +422,10 @@ export default function UsersPage({
     showToast('Roles catalog exported successfully.');
   };
 
+  const isFilterActive = searchQuery.trim() !== '' || roleFilter !== 'all';
+
   return (
-    <div className="users-page-container" style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+    <div className="users-page-container">
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -448,7 +456,7 @@ export default function UsersPage({
           ========================================================== */}
       <div className="stats-grid">
         <StatCard
-          title="TOTAL SYSTEM ROLES"
+          title="Total System Roles"
           value={`${roles.length} Roles`}
           subtitle={`${roles.filter((r) => r.isSystem).length} System • ${roles.filter((r) => !r.isSystem).length} Custom`}
           icon={ShieldCheck}
@@ -456,7 +464,7 @@ export default function UsersPage({
           bg="rgba(37, 99, 235, 0.12)"
         />
         <StatCard
-          title="FULL ACCESS ROLES"
+          title="Full Access Roles"
           value={`${roles.filter((r) => r.permissions.length === SYSTEM_MODULES.length).length} Role`}
           subtitle="Administrator (100% Unrestricted)"
           icon={Crown}
@@ -464,7 +472,7 @@ export default function UsersPage({
           bg="rgba(147, 51, 234, 0.12)"
         />
         <StatCard
-          title="OPERATIONAL ROLES"
+          title="Operational Roles"
           value={`${roles.filter((r) => r.permissions.length < SYSTEM_MODULES.length).length} Roles`}
           subtitle="Executive & Showroom Staff"
           icon={Briefcase}
@@ -472,7 +480,7 @@ export default function UsersPage({
           bg="rgba(5, 150, 105, 0.12)"
         />
         <StatCard
-          title="SYSTEM MODULES"
+          title="System Modules"
           value={`${SYSTEM_MODULES.length} Pages`}
           subtitle="Across 9 Business Categories"
           icon={Boxes}
@@ -485,30 +493,81 @@ export default function UsersPage({
           2. FILTER & ACTION TOOLBAR (CRUCIAL CRUD TOOLBAR)
           ========================================================== */}
       <div className="filter-card">
-        {/* Search input */}
-        <div className="filter-search-box">
-          <Search size={16} className="filter-search-icon" />
-          <input
-            type="text"
-            className="filter-search-input"
-            placeholder="Search roles by title, Sinhala, description or code..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
+        {/* Row 1: Search Box + Action Buttons */}
+        <div className="filter-row-top">
+          <div className="filter-search-box">
+            <Search className="filter-search-icon" size={17} />
+            <input
+              type="text"
+              className="filter-search-input"
+              placeholder="Search roles by title, Sinhala, description or code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="filter-search-clear"
+                onClick={() => setSearchQuery('')}
+                title="Clear Search"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          <div className="filter-actions-group">
+            {/* View Mode Toggle */}
+            <div className="view-mode-toggle">
+              <button
+                type="button"
+                className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => setViewMode('table')}
+              >
+                Table View
+              </button>
+              <button
+                type="button"
+                className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                onClick={() => setViewMode('cards')}
+              >
+                Cards View
+              </button>
+              <button
+                type="button"
+                className={`view-toggle-btn ${viewMode === 'matrix' ? 'active' : ''}`}
+                onClick={() => setViewMode('matrix')}
+              >
+                Permissions Matrix
+              </button>
+            </div>
+
+            {/* Export JSON Button */}
             <button
               type="button"
-              className="filter-clear-btn"
-              onClick={() => setSearchQuery('')}
-              title="Clear search"
+              className="btn btn-secondary"
+              onClick={handleExportRoles}
+              style={{ padding: '9px 14px', fontSize: '0.84rem', gap: '6px' }}
+              title="Export Roles catalog as JSON"
             >
-              <X size={14} />
+              <Download size={15} /> Export
             </button>
-          )}
+
+            {/* + Create New Role Button */}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleOpenAddModal}
+              style={{ padding: '9px 16px', fontSize: '0.84rem', gap: '6px', fontWeight: 600 }}
+            >
+              <Plus size={16} /> + Create Role
+            </button>
+          </div>
         </div>
 
-        {/* Filter pills */}
-        <div className="filter-chips-row">
+        {/* Row 2: Filter chips + Reset Action */}
+        <div className="filter-row-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Filter:</span>
           <button
             type="button"
             className={`filter-chip-btn ${roleFilter === 'all' ? 'active' : ''}`}
@@ -530,60 +589,17 @@ export default function UsersPage({
           >
             Custom Roles ({roles.filter((r) => !r.isSystem).length})
           </button>
-        </div>
 
-        {/* Right side controls: View Mode & Create Action */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto', flexWrap: 'wrap' }}>
-          {/* View mode toggle */}
-          <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px' }}>
+          {isFilterActive && (
             <button
               type="button"
-              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-              onClick={() => setViewMode('table')}
-              title="Table View (පිටු වගු දසුන)"
+              className="btn btn-secondary"
+              onClick={handleResetFilters}
+              style={{ padding: '4px 10px', fontSize: '0.75rem', marginLeft: 'auto', gap: '4px' }}
             >
-              Table View
+              <RotateCcw size={12} /> Reset
             </button>
-            <button
-              type="button"
-              className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
-              onClick={() => setViewMode('cards')}
-              title="Cards View (කාඩ්පත් දසුන)"
-            >
-              Cards View
-            </button>
-            <button
-              type="button"
-              className={`view-toggle-btn ${viewMode === 'matrix' ? 'active' : ''}`}
-              onClick={() => setViewMode('matrix')}
-              title="Permissions Matrix (සම්පූර්ණ අවසර සටහන)"
-            >
-              Permissions Matrix
-            </button>
-          </div>
-
-          {/* Export JSON */}
-          <button
-            type="button"
-            className="btn btn-outline"
-            onClick={handleExportRoles}
-            style={{ padding: '7px 12px', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-            title="Export Roles catalog as JSON backup"
-          >
-            <Download size={14} />
-            <span>Export</span>
-          </button>
-
-          {/* + Create New Role Button */}
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleOpenAddModal}
-            style={{ padding: '7px 16px', fontSize: '0.84rem', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
-          >
-            <Plus size={16} />
-            <span>+ Create Role</span>
-          </button>
+          )}
         </div>
       </div>
 
@@ -596,7 +612,7 @@ export default function UsersPage({
             <thead>
               <tr>
                 <th style={{ minWidth: '220px' }}>Role Identity (භූමිකාව)</th>
-                <th style={{ minWidth: '260px' }}>Description & Scope</th>
+                <th style={{ minWidth: '280px' }}>Description & Scope</th>
                 <th style={{ textAlign: 'center', minWidth: '180px' }}>Access Coverage</th>
                 <th style={{ textAlign: 'center', minWidth: '130px' }}>Classification</th>
                 <th style={{ textAlign: 'center', minWidth: '110px' }}>Status</th>
@@ -673,7 +689,7 @@ export default function UsersPage({
 
                     {/* Description */}
                     <td>
-                      <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: '1.45', maxWidth: '380px' }}>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.45', maxWidth: '380px' }}>
                         {role.description}
                       </p>
                     </td>
