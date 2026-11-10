@@ -150,18 +150,18 @@ export default function App() {
         };
       case 'outstanding':
         return {
-          title: 'Outstanding Balances (ණය / හිඟ මුදල්)',
+          title: 'Outstanding Balances',
           subtitle: 'Track pending customer credit, delivery balances, and due dates',
         };
       // Centers
       case 'centers':
         return {
-          title: 'Center Directory (මධ්‍යස්ථාන නාමාවලිය)',
+          title: 'Center Directory',
           subtitle: 'Manage regional distribution centers, center codes, and field branch officers',
         };
       case 'create-center':
         return {
-          title: 'Create New Center (නව මධ්‍යස්ථානයක් ඇතුළත් කිරීම)',
+          title: 'Create New Center',
           subtitle: 'Register new regional centers and branch codes for customer identification',
         };
       // Purchasing
@@ -300,7 +300,7 @@ export default function App() {
 
         <div>
           <h2 style={{ margin: '0 0 6px', fontSize: '1.35rem', color: 'var(--text-main)' }}>
-            Access Restricted (ප්‍රවේශය සීමා කර ඇත)
+            Access Restricted
           </h2>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
             Administrator authorization is required to access the <strong>{pageInfo.title}</strong> module.
@@ -357,7 +357,7 @@ export default function App() {
             onClick={() => handleSwitchRole('admin')}
           >
             <Crown size={16} />
-            <span>Switch to Administrator (👑 පරිපාලක වෙත මාරු වන්න)</span>
+            <span>Switch to Administrator</span>
           </button>
 
           <button
@@ -367,7 +367,7 @@ export default function App() {
             onClick={() => setActiveTab('users')}
           >
             <Lock size={16} />
-            <span>Open Users & Roles (අවසර සැකසුම්)</span>
+            <span>Open Users & Roles</span>
           </button>
         </div>
       </div>

@@ -180,14 +180,14 @@ const INITIAL_CUSTOMERS = [
 
 // =========================================================
 // Customer ID format: BRANCH CODE / CENTER CODE / CONTRACT NO / ITEM CODE
-//   - Contract No = the customer's nth item (කීවෙනි අයිතමයද)
+//   - Contract No = the customer's nth item count
 //   e.g. MHG/C001/2/DT001
 // =========================================================
 const CUSTOMER_ID_FIELDS = [
-  { key: 'branch_code', label: 'Branch Code', si: 'ශාඛා කේතය', placeholder: 'e.g. MHG' },
-  { key: 'center_code', label: 'Center Code', si: 'මධ්‍යස්ථාන කේතය', placeholder: 'e.g. C001' },
-  { key: 'contract_no', label: 'Contract No', si: 'කීවෙනි අයිතමයද', placeholder: 'e.g. 1', numeric: true },
-  { key: 'item_code', label: 'Item Code', si: 'භාණ්ඩ කේතය', placeholder: 'e.g. DT001' },
+  { key: 'branch_code', label: 'Branch Code', si: 'Branch', placeholder: 'e.g. MHG' },
+  { key: 'center_code', label: 'Center Code', si: 'Center', placeholder: 'e.g. C001' },
+  { key: 'contract_no', label: 'Contract No', si: 'Item #', placeholder: 'e.g. 1', numeric: true },
+  { key: 'item_code', label: 'Item Code', si: 'SKU / Item', placeholder: 'e.g. DT001' },
 ];
 
 const LAST_ID_PREFIX_KEY = 'dnd_last_customer_id_prefix';
@@ -386,7 +386,7 @@ function CustomerIdBuilder({ values, onChange, legacyId }) {
     <div className="form-group full-width">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
         <label className="form-label" style={{ marginBottom: 0 }}>
-          Customer ID * (පාරිභෝගික අංකය) — Branch / Center / Contract / Item
+          Customer ID * — Branch / Center / Contract / Item
         </label>
         {availableCenters.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1049,7 +1049,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               <div class="summary-val">${filteredCustomers.length}</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">Accounts with Debt (ණය ඇති)</div>
+              <div class="summary-label">Accounts with Debt</div>
               <div class="summary-val">${filteredCustomers.filter((c) => Number(c.outstanding_balance) > 0).length}</div>
             </div>
             <div class="summary-card">
@@ -1189,7 +1189,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       case 'custom_order':
         return (
           <span className="status-badge badge-custom">
-            <Hammer size={12} /> Custom Made (ඇණවුම්)
+            <Hammer size={12} /> Custom Made
           </span>
         );
       case 'showroom':
@@ -1224,7 +1224,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           bg="var(--primary-tint)"
         />
         <StatCard
-          title="Outstanding Balances (ණය)"
+          title="Outstanding Balances"
           value={formatLKR(stats.totalOutstanding)}
           subtitle={`${stats.withDebtCount} customer(s) with pending balance`}
           icon={AlertTriangle}
@@ -1348,8 +1348,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             title="Filter by Credit/Outstanding balance"
           >
             <option value="all">💳 All Credit Statuses</option>
-            <option value="debt">⚠️ With Debt Only (ණය ඇති අය)</option>
-            <option value="settled">✅ Fully Settled (ණය රහිත)</option>
+            <option value="debt">⚠️ With Debt Only</option>
+            <option value="settled">✅ Fully Settled</option>
             <option value="high_debt">🚨 High Debt (&gt; Rs. 50k)</option>
           </select>
 
@@ -1417,7 +1417,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               onClick={() => setDebtFilter(debtFilter === 'debt' ? 'all' : 'debt')}
             >
               <AlertTriangle size={13} color="#f59e0b" />
-              Pending Balances (ණය ඇති අය)
+              Pending Balances
               <span className="filter-count-badge">{stats.withDebtCount}</span>
             </button>
 
@@ -1900,13 +1900,13 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               <div className="matched-customer-card full-width">
                 <div className="matched-customer-header">
                   <div className="matched-customer-badge">
-                    <CheckCircle size={15} /> පවතින පාරිභෝගිකයෙක් හඳුනාගැනිණි (Existing Customer)
+                    <CheckCircle size={15} /> Existing Customer Recognized
                   </div>
                   <button
                     type="button"
                     className="btn-dismiss-match"
                     onClick={handleClearCustomerMatch}
-                    title="නව පාරිභෝගිකයෙක් ලෙස සලකන්න"
+                    title="Treat as New Customer"
                   >
                     <X size={13} /> Reset / New
                   </button>
@@ -1915,11 +1915,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   <div className="matched-customer-name">
                     {matchedCustomerAlert.name}
                     <span className="matched-customer-tag">
-                      පෙර මිලදී ගැනීම්: {matchedCustomerAlert.previousCount}
+                      Previous Purchases: {matchedCustomerAlert.previousCount}
                     </span>
                   </div>
                   <div className="matched-customer-desc">
-                    මෙම පාරිභෝගිකයා මිලදී ගන්නා {matchedCustomerAlert.nextContractNo} වන භාණ්ඩය බැවින් Contract No ස්වයංක්‍රීයව <strong>#{matchedCustomerAlert.nextContractNo}</strong> ලෙස සකසන ලදී.
+                    Existing customer recognized. Automatically assigned Contract No <strong>#{matchedCustomerAlert.nextContractNo}</strong> for this purchase item.
                   </div>
                   <div className="matched-customer-meta">
                     {matchedCustomerAlert.phone && <span>📞 {matchedCustomerAlert.phone}</span>}
@@ -1932,7 +1932,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
             {/* Row 2: First Name & Last Name */}
             <div className="form-group">
-              <label className="form-label">First Name * (මුල් නම)</label>
+              <label className="form-label">First Name *</label>
               <input
                 type="text"
                 className="form-input"
@@ -1951,7 +1951,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Last Name (වාසගම / අග නම)</label>
+              <label className="form-label">Last Name</label>
               <input
                 type="text"
                 className="form-input"
@@ -1970,7 +1970,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
             {/* Row 3: Date of Birth & NIC */}
             <div className="form-group">
-              <label className="form-label">Date of Birth (උපන් දිනය)</label>
+              <label className="form-label">Date of Birth</label>
               <input
                 type="date"
                 className="form-input"
@@ -2045,17 +2045,17 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Civil Status (සිවිල් තත්ත්වය)</label>
+              <label className="form-label">Civil Status</label>
               <select
                 className="form-select-full"
                 value={newCustomer.civil_status || 'Single'}
                 onChange={(e) => setNewCustomer({ ...newCustomer, civil_status: e.target.value })}
               >
-                <option value="Single">Single (අවිවාහක)</option>
-                <option value="Married">Married (විවාහක)</option>
-                <option value="Divorced">Divorced (දික්කසාද)</option>
-                <option value="Widowed">Widowed (වැන්දඹු)</option>
-                <option value="Other">Other (වෙනත්)</option>
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Divorced">Divorced</option>
+                <option value="Widowed">Widowed</option>
+                <option value="Other">Other</option>
               </select>
             </div>
 
@@ -2066,7 +2066,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={newCustomer.category || 'custom_order'}
                 onChange={(e) => setNewCustomer({ ...newCustomer, category: e.target.value })}
               >
-                <option value="custom_order">Custom Made Furniture (ඇණවුම්)</option>
+                <option value="custom_order">Custom Made Furniture</option>
                 <option value="showroom">Showroom / Ready Stock</option>
                 <option value="wholesale">Commercial / Wholesale</option>
               </select>
@@ -2263,7 +2263,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 }}
               >
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  OUTSTANDING CREDIT BALANCE (හිඟ මුදල්)
+                  OUTSTANDING CREDIT BALANCE
                 </span>
                 <span
                   style={{
@@ -2412,7 +2412,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
               {/* Row 2: First Name & Last Name */}
               <div className="form-group">
-                <label className="form-label">First Name * (මුල් නම)</label>
+                <label className="form-label">First Name *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -2431,7 +2431,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               </div>
 
               <div className="form-group">
-                <label className="form-label">Last Name (වාසගම / අග නම)</label>
+                <label className="form-label">Last Name</label>
                 <input
                   type="text"
                   className="form-input"
@@ -2450,7 +2450,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
               {/* Row 3: Date of Birth & NIC */}
               <div className="form-group">
-                <label className="form-label">Date of Birth (උපන් දිනය)</label>
+                <label className="form-label">Date of Birth</label>
                 <input
                   type="date"
                   className="form-input"
@@ -2494,17 +2494,17 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               </div>
 
               <div className="form-group">
-                <label className="form-label">Civil Status (සිවිල් තත්ත්වය)</label>
+                <label className="form-label">Civil Status</label>
                 <select
                   className="form-select-full"
                   value={editingCustomer.civil_status || 'Single'}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, civil_status: e.target.value })}
                 >
-                  <option value="Single">Single (අවිවාහක)</option>
-                  <option value="Married">Married (විවාහක)</option>
-                  <option value="Divorced">Divorced (දික්කසාද)</option>
-                  <option value="Widowed">Widowed (වැන්දඹු)</option>
-                  <option value="Other">Other (වෙනත්)</option>
+                  <option value="Single">Single</option>
+                  <option value="Married">Married</option>
+                  <option value="Divorced">Divorced</option>
+                  <option value="Widowed">Widowed</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
 
@@ -2537,7 +2537,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   value={editingCustomer.category || 'custom_order'}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, category: e.target.value })}
                 >
-                  <option value="custom_order">Custom Made Furniture (ඇණවුම්)</option>
+                  <option value="custom_order">Custom Made Furniture</option>
                   <option value="showroom">Showroom / Ready Stock</option>
                   <option value="wholesale">Commercial / Wholesale</option>
                 </select>

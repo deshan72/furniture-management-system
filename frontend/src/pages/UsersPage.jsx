@@ -611,7 +611,7 @@ export default function UsersPage({
           <table className="data-table">
             <thead>
               <tr>
-                <th style={{ minWidth: '220px' }}>Role Identity (භූමිකාව)</th>
+                <th style={{ minWidth: '220px' }}>Role Identity</th>
                 <th style={{ minWidth: '280px' }}>Description & Scope</th>
                 <th style={{ textAlign: 'center', minWidth: '180px' }}>Access Coverage</th>
                 <th style={{ textAlign: 'center', minWidth: '130px' }}>Classification</th>
@@ -681,7 +681,7 @@ export default function UsersPage({
                             )}
                           </div>
                           <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                            {role.name_si || 'පද්ධති භූමිකාව'}
+                            {role.name_si || role.shortLabel || 'System Role'}
                           </span>
                         </div>
                       </div>
@@ -1014,7 +1014,7 @@ export default function UsersPage({
           >
             <div>
               <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)' }}>
-                System-Wide Permission Comparison Matrix (සම්පූර්ණ අවසර සටහන)
+                System-Wide Permission Comparison Matrix
               </h3>
               <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 Directly compare and toggle page access across all defined roles.
@@ -1077,7 +1077,7 @@ export default function UsersPage({
                           {mod.label}
                         </strong>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          {mod.label_si} • {mod.description}
+                          {mod.description}
                         </span>
                       </div>
                     </td>
@@ -1157,7 +1157,7 @@ export default function UsersPage({
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title="Create New Organizational Role (නව භූමිකාවක් එක් කිරීම)"
+        title="Create New Organizational Role"
       >
         <form onSubmit={handleSaveNewRole} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
@@ -1177,11 +1177,11 @@ export default function UsersPage({
 
             <div>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '5px' }}>
-                Role Name (සිංහල නම)
+                Role Alias / Secondary Label
               </label>
               <input
                 type="text"
-                placeholder="උදා: මුදල් අයකැමි"
+                placeholder="e.g. Cashier / Floor Officer"
                 value={formData.name_si}
                 onChange={(e) => setFormData({ ...formData, name_si: e.target.value })}
                 style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.85rem' }}
@@ -1232,7 +1232,7 @@ export default function UsersPage({
 
           <div>
             <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '5px' }}>
-              Role Scope & Responsibilities (විස්තරය)
+              Role Scope & Responsibilities
             </label>
             <textarea
               rows={2}
@@ -1311,7 +1311,7 @@ export default function UsersPage({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" style={{ fontWeight: 600 }}>
-              Create Role (සුරකින්න)
+              Create Role
             </button>
           </div>
         </form>
@@ -1415,7 +1415,7 @@ export default function UsersPage({
                           />
                           <div style={{ overflow: 'hidden' }}>
                             <strong style={{ display: 'block', color: 'var(--text-main)' }}>{mod.label}</strong>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{mod.label_si}</span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{mod.category}</span>
                           </div>
                         </label>
                       );
@@ -1436,7 +1436,7 @@ export default function UsersPage({
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" style={{ fontWeight: 600 }}>
-                Save Permissions (සුරකින්න)
+                Save Permissions
               </button>
             </div>
           </div>
@@ -1565,7 +1565,7 @@ export default function UsersPage({
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        title="Confirm Role Deletion (භූමිකාව ඉවත් කිරීම)"
+        title="Confirm Role Deletion"
       >
         {selectedRole && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

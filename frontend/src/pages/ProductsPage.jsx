@@ -86,7 +86,7 @@ const INITIAL_PRODUCTS = [
     item_code: 'FURN-101',
     name: 'Royal Teak 6-Seater Dining Table',
     category: 'wood',
-    wood_type: 'Teak (තේක්ක)',
+    wood_type: 'Teak',
     finish: 'Natural Matte Lacquer',
     dimensions: '72"L x 38"W x 30"H',
     cost_price: 65000,
@@ -102,7 +102,7 @@ const INITIAL_PRODUCTS = [
     item_code: 'FURN-102',
     name: 'Mahogany 3-Door Wardrobe (Almirah)',
     category: 'wood',
-    wood_type: 'Mahogany (මහෝගනී)',
+    wood_type: 'Mahogany',
     finish: 'Warm Mahogany Gloss',
     dimensions: '78"H x 54"W x 22"D',
     cost_price: 52000,
@@ -118,7 +118,7 @@ const INITIAL_PRODUCTS = [
     item_code: 'FURN-103',
     name: 'Modern Melamine Modular Kitchen Pantry Unit',
     category: 'melamine',
-    wood_type: 'Melamine Board (මෙලමයින්)',
+    wood_type: 'Melamine Board',
     finish: 'Matt Frost White & Oak Texture',
     dimensions: '96"W x 24"D x 84"H',
     cost_price: 85000,
@@ -134,7 +134,7 @@ const INITIAL_PRODUCTS = [
     item_code: 'FURN-104',
     name: 'Executive Melamine Office Desk (L-Shape)',
     category: 'melamine',
-    wood_type: 'Melamine Board (මෙලමයින්)',
+    wood_type: 'Melamine Board',
     finish: 'Melamine Scratch-Resistant Walnut',
     dimensions: '60"W x 30"D x 30"H + 36" Side Return',
     cost_price: 45000,
@@ -166,7 +166,7 @@ const INITIAL_PRODUCTS = [
     item_code: 'FURN-106',
     name: 'Teak Veranda Easy Lounge Armchair',
     category: 'wood',
-    wood_type: 'Teak (තේක්ක)',
+    wood_type: 'Teak',
     finish: 'Outdoor Weatherproof Teak Oil',
     dimensions: '32"W x 34"D x 36"H',
     cost_price: 14000,
@@ -199,9 +199,23 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             } else if (cat !== 'wood' && cat !== 'melamine' && cat !== 'electrical_item') {
               cat = 'wood';
             }
+
+            let wood = p.wood_type;
+            if (wood) {
+              wood = wood
+                .replace(/Teak\s*\([^)]*\)/i, 'Teak')
+                .replace(/Mahogany\s*\([^)]*\)/i, 'Mahogany')
+                .replace(/Nadun\s*\([^)]*\)/i, 'Nadun')
+                .replace(/Mara\s*\([^)]*\)/i, 'Mara')
+                .replace(/Melamine Board\s*\([^)]*\)/i, 'Melamine Board')
+                .replace(/[\u0D80-\u0DFF]/g, '')
+                .trim();
+            }
+
             return {
               ...p,
               category: cat,
+              wood_type: wood || p.wood_type,
             };
           });
         }
@@ -247,7 +261,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     item_code: '',
     name: '',
     category: 'wood',
-    wood_type: 'Teak (තේක්ක)',
+    wood_type: 'Teak',
     finish: 'Natural Matte Lacquer',
     dimensions: '',
     cost_price: '',
@@ -457,7 +471,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       item_code: `FURN-${nextCodeNum}`,
       name: '',
       category: 'wood',
-      wood_type: 'Teak (තේක්ක)',
+      wood_type: 'Teak',
       finish: 'Natural Matte Lacquer',
       dimensions: '',
       cost_price: '',
@@ -500,7 +514,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       item_code: assignedCode,
       name: newProduct.name.trim(),
       category: newProduct.category || 'wood',
-      wood_type: newProduct.wood_type || 'Teak (තේක්ක)',
+      wood_type: newProduct.wood_type || 'Teak',
       finish: newProduct.finish || 'Natural Finish',
       dimensions: newProduct.dimensions || 'Standard',
       cost_price: Number(newProduct.cost_price) || 0,
@@ -661,13 +675,13 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
   const getCategoryLabel = (category) => {
     switch (category?.toLowerCase()) {
       case 'wood':
-        return 'Wood (දැව)';
+        return 'Wood';
       case 'melamine':
-        return 'Melamine (මෙලමයින්)';
+        return 'Melamine';
       case 'electrical':
       case 'electrical_item':
       case 'electrical_items':
-        return 'Electrical Items (විදුලි උපකරණ)';
+        return 'Electrical Items';
       default:
         return category ? category.replace(/_/g, ' ') : 'General';
     }
@@ -978,7 +992,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           bg="var(--success-tint)"
         />
         <StatCard
-          title="Low Stock Reorders (අඩු තොග)"
+          title="Low Stock Reorders"
           value={stats.lowStockCount}
           subtitle="Needs workshop carpentry"
           icon={AlertTriangle}
@@ -1092,10 +1106,10 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
           >
-            <option value="all">📂 All Categories (සියලු කාණ්ඩ)</option>
-            <option value="wood">🪵 Wood (දැව)</option>
-            <option value="melamine">📋 Melamine (මෙලමයින්)</option>
-            <option value="electrical_item">⚡ Electrical Items (විදුලි උපකරණ)</option>
+            <option value="all">📂 All Categories</option>
+            <option value="wood">🪵 Wood</option>
+            <option value="melamine">📋 Melamine</option>
+            <option value="electrical_item">⚡ Electrical Items</option>
           </select>
 
           {/* Wood Type Filter */}
@@ -1104,7 +1118,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             value={woodFilter}
             onChange={(e) => setWoodFilter(e.target.value)}
           >
-            <option value="all">🪵 All Wood Types (සියලු දැව)</option>
+            <option value="all">🪵 All Wood Types</option>
             {availableWoodTypes.map((wood) => (
               <option key={wood} value={wood}>
                 🪵 {wood}
@@ -1189,8 +1203,8 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             </button>
 
             <button
-              className={`filter-chip-btn ${woodFilter.includes('Teak') ? 'active' : ''}`}
-              onClick={() => setWoodFilter(woodFilter.includes('Teak') ? 'all' : 'Teak (තේක්ක)')}
+              className={`filter-chip-btn ${woodFilter.toLowerCase().includes('teak') ? 'active' : ''}`}
+              onClick={() => setWoodFilter(woodFilter.toLowerCase().includes('teak') ? 'all' : 'Teak')}
             >
               🪵 Teak Wood
             </button>
@@ -1602,9 +1616,9 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 value={newProduct.category}
                 onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
               >
-                <option value="wood">Wood (දැව)</option>
-                <option value="melamine">Melamine (මෙලමයින්)</option>
-                <option value="electrical_item">Electrical Items (විදුලි උපකරණ)</option>
+                <option value="wood">Wood</option>
+                <option value="melamine">Melamine</option>
+                <option value="electrical_item">Electrical Items</option>
               </select>
             </div>
 
@@ -1629,11 +1643,11 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 value={newProduct.wood_type}
                 onChange={(e) => setNewProduct({ ...newProduct, wood_type: e.target.value })}
               >
-                <option value="Teak (තේක්ක)">Teak (තේක්ක)</option>
-                <option value="Mahogany (මහෝගනී)">Mahogany (මහෝගනී)</option>
-                <option value="Nadun (නැදුන්)">Nadun (නැදුන්)</option>
-                <option value="Mara (මාර)">Mara (මාර)</option>
-                <option value="Melamine Board (මෙලමයින්)">Melamine Board (මෙලමයින්)</option>
+                <option value="Teak">Teak</option>
+                <option value="Mahogany">Mahogany</option>
+                <option value="Nadun">Nadun</option>
+                <option value="Mara">Mara</option>
+                <option value="Melamine Board">Melamine Board</option>
                 <option value="MDF / Plywood">MDF / Plywood</option>
                 <option value="Electrical & Metal Fittings">Electrical & Metal Fittings</option>
                 <option value="Treated Rubber Wood">Treated Rubber Wood</option>
@@ -1722,7 +1736,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             <div className="form-group full-width">
               <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <ImageIcon size={15} color="var(--primary)" /> Product Photo / Image (භාණ්ඩයේ ඡායාරූපය)
+                  <ImageIcon size={15} color="var(--primary)" /> Product Photo / Image
                 </span>
                 <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 400 }}>
                   PNG, JPG, WebP • Stored directly in Database
@@ -1881,9 +1895,9 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                   value={editingProduct.category || 'wood'}
                   onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
                 >
-                  <option value="wood">Wood (දැව)</option>
-                  <option value="melamine">Melamine (මෙලමයින්)</option>
-                  <option value="electrical_item">Electrical Items (විදුලි උපකරණ)</option>
+                  <option value="wood">Wood</option>
+                  <option value="melamine">Melamine</option>
+                  <option value="electrical_item">Electrical Items</option>
                 </select>
               </div>
 
@@ -1902,14 +1916,14 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 <label className="form-label">Wood / Material Type</label>
                 <select
                   className="form-select-full"
-                  value={editingProduct.wood_type || 'Teak (තේක්ක)'}
+                  value={editingProduct.wood_type || 'Teak'}
                   onChange={(e) => setEditingProduct({ ...editingProduct, wood_type: e.target.value })}
                 >
-                  <option value="Teak (තේක්ක)">Teak (තේක්ක)</option>
-                  <option value="Mahogany (මහෝගනී)">Mahogany (මහෝගනී)</option>
-                  <option value="Nadun (නැදුන්)">Nadun (නැදුන්)</option>
-                  <option value="Mara (මාර)">Mara (මාර)</option>
-                  <option value="Melamine Board (මෙලමයින්)">Melamine Board (මෙලමයින්)</option>
+                  <option value="Teak">Teak</option>
+                  <option value="Mahogany">Mahogany</option>
+                  <option value="Nadun">Nadun</option>
+                  <option value="Mara">Mara</option>
+                  <option value="Melamine Board">Melamine Board</option>
                   <option value="MDF / Plywood">MDF / Plywood</option>
                   <option value="Electrical & Metal Fittings">Electrical & Metal Fittings</option>
                   <option value="Treated Rubber Wood">Treated Rubber Wood</option>
@@ -1989,7 +2003,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
               <div className="form-group full-width">
                 <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <ImageIcon size={15} color="var(--primary)" /> Product Photo / Image (භාණ්ඩයේ ඡායාරූපය)
+                    <ImageIcon size={15} color="var(--primary)" /> Product Photo / Image
                   </span>
                   <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 400 }}>
                     PNG, JPG, WebP • Stored directly in Database

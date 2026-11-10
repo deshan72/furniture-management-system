@@ -82,7 +82,7 @@ export default function Header({
                 <span className="header-center-sub">Center</span>
                 <span className="header-center-title">
                   {selectedCenter === 'all'
-                    ? 'All Centers (සියල්ල)'
+                    ? 'All Centers'
                     : activeCenter
                     ? `${activeCenter.branch_code} / ${formatCenterCode(activeCenter.center_code)}`
                     : selectedCenter}
@@ -105,7 +105,7 @@ export default function Header({
               onChange={(e) => onSelectCenter(e.target.value)}
               aria-label="Filter by Regional Center"
             >
-              <option value="all">🌐 All Centers (සියලු මධ්‍යස්ථාන — All Regional Hubs)</option>
+              <option value="all">🌐 All Centers — All Regional Hubs</option>
               {centers.map((cntr) => {
                 const centerKey = `${cntr.branch_code?.toUpperCase()}/${formatCenterCode(cntr.center_code)}`;
                 return (
@@ -128,8 +128,8 @@ export default function Header({
             onClick={onToggleTheme}
             title={
               theme === 'dark'
-                ? 'Switch to Light Mode (දීප්තිමත් තේමාව)'
-                : 'Switch to Dark Mode (අඳුරු තේමාව)'
+                ? 'Switch to Light Mode'
+                : 'Switch to Dark Mode'
             }
             aria-label="Toggle dark and light mode"
           >

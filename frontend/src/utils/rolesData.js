@@ -5,7 +5,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'dashboard',
     label: 'Executive Dashboard',
-    label_si: 'ප්‍රධාන පුවරුව',
     category: 'Main',
     description: 'Central business KPI metrics, showroom cash in hand, and distribution center statistics.',
     sensitivity: 'Standard',
@@ -15,7 +14,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'orders',
     label: 'Orders & Invoices',
-    label_si: 'ඇණවුම් සහ බිල්පත්',
     category: 'Orders & Billing',
     description: 'Create furniture orders, generate printable invoices, calculate advance payments and balances.',
     sensitivity: 'Operational',
@@ -23,7 +21,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'payments',
     label: 'Payments & Advances',
-    label_si: 'අත්තිකාරම් සහ ගෙවීම්',
     category: 'Orders & Billing',
     description: 'Record customer deposit slips, installment payments, and official cash receipts.',
     sensitivity: 'Operational',
@@ -31,7 +28,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'returns',
     label: 'Returns & Repairs',
-    label_si: 'ආපසු භාරගැනීම් සහ අලුත්වැඩියා',
     category: 'Orders & Billing',
     description: 'Defective furniture warranty claims, carpentry polish repairs, and customer exchanges.',
     sensitivity: 'Operational',
@@ -41,7 +37,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'products',
     label: 'Products Catalog',
-    label_si: 'නිෂ්පාදන නාමාවලිය',
     category: 'Inventory',
     description: 'Solid Teak, Mahogany, Melamine & Electrical furniture models, dimensions, and prices.',
     sensitivity: 'Operational',
@@ -49,7 +44,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'categories',
     label: 'Product Categories',
-    label_si: 'භාණ්ඩ කාණ්ඩ',
     category: 'Inventory',
     description: 'Classify items into Living Room, Bedroom, Dining, Kitchen, and Office suites.',
     sensitivity: 'Standard',
@@ -57,7 +51,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'stock',
     label: 'Stock Management',
-    label_si: 'තොග කළමනාකරණය',
     category: 'Inventory',
     description: 'Track physical warehouse inventory, warehouse adjustments, and finished carpentry stock.',
     sensitivity: 'Operational',
@@ -65,7 +58,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'low-stock',
     label: 'Low Stock Alerts',
-    label_si: 'අඩු තොග අනතුරු ඇඟවීම්',
     category: 'Inventory',
     description: 'Automated warnings when finished furniture pieces drop below reorder safety thresholds.',
     sensitivity: 'Operational',
@@ -75,7 +67,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'customers',
     label: 'Customer Directory',
-    label_si: 'පාරිභෝගික නාමාවලිය',
     category: 'Customers',
     description: 'Client contact database, delivery addresses, National Identity Cards (NIC), and order records.',
     sensitivity: 'Operational',
@@ -83,7 +74,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'outstanding',
     label: 'Outstanding Balances',
-    label_si: 'ණය සහ හිඟ මුදල්',
     category: 'Customers',
     description: 'Customer credit ledger, debt recovery lists, overdue balance tracking, and WhatsApp follow-ups.',
     sensitivity: 'Financial',
@@ -93,7 +83,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'centers',
     label: 'Center Directory',
-    label_si: 'මධ්‍යස්ථාන නාමාවලිය',
     category: 'Centers',
     description: 'View regional distribution hubs (MHG, MRT, NGB, DHW, CMB), branch officers, and hub phones.',
     sensitivity: 'Standard',
@@ -101,7 +90,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'create-center',
     label: 'Create Regional Center',
-    label_si: 'නව මධ්‍යස්ථාන ලියාපදිංචිය',
     category: 'Centers',
     description: 'Register new regional showroom distribution centers and assign branch codes (C001 format).',
     sensitivity: 'System Critical',
@@ -111,7 +99,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'cashbook',
     label: 'Daily Cash Book',
-    label_si: 'දෛනික මුදල් පොත',
     category: 'Finance & Cash',
     description: 'Record day-to-day cash drawer receipts, cash payments, petty cash, and daily turnover.',
     sensitivity: 'Financial',
@@ -119,7 +106,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'expenses',
     label: 'Expenses Tracker',
-    label_si: 'වියදම් සටහන් පොත',
     category: 'Finance & Cash',
     description: 'Workshop timber purchases, hardware, lacquer, carpenter wages, transport, and showroom rent.',
     sensitivity: 'Financial',
@@ -127,7 +113,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'day-close',
     label: 'Day-End Closing',
-    label_si: 'දින අවසාන ගිණුම් පියවීම',
     category: 'Finance & Cash',
     description: 'Reconcile actual physical cash in drawer against sales receipts before showroom closing.',
     sensitivity: 'Financial',
@@ -137,7 +122,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'purchases',
     label: 'Stock Purchases',
-    label_si: 'දැව සහ අමුද්‍රව්‍ය මිලදී ගැනීම්',
     category: 'Purchasing',
     description: 'Raw timber logs, teak boards, melamine sheets, hardware, and cushion supplier procurement.',
     sensitivity: 'Operational',
@@ -147,7 +131,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'reports-sales',
     label: 'Sales Reports',
-    label_si: 'විකුණුම් වාර්තා',
     category: 'Reports',
     description: 'Analyze weekly and monthly furniture sales turnover, top-selling wooden models, and branch volume.',
     sensitivity: 'Operational',
@@ -155,7 +138,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'reports-profit',
     label: 'Profit & Margins',
-    label_si: 'ලාභ සහ ආන්තික වාර්තා',
     category: 'Reports',
     description: 'Confidential gross profit margins, carpentry labor costing vs selling price analysis.',
     sensitivity: 'Financial',
@@ -165,7 +147,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'settings',
     label: 'Store Settings',
-    label_si: 'ව්‍යාපාරික සැකසුම්',
     category: 'Administration',
     description: 'Showroom branding, invoice prefixes, 10-year Teak warranty terms, and bank accounts.',
     sensitivity: 'System Critical',
@@ -173,7 +154,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'users',
     label: 'Users & Roles',
-    label_si: 'පරිශීලක භූමිකා සහ අවසර',
     category: 'Administration',
     description: 'Configure Administrator and Executive role page access control privileges.',
     sensitivity: 'System Critical',
@@ -181,7 +161,6 @@ export const SYSTEM_MODULES = [
   {
     id: 'backup',
     label: 'Backup / Export',
-    label_si: 'දත්ත උපස්ථ සහ අපනයනය',
     category: 'Administration',
     description: 'Download full system JSON backup archives, export CSV tables, and database restore.',
     sensitivity: 'System Critical',
@@ -216,7 +195,7 @@ export const ROLES_METADATA = {
     key: 'admin',
     label: 'Administrator (Super Admin / Owner)',
     shortLabel: 'Super Admin',
-    title_si: 'ප්‍රධාන පරිපාලක භූමිකාව',
+    title_si: 'Super Administrator Role',
     badgeClass: 'badge-wholesale',
     color: '#9333EA',
     bg: 'rgba(147, 51, 234, 0.14)',
@@ -228,7 +207,7 @@ export const ROLES_METADATA = {
     key: 'executive',
     label: 'Executive Staff (Showroom & Operations)',
     shortLabel: 'Executive Staff',
-    title_si: 'විධායක නිලධාරී භූමිකාව',
+    title_si: 'Executive Staff Role',
     badgeClass: 'badge-custom',
     color: '#2563EB',
     bg: 'rgba(37, 99, 235, 0.14)',
@@ -248,7 +227,7 @@ export const INITIAL_SYSTEM_ROLES = [
   {
     id: 'admin',
     name: 'Administrator (Super Admin / Owner)',
-    name_si: 'ප්‍රධාන පරිපාලක (හිමිකරු)',
+    name_si: 'Administrator (Super Admin / Owner)',
     shortLabel: 'Super Admin',
     badgeClass: 'badge-wholesale',
     color: '#9333EA',
@@ -264,7 +243,7 @@ export const INITIAL_SYSTEM_ROLES = [
   {
     id: 'executive',
     name: 'Executive Staff (Showroom & Operations)',
-    name_si: 'විධායක නිලධාරී (මෙහෙයුම් සහ විකුණුම්)',
+    name_si: 'Executive Staff (Showroom & Operations)',
     shortLabel: 'Executive Staff',
     badgeClass: 'badge-custom',
     color: '#2563EB',
@@ -339,7 +318,7 @@ export const saveRole = (roleData) => {
     const newRoleObj = {
       id: roleId,
       name: roleData.name || 'New Custom Role',
-      name_si: roleData.name_si || roleData.name || 'නව භූමිකාව',
+      name_si: roleData.name_si || roleData.name || 'New Custom Role',
       shortLabel: roleData.shortLabel || (roleData.name ? roleData.name.slice(0, 5).toUpperCase() : 'CUSTOM'),
       badgeClass: roleData.badgeClass || 'badge-custom',
       color: roleData.color || '#059669',

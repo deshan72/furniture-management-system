@@ -70,7 +70,7 @@ const INITIAL_CENTERS = [
     center_code: 'C001',
     branch_code: 'MHG',
     name: 'Maharagama Main Center',
-    name_si: 'මහරගම ප්‍රධාන මධ්‍යස්ථානය',
+    name_si: '',
     city: 'Maharagama',
     address: 'No. 120, High Level Road, Maharagama',
     contact_person: 'Sarath Gunawardena',
@@ -84,7 +84,7 @@ const INITIAL_CENTERS = [
     center_code: 'C002',
     branch_code: 'MHG',
     name: 'Kottawa Town Center',
-    name_si: 'කොට්ටාව නගර මධ්‍යස්ථානය',
+    name_si: '',
     city: 'Kottawa',
     address: '45, Kottawa Road, Kottawa',
     contact_person: 'Nuwan Perera',
@@ -98,7 +98,7 @@ const INITIAL_CENTERS = [
     center_code: 'C001',
     branch_code: 'MRT',
     name: 'Moratuwa Woodcraft Center',
-    name_si: 'මොරටුව දැව කර්මාන්ත මධ්‍යස්ථානය',
+    name_si: '',
     city: 'Moratuwa',
     address: '88, Galle Road, Rawathawatta, Moratuwa',
     contact_person: 'Nalaka Fernando',
@@ -112,7 +112,7 @@ const INITIAL_CENTERS = [
     center_code: 'C001',
     branch_code: 'NGB',
     name: 'Negombo Coastal Center',
-    name_si: 'මීගමුව මධ්‍යස්ථානය',
+    name_si: '',
     city: 'Negombo',
     address: '24/B, Lewis Place, Negombo',
     contact_person: 'Rohan Silva',
@@ -126,7 +126,7 @@ const INITIAL_CENTERS = [
     center_code: 'C001',
     branch_code: 'DHW',
     name: 'Dehiwala Urban Center',
-    name_si: 'දෙහිවල නාගරික මධ්‍යස්ථානය',
+    name_si: '',
     city: 'Dehiwala',
     address: '104, Hill Street, Dehiwala',
     contact_person: 'Dinesh Kumara',
@@ -140,7 +140,7 @@ const INITIAL_CENTERS = [
     center_code: 'C003',
     branch_code: 'CMB',
     name: 'Colombo Central Center',
-    name_si: 'කොළඹ මධ්‍යම මධ්‍යස්ථානය',
+    name_si: '',
     city: 'Colombo',
     address: '56/1, Havelock Road, Colombo 05',
     contact_person: 'Chaminda Wickrama',
@@ -1245,7 +1245,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
           setIsAddModalOpen(false);
           if (onNavigate) onNavigate('centers');
         }}
-        title="Create New Regional Center (නව මධ්‍යස්ථානයක් ලියාපදිංචි කිරීම)"
+        title="Create New Regional Center"
       >
         <form onSubmit={handleAddCenter}>
           <div className="form-grid">
@@ -1291,7 +1291,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
 
             {/* Branch Code & Center Code */}
             <div className="form-group">
-              <label className="form-label">Branch Code * (ශාඛා කේතය)</label>
+              <label className="form-label">Branch Code *</label>
               <input
                 type="text"
                 className="form-input"
@@ -1308,7 +1308,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
             </div>
 
             <div className="form-group">
-              <label className="form-label">Center Code * (මධ්‍යස්ථාන කේතය)</label>
+              <label className="form-label">Center Code *</label>
               <input
                 type="text"
                 className="form-input"
@@ -1326,7 +1326,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
 
             {/* Center Name & Sinhala Name */}
             <div className="form-group">
-              <label className="form-label">Center Name * (මධ්‍යස්ථානයේ නම)</label>
+              <label className="form-label">Center Name *</label>
               <input
                 type="text"
                 className="form-input"
@@ -1338,11 +1338,11 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
             </div>
 
             <div className="form-group">
-              <label className="form-label">Sinhala Name (සිංහල නම)</label>
+              <label className="form-label">Secondary / Local Name</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. මහරගම ප්‍රධාන මධ්‍යස්ථානය"
+                placeholder="e.g. Maharagama Main Hub"
                 value={newCenter.name_si}
                 onChange={(e) => setNewCenter({ ...newCenter, name_si: e.target.value })}
               />
@@ -1350,7 +1350,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
 
             {/* City & Status */}
             <div className="form-group">
-              <label className="form-label">City / Town (නගරය)</label>
+              <label className="form-label">City / Town</label>
               <input
                 type="text"
                 className="form-input"
@@ -1362,20 +1362,20 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
             </div>
 
             <div className="form-group">
-              <label className="form-label">Operating Status (තත්ත්වය)</label>
+              <label className="form-label">Operating Status</label>
               <select
                 className="form-select-full"
                 value={newCenter.status}
                 onChange={(e) => setNewCenter({ ...newCenter, status: e.target.value })}
               >
-                <option value="active">Active (ක්‍රියාකාරී)</option>
-                <option value="inactive">Inactive (අක්‍රිය)</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
               </select>
             </div>
 
             {/* Officer in charge & Phone */}
             <div className="form-group">
-              <label className="form-label">Officer in Charge (භාරකරු / නිලධාරී)</label>
+              <label className="form-label">Officer in Charge</label>
               <input
                 type="text"
                 className="form-input"
@@ -1386,7 +1386,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
             </div>
 
             <div className="form-group">
-              <label className="form-label">Contact Phone (දුරකථන අංකය)</label>
+              <label className="form-label">Contact Phone</label>
               <input
                 type="text"
                 className="form-input"
@@ -1398,7 +1398,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
 
             {/* Address */}
             <div className="form-group full-width">
-              <label className="form-label">Location Address (ලිපිනය)</label>
+              <label className="form-label">Location Address</label>
               <input
                 type="text"
                 className="form-input"
@@ -1451,7 +1451,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
           <form onSubmit={handleUpdateCenter}>
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label">Branch Code * (ශාඛා කේතය)</label>
+                <label className="form-label">Branch Code *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -1467,7 +1467,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
               </div>
 
               <div className="form-group">
-                <label className="form-label">Center Code * (මධ්‍යස්ථාන කේතය)</label>
+                <label className="form-label">Center Code *</label>
                 <input
                   type="text"
                   className="form-input"
@@ -1495,7 +1495,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
               </div>
 
               <div className="form-group">
-                <label className="form-label">Sinhala Name</label>
+                <label className="form-label">Secondary / Local Name</label>
                 <input
                   type="text"
                   className="form-input"
@@ -1521,8 +1521,8 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                   value={editingCenter.status || 'active'}
                   onChange={(e) => setEditingCenter({ ...editingCenter, status: e.target.value })}
                 >
-                  <option value="active">Active (ක්‍රියාකාරී)</option>
-                  <option value="inactive">Inactive (අක්‍රිය)</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
                 </select>
               </div>
 

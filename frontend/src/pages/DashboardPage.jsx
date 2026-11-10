@@ -147,7 +147,7 @@ export default function DashboardPage({ selectedCenter = 'all', centers = [], on
         />
 
         <StatCard
-          title="Outstanding Balances (ණය)"
+          title="Outstanding Balances"
           value={formatLKR(metrics.totalDebt)}
           subtitle={`${metrics.withDebtCount} client(s) with pending credit`}
           icon={AlertTriangle}

@@ -12,7 +12,7 @@ const SETTINGS_STORAGE_KEY = 'ds_furniture_store_settings_v2';
 
 const DEFAULT_SETTINGS = {
   business_name: 'D&S Furniture (Pvt) Ltd',
-  business_name_si: 'ඩී & එස් ෆර්නිචර්',
+  business_name_si: 'D&S Furniture (Showroom & Workshop)',
   tagline: 'Handcrafted Luxury Teak & Mahogany Woodcraft • Showroom & Workshop',
   br_number: 'PV-00289145',
   vat_number: '',
@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
   currency_symbol: 'Rs.',
   low_stock_limit: 2,
   warranty_text: '10-Year Solid Teak & Treated Mahogany Wood Structure Warranty against borer & termite decay.',
-  invoice_terms_si: 'භාණ්ඩ භාරගත් පසු මුදල් ආපසු ගෙවනු නොලැබේ. යම් අඩුපාඩුවක් ඇත්නම් භාණ්ඩ භාරගත් දින සිට දින 3ක් ඇතුළත දන්වන්න.',
+  invoice_terms_si: 'Goods once sold are non-refundable. Please report any defects within 3 days of delivery.',
   bank_name: 'Commercial Bank of Ceylon PLC',
   bank_branch: 'Maharagama Branch',
   account_name: 'D&S Furniture (Pvt) Ltd',
@@ -205,7 +205,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
-                    Sinhala Trade Name (ව්‍යාපාරික නාමය)
+                    Secondary Trade Name / Brand Tagline
                   </label>
                   <input
                     type="text"
@@ -368,7 +368,7 @@ export default function SettingsPage() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
-                  Sinhala Terms & Return Disclaimer (බිල්පතේ මුද්‍රණය වන වගන්තිය)
+                  Invoice Terms & Return Disclaimer
                 </label>
                 <textarea
                   rows="3"
