@@ -22,7 +22,6 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Sparkles,
   ClipboardList,
 } from 'lucide-react';
 
@@ -114,11 +113,11 @@ export default function Sidebar({
       <div className="sidebar-brand-header">
         <div className="brand-identity">
           <div className="brand-logo-icon">
-            <Sparkles size={20} />
+            <img src="/logo-icon.png" alt="D&S Furniture logo" className="brand-logo-img" />
           </div>
           <div className="brand-text-block">
             <div className="brand-name">
-              <span>D & D</span>
+              <span>D&S</span>
               <span className="brand-tag">FURNITURE</span>
             </div>
             <div className="brand-status-line">
@@ -182,11 +181,11 @@ export default function Sidebar({
       {/* Bottom Profile Card & Logout */}
       <div className="sidebar-footer-card">
         <div className="user-profile-info">
-          <div className="user-avatar-circle" title="Don & Danuka (Owner)">
-            DD
+          <div className="user-avatar-circle" title="D&S Furniture (Owner)">
+            DS
           </div>
           <div className="user-details">
-            <span className="user-name">D & D Furniture</span>
+            <span className="user-name">D&S Furniture</span>
             <span className="user-role-badge">Owner / Admin</span>
           </div>
         </div>
@@ -194,7 +193,7 @@ export default function Sidebar({
         <button
           className="logout-icon-btn"
           title="Exit / Lock Dashboard"
-          onClick={() => alert('D & D Furniture Session Locked')}
+          onClick={() => alert('D&S Furniture Session Locked')}
         >
           <LogOut size={16} />
         </button>

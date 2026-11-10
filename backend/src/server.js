@@ -34,7 +34,7 @@ app.use(morgan('dev'));
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
-    system: 'D & D Furniture Management System API',
+    system: 'D&S Furniture Management System API',
     timestamp: new Date().toISOString(),
   });
 });

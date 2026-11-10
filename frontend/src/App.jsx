@@ -129,7 +129,7 @@ export default function App() {
         };
       default:
         return {
-          title: 'D & D Furniture',
+          title: 'D&S Furniture',
           subtitle: 'Modern Woodcraft Management Portal',
         };
     }

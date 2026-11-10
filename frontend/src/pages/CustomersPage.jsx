@@ -591,7 +591,7 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>D & D Furniture - Customer Directory & Credit Ledger Report</title>
+          <title>D&S Furniture - Customer Directory & Credit Ledger Report</title>
           <style>
             @page { size: A4 landscape; margin: 12mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0f172a; margin: 0; padding: 24px; font-size: 11px; }
@@ -617,7 +617,7 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
           <table class="header-table">
             <tr>
               <td>
-                <div class="brand-title">D & D FURNITURE SYSTEM</div>
+                <img src="${window.location.origin}/logo-icon.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
                 <div class="brand-sub">Workshop & Showroom Management</div>
                 <div class="report-title">Customer Directory & Credit Ledger Report</div>
               </td>
@@ -662,7 +662,7 @@ export default function CustomersPage({ initialDebtFilter = 'all' }) {
           </table>
 
           <div class="footer">
-            <span>D & D Furniture System - Confidential Official Ledger</span>
+            <span>D&S Furniture System - Confidential Official Ledger</span>
             <span>Printed via Furniture Management System Web Application</span>
           </div>
 

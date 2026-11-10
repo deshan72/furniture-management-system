@@ -1,4 +1,4 @@
-# D & D Furniture Management System
+# D&S Furniture Management System
 
 A high-performance full-stack web application designed for furniture manufacturing and retail businesses. Provides real-time tracking of day-to-day cash handling, furniture product inventory, customer accounts, and custom made-to-order projects.
 

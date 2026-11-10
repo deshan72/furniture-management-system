@@ -1,5 +1,5 @@
 -- ==========================================================
--- D & D FURNITURE MANAGEMENT SYSTEM
+-- D&S FURNITURE MANAGEMENT SYSTEM
 -- SUPABASE POSTGRESQL DATABASE SCHEMA
 -- ==========================================================
 

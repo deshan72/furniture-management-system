@@ -1,7 +1,7 @@
 {
   "name": "furniture-management-backend",
   "version": "1.0.0",
-  "description": "Backend API for D & D Furniture Management System",
+  "description": "Backend API for D&S Furniture Management System",
   "main": "src/server.js",
   "type": "module",
   "scripts": {
