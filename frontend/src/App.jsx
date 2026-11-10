@@ -12,7 +12,7 @@ import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import BackupPage from './pages/BackupPage';
 import { loadSavedCenters } from './utils/centersData';
-import { getActiveUser, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
+import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -462,6 +462,11 @@ export default function App() {
               {activeTab === 'settings' && <SettingsPage />}
               {activeTab === 'users' && (
                 <UsersPage
+                  currentRole={currentUser?.role || 'admin'}
+                  onRoleChange={(newRole) => {
+                    setActiveRole(newRole);
+                    setCurrentUser(getActiveUser());
+                  }}
                   currentUser={currentUser}
                   onUserChange={setCurrentUser}
                 />

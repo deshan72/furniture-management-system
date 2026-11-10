@@ -2,253 +2,257 @@
 
 export const SYSTEM_MODULES = [
   // Main
-  { id: 'dashboard', label: 'Executive Dashboard', category: 'Main', description: 'Central business health, KPI metrics, distribution center stats' },
+  {
+    id: 'dashboard',
+    label: 'Executive Dashboard',
+    label_si: 'ප්‍රධාන පුවරුව',
+    category: 'Main',
+    description: 'Central business KPI metrics, showroom cash in hand, and distribution center statistics.',
+    sensitivity: 'Standard',
+  },
 
   // Orders & Billing
-  { id: 'orders', label: 'Orders & Invoices', category: 'Orders & Billing', description: 'Showroom sales, custom carpentry orders, printable tax bills' },
-  { id: 'payments', label: 'Payments & Advances', category: 'Orders & Billing', description: 'Customer advance deposits, installment tracking, receipts' },
-  { id: 'returns', label: 'Returns & Repairs', category: 'Orders & Billing', description: 'Defective furniture returns, warranty repairs, replacements' },
+  {
+    id: 'orders',
+    label: 'Orders & Invoices',
+    label_si: 'ඇණවුම් සහ බිල්පත්',
+    category: 'Orders & Billing',
+    description: 'Create furniture orders, generate printable invoices, calculate advance payments and balances.',
+    sensitivity: 'Operational',
+  },
+  {
+    id: 'payments',
+    label: 'Payments & Advances',
+    label_si: 'අත්තිකාරම් සහ ගෙවීම්',
+    category: 'Orders & Billing',
+    description: 'Record customer deposit slips, installment payments, and official cash receipts.',
+    sensitivity: 'Operational',
+  },
+  {
+    id: 'returns',
+    label: 'Returns & Repairs',
+    label_si: 'ආපසු භාරගැනීම් සහ අලුත්වැඩියා',
+    category: 'Orders & Billing',
+    description: 'Defective furniture warranty claims, carpentry polish repairs, and customer exchanges.',
+    sensitivity: 'Operational',
+  },
 
   // Inventory
-  { id: 'products', label: 'Products Catalog', category: 'Inventory', description: 'Wood, Melamine & Electrical furniture models, dimensions, pricing' },
-  { id: 'categories', label: 'Categories', category: 'Inventory', description: 'Dining, Bedroom, Living Room, Kitchen & Office classifications' },
-  { id: 'stock', label: 'Stock Management', category: 'Inventory', description: 'Physical warehouse stock quantities, warehouse transfers' },
-  { id: 'low-stock', label: 'Low Stock Alerts', category: 'Inventory', description: 'Automated warnings when finished furniture falls below reorder limits' },
+  {
+    id: 'products',
+    label: 'Products Catalog',
+    label_si: 'නිෂ්පාදන නාමාවලිය',
+    category: 'Inventory',
+    description: 'Solid Teak, Mahogany, Melamine & Electrical furniture models, dimensions, and prices.',
+    sensitivity: 'Operational',
+  },
+  {
+    id: 'categories',
+    label: 'Product Categories',
+    label_si: 'භාණ්ඩ කාණ්ඩ',
+    category: 'Inventory',
+    description: 'Classify items into Living Room, Bedroom, Dining, Kitchen, and Office suites.',
+    sensitivity: 'Standard',
+  },
+  {
+    id: 'stock',
+    label: 'Stock Management',
+    label_si: 'තොග කළමනාකරණය',
+    category: 'Inventory',
+    description: 'Track physical warehouse inventory, warehouse adjustments, and finished carpentry stock.',
+    sensitivity: 'Operational',
+  },
+  {
+    id: 'low-stock',
+    label: 'Low Stock Alerts',
+    label_si: 'අඩු තොග අනතුරු ඇඟවීම්',
+    category: 'Inventory',
+    description: 'Automated warnings when finished furniture pieces drop below reorder safety thresholds.',
+    sensitivity: 'Operational',
+  },
 
   // Customers
-  { id: 'customers', label: 'Customer Directory', category: 'Customers', description: 'Client contact directory, delivery addresses, customer IDs' },
-  { id: 'outstanding', label: 'Outstanding Balances', category: 'Customers', description: 'Client credit ledgers, debt recovery, overdue installment reminders' },
+  {
+    id: 'customers',
+    label: 'Customer Directory',
+    label_si: 'පාරිභෝගික නාමාවලිය',
+    category: 'Customers',
+    description: 'Client contact database, delivery addresses, National Identity Cards (NIC), and order records.',
+    sensitivity: 'Operational',
+  },
+  {
+    id: 'outstanding',
+    label: 'Outstanding Balances',
+    label_si: 'ණය සහ හිඟ මුදල්',
+    category: 'Customers',
+    description: 'Customer credit ledger, debt recovery lists, overdue balance tracking, and WhatsApp follow-ups.',
+    sensitivity: 'Financial',
+  },
 
   // Centers
-  { id: 'centers', label: 'Center Directory', category: 'Centers', description: 'Regional distribution hubs (MHG, MRT, NGB, DHW, CMB)' },
-  { id: 'create-center', label: 'Create Regional Center', category: 'Centers', description: 'Register new regional showroom centers and center codes (C001)' },
+  {
+    id: 'centers',
+    label: 'Center Directory',
+    label_si: 'මධ්‍යස්ථාන නාමාවලිය',
+    category: 'Centers',
+    description: 'View regional distribution hubs (MHG, MRT, NGB, DHW, CMB), branch officers, and hub phones.',
+    sensitivity: 'Standard',
+  },
+  {
+    id: 'create-center',
+    label: 'Create Regional Center',
+    label_si: 'නව මධ්‍යස්ථාන ලියාපදිංචිය',
+    category: 'Centers',
+    description: 'Register new regional showroom distribution centers and assign branch codes (C001 format).',
+    sensitivity: 'System Critical',
+  },
 
   // Finance & Cash
-  { id: 'cashbook', label: 'Daily Cash Book', category: 'Finance & Cash', description: 'Day-to-day cash in hand, carpentry wages, petty cash entries' },
-  { id: 'expenses', label: 'Expenses Tracker', category: 'Finance & Cash', description: 'Timber purchases, hardware, lacquer, transport, workshop bills' },
-  { id: 'day-close', label: 'Day-End Closing', category: 'Finance & Cash', description: 'Showroom cash drawer balancing, drawer closing, cash surplus/deficit' },
+  {
+    id: 'cashbook',
+    label: 'Daily Cash Book',
+    label_si: 'දෛනික මුදල් පොත',
+    category: 'Finance & Cash',
+    description: 'Record day-to-day cash drawer receipts, cash payments, petty cash, and daily turnover.',
+    sensitivity: 'Financial',
+  },
+  {
+    id: 'expenses',
+    label: 'Expenses Tracker',
+    label_si: 'වියදම් සටහන් පොත',
+    category: 'Finance & Cash',
+    description: 'Workshop timber purchases, hardware, lacquer, carpenter wages, transport, and showroom rent.',
+    sensitivity: 'Financial',
+  },
+  {
+    id: 'day-close',
+    label: 'Day-End Closing',
+    label_si: 'දින අවසාන ගිණුම් පියවීම',
+    category: 'Finance & Cash',
+    description: 'Reconcile actual physical cash in drawer against sales receipts before showroom closing.',
+    sensitivity: 'Financial',
+  },
 
   // Purchasing
-  { id: 'purchases', label: 'Stock Purchases', category: 'Purchasing', description: 'Raw timber logs, teak boards, melamine sheets & hardware supplier orders' },
+  {
+    id: 'purchases',
+    label: 'Stock Purchases',
+    label_si: 'දැව සහ අමුද්‍රව්‍ය මිලදී ගැනීම්',
+    category: 'Purchasing',
+    description: 'Raw timber logs, teak boards, melamine sheets, hardware, and cushion supplier procurement.',
+    sensitivity: 'Operational',
+  },
 
   // Reports
-  { id: 'reports-sales', label: 'Sales Reports', category: 'Reports', description: 'Sales turnover by furniture line, branch performance, date ranges' },
-  { id: 'reports-profit', label: 'Profit & Margins', category: 'Reports', description: 'Gross profit margins, carpentry labor costing vs selling price' },
+  {
+    id: 'reports-sales',
+    label: 'Sales Reports',
+    label_si: 'විකුණුම් වාර්තා',
+    category: 'Reports',
+    description: 'Analyze weekly and monthly furniture sales turnover, top-selling wooden models, and branch volume.',
+    sensitivity: 'Operational',
+  },
+  {
+    id: 'reports-profit',
+    label: 'Profit & Margins',
+    label_si: 'ලාභ සහ ආන්තික වාර්තා',
+    category: 'Reports',
+    description: 'Confidential gross profit margins, carpentry labor costing vs selling price analysis.',
+    sensitivity: 'Financial',
+  },
 
   // Administration
-  { id: 'settings', label: 'Store Settings', category: 'Administration', description: 'Showroom branding, invoice prefixes, warranty terms, bank accounts' },
-  { id: 'users', label: 'Users & Roles', category: 'Administration', description: 'Staff credentials, role permissions matrix, access control' },
-  { id: 'backup', label: 'Backup / Export', category: 'Administration', description: 'Full system JSON backup downloads, CSV table exports, system restore' },
+  {
+    id: 'settings',
+    label: 'Store Settings',
+    label_si: 'ව්‍යාපාරික සැකසුම්',
+    category: 'Administration',
+    description: 'Showroom branding, invoice prefixes, 10-year Teak warranty terms, and bank accounts.',
+    sensitivity: 'System Critical',
+  },
+  {
+    id: 'users',
+    label: 'Users & Roles',
+    label_si: 'පරිශීලක භූමිකා සහ අවසර',
+    category: 'Administration',
+    description: 'Configure Administrator and Executive role page access control privileges.',
+    sensitivity: 'System Critical',
+  },
+  {
+    id: 'backup',
+    label: 'Backup / Export',
+    label_si: 'දත්ත උපස්ථ සහ අපනයනය',
+    category: 'Administration',
+    description: 'Download full system JSON backup archives, export CSV tables, and database restore.',
+    sensitivity: 'System Critical',
+  },
 ];
 
 // Default Permission Presets by Role
 export const DEFAULT_ROLE_PERMISSIONS = {
-  // Super Admin / Owner: All 21 modules allowed
+  // Super Admin: All 21 modules unconditionally allowed
   admin: SYSTEM_MODULES.map((m) => m.id),
 
-  // Sales / Showroom Executive: Customer & sales operations
-  sales_executive: [
+  // Executive Staff: Operational modules allowed by default
+  executive: [
     'dashboard',
     'orders',
     'payments',
     'returns',
     'products',
+    'categories',
+    'stock',
     'low-stock',
     'customers',
     'outstanding',
     'centers',
     'reports-sales',
   ],
-
-  // Cashier & Finance Executive: Invoicing, receipts, and cash management
-  cashier: [
-    'dashboard',
-    'orders',
-    'payments',
-    'customers',
-    'outstanding',
-    'cashbook',
-    'expenses',
-    'day-close',
-  ],
-
-  // Workshop & Carpentry Supervisor: Inventory and stock production
-  workshop_supervisor: [
-    'dashboard',
-    'products',
-    'categories',
-    'stock',
-    'low-stock',
-    'returns',
-    'purchases',
-  ],
-
-  // Regional Center Officer: Hub distribution and delivery verification
-  center_officer: [
-    'dashboard',
-    'centers',
-    'customers',
-    'orders',
-  ],
 };
 
-// Seed staff members
-export const INITIAL_STAFF_USERS = [
-  {
-    id: 'usr-1',
-    name: 'Sunil Dissanayake',
-    username: 'sunil.admin',
-    email: 'sunil@dsfurniture.lk',
-    phone: '0771234567',
-    role: 'admin',
-    branch_code: 'MHG',
-    center_code: 'C001',
-    status: 'active',
-    custom_permissions: null, // null means uses default role preset
-    created_at: '2026-01-10T08:00:00Z',
-  },
-  {
-    id: 'usr-2',
-    name: 'Nuwan Perera',
-    username: 'nuwan.sales',
-    email: 'nuwan@dsfurniture.lk',
-    phone: '0715556778',
-    role: 'sales_executive',
-    branch_code: 'MHG',
-    center_code: 'C001',
-    status: 'active',
-    custom_permissions: null,
-    created_at: '2026-03-15T09:30:00Z',
-  },
-  {
-    id: 'usr-3',
-    name: 'Chamari Silva',
-    username: 'chamari.cashier',
-    email: 'chamari@dsfurniture.lk',
-    phone: '0718899221',
-    role: 'cashier',
-    branch_code: 'MHG',
-    center_code: 'C002',
-    status: 'active',
-    custom_permissions: null,
-    created_at: '2026-04-20T10:00:00Z',
-  },
-  {
-    id: 'usr-4',
-    name: 'Nalaka Fernando',
-    username: 'nalaka.carpentry',
-    email: 'nalaka@dsfurniture.lk',
-    phone: '0768899001',
-    role: 'workshop_supervisor',
-    branch_code: 'MRT',
-    center_code: 'C001',
-    status: 'active',
-    custom_permissions: null,
-    created_at: '2026-04-01T10:15:00Z',
-  },
-  {
-    id: 'usr-5',
-    name: 'Dinesh Kumara',
-    username: 'dinesh.hub',
-    email: 'dinesh@dsfurniture.lk',
-    phone: '0785566778',
-    role: 'center_officer',
-    branch_code: 'DHW',
-    center_code: 'C001',
-    status: 'active',
-    custom_permissions: null,
-    created_at: '2026-07-12T14:20:00Z',
-  },
-];
-
+// Role Metadata Definitions
 export const ROLES_METADATA = {
   admin: {
     key: 'admin',
-    label: 'Store Owner / Super Admin',
+    label: 'Administrator (Super Admin / Owner)',
     shortLabel: 'Super Admin',
+    title_si: 'ප්‍රධාන පරිපාලක භූමිකාව',
     badgeClass: 'badge-wholesale',
     color: '#9333EA',
     bg: 'rgba(147, 51, 234, 0.14)',
     border: 'rgba(147, 51, 234, 0.35)',
-    description: 'Full uninhibited access across all financial, inventory, settings, backup, and executive modules.',
+    description: 'Full uninhibited access across all 21 modules including Profit Margins, Day-End Balancing, Store Settings, Data Backups, and Permission Management.',
     iconName: 'Crown',
   },
-  sales_executive: {
-    key: 'sales_executive',
-    label: 'Sales & Showroom Executive',
-    shortLabel: 'Sales Executive',
+  executive: {
+    key: 'executive',
+    label: 'Executive Staff (Showroom & Operations)',
+    shortLabel: 'Executive Staff',
+    title_si: 'විධායක නිලධාරී භූමිකාව',
     badgeClass: 'badge-custom',
     color: '#2563EB',
     bg: 'rgba(37, 99, 235, 0.14)',
     border: 'rgba(37, 99, 235, 0.35)',
-    description: 'Manages showroom inquiries, customer bills, advances, and checks product stocks and dimensions.',
+    description: 'Operational privileges for showroom sales, order billing, checking furniture stocks, customer directory, and distribution centers. Confidential finance and admin pages can be toggled by the Admin.',
     iconName: 'Briefcase',
-  },
-  cashier: {
-    key: 'cashier',
-    label: 'Cashier & Billing Executive',
-    shortLabel: 'Cashier',
-    badgeClass: 'badge-settled',
-    color: '#059669',
-    bg: 'rgba(5, 150, 105, 0.14)',
-    border: 'rgba(5, 150, 105, 0.35)',
-    description: 'Issues official customer invoices, records cash advances, daily cash books, and drawer closing.',
-    iconName: 'CheckCircle',
-  },
-  workshop_supervisor: {
-    key: 'workshop_supervisor',
-    label: 'Workshop & Carpentry Lead',
-    shortLabel: 'Workshop Lead',
-    badgeClass: 'badge-showroom',
-    color: '#D97706',
-    bg: 'rgba(217, 119, 6, 0.14)',
-    border: 'rgba(217, 119, 6, 0.35)',
-    description: 'Supervises finished furniture additions, raw timber requirements, defect repairs, and stock tallies.',
-    iconName: 'Hammer',
-  },
-  center_officer: {
-    key: 'center_officer',
-    label: 'Regional Distribution Officer',
-    shortLabel: 'Center Officer',
-    badgeClass: 'client-badge-has',
-    color: '#0284C7',
-    bg: 'rgba(2, 132, 199, 0.14)',
-    border: 'rgba(2, 132, 199, 0.35)',
-    description: 'Oversees regional hub deliveries, client handovers, and center customer directories.',
-    iconName: 'Truck',
   },
 };
 
 // Storage keys
-const USERS_STORAGE_KEY = 'ds_furniture_users_v2';
-const ROLE_PERMS_STORAGE_KEY = 'ds_furniture_role_permissions_v2';
-const ACTIVE_USER_STORAGE_KEY = 'ds_furniture_active_user_id';
-
-// Helper: Load Saved Users
-export const loadSavedUsers = () => {
-  try {
-    const saved = localStorage.getItem(USERS_STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch (e) {
-    console.error(e);
-  }
-  return INITIAL_STAFF_USERS;
-};
-
-// Helper: Save Users
-export const saveStaffUsers = (users) => {
-  try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  } catch (e) {
-    console.error(e);
-  }
-};
+const ROLE_PERMS_STORAGE_KEY = 'ds_furniture_role_permissions_v3';
+const ACTIVE_ROLE_STORAGE_KEY = 'ds_furniture_active_role';
 
 // Helper: Load Saved Role Permissions
 export const loadRolePermissions = () => {
   try {
     const saved = localStorage.getItem(ROLE_PERMS_STORAGE_KEY);
-    if (saved) return { ...DEFAULT_ROLE_PERMISSIONS, ...JSON.parse(saved) };
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        admin: DEFAULT_ROLE_PERMISSIONS.admin, // Admin always has all
+        executive: Array.isArray(parsed.executive) ? parsed.executive : DEFAULT_ROLE_PERMISSIONS.executive,
+      };
+    }
   } catch (e) {
     console.error(e);
   }
@@ -258,45 +262,95 @@ export const loadRolePermissions = () => {
 // Helper: Save Role Permissions
 export const saveRolePermissions = (perms) => {
   try {
-    localStorage.setItem(ROLE_PERMS_STORAGE_KEY, JSON.stringify(perms));
+    const payload = {
+      admin: DEFAULT_ROLE_PERMISSIONS.admin,
+      executive: Array.isArray(perms.executive) ? perms.executive : DEFAULT_ROLE_PERMISSIONS.executive,
+    };
+    localStorage.setItem(ROLE_PERMS_STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {
     console.error(e);
   }
 };
 
-// Helper: Get Active User (For Live Persona Simulation)
-export const getActiveUser = () => {
+// Helper: Get Active Simulated Role (admin | executive)
+export const getActiveRole = () => {
   try {
-    const users = loadSavedUsers();
-    const activeId = localStorage.getItem(ACTIVE_USER_STORAGE_KEY);
-    if (activeId) {
-      const match = users.find((u) => u.id === activeId);
-      if (match) return match;
-    }
-    return users[0] || INITIAL_STAFF_USERS[0];
+    const saved = localStorage.getItem(ACTIVE_ROLE_STORAGE_KEY);
+    if (saved === 'executive' || saved === 'admin') return saved;
   } catch {
-    return INITIAL_STAFF_USERS[0];
+    // fallback
   }
+  return 'admin';
 };
 
-// Helper: Set Active User
-export const setActiveUser = (userId) => {
+// Helper: Set Active Role
+export const setActiveRole = (role) => {
   try {
-    localStorage.setItem(ACTIVE_USER_STORAGE_KEY, userId);
+    localStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, role);
   } catch (e) {
     console.error(e);
   }
 };
 
-// Helper: Determine if user has access to a specific page
-export const hasPageAccess = (user, pageId) => {
-  if (!user) return true;
-  // If user has custom permissions array set, prioritize that
-  if (Array.isArray(user.custom_permissions)) {
-    return user.custom_permissions.includes(pageId);
+// Helper: Determine if a role has access to a specific page
+export const hasPageAccess = (roleOrUser, pageId) => {
+  let role = 'admin';
+  if (typeof roleOrUser === 'string') {
+    role = roleOrUser;
+  } else if (roleOrUser && typeof roleOrUser === 'object') {
+    role = roleOrUser.role || 'admin';
   }
-  // Otherwise use their role's permissions
+
+  // Admin has unconditional access to all modules
+  if (role === 'admin') return true;
+
+  // Executive permissions check
   const rolePerms = loadRolePermissions();
-  const allowed = rolePerms[user.role] || [];
+  const allowed = rolePerms.executive || DEFAULT_ROLE_PERMISSIONS.executive;
   return allowed.includes(pageId);
+};
+
+// Helper: Get Active User object based on active role
+export const getActiveUser = () => {
+  const role = getActiveRole();
+  if (role === 'executive') {
+    return {
+      id: 'usr_exec',
+      name: 'Executive Staff',
+      role: 'executive',
+      email: 'executive@dsfurniture.lk',
+      branch: 'Showroom & Field',
+    };
+  }
+  return {
+    id: 'usr_admin',
+    name: 'D&S Administrator',
+    role: 'admin',
+    email: 'admin@dsfurniture.lk',
+    branch: 'Owner / Super Admin',
+  };
+};
+
+// Helper: Export saved roles/users for system backup/export
+export const loadSavedUsers = () => {
+  return [
+    {
+      id: 'usr_admin',
+      name: 'D&S Administrator',
+      role: 'admin',
+      email: 'admin@dsfurniture.lk',
+      phone: '+94 77 123 4567',
+      assignedCenter: 'all',
+      status: 'Active',
+    },
+    {
+      id: 'usr_exec',
+      name: 'Executive Staff',
+      role: 'executive',
+      email: 'executive@dsfurniture.lk',
+      phone: '+94 77 987 6543',
+      assignedCenter: 'all',
+      status: 'Active',
+    },
+  ];
 };
