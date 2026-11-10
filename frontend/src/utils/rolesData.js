@@ -241,6 +241,180 @@ export const ROLES_METADATA = {
 // Storage keys
 const ROLE_PERMS_STORAGE_KEY = 'ds_furniture_role_permissions_v3';
 const ACTIVE_ROLE_STORAGE_KEY = 'ds_furniture_active_role';
+const ROLES_CATALOG_STORAGE_KEY = 'ds_furniture_roles_catalog_v2';
+
+// Baseline System Roles Definition
+export const INITIAL_SYSTEM_ROLES = [
+  {
+    id: 'admin',
+    name: 'Administrator (Super Admin / Owner)',
+    name_si: 'ප්‍රධාන පරිපාලක (හිමිකරු)',
+    shortLabel: 'Super Admin',
+    badgeClass: 'badge-wholesale',
+    color: '#9333EA',
+    bg: 'rgba(147, 51, 234, 0.14)',
+    border: 'rgba(147, 51, 234, 0.35)',
+    description: 'Full uninhibited access across all 21 modules including Profit Margins, Day-End Balancing, Store Settings, Data Backups, and Permission Management.',
+    isSystem: true,
+    canDelete: false,
+    permissions: SYSTEM_MODULES.map((m) => m.id),
+    status: 'Active',
+    created_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'executive',
+    name: 'Executive Staff (Showroom & Operations)',
+    name_si: 'විධායක නිලධාරී (මෙහෙයුම් සහ විකුණුම්)',
+    shortLabel: 'Executive Staff',
+    badgeClass: 'badge-custom',
+    color: '#2563EB',
+    bg: 'rgba(37, 99, 235, 0.14)',
+    border: 'rgba(37, 99, 235, 0.35)',
+    description: 'Operational privileges for showroom sales, order billing, checking furniture stocks, customer directory, and distribution centers.',
+    isSystem: true,
+    canDelete: false,
+    permissions: [
+      'dashboard',
+      'orders',
+      'payments',
+      'returns',
+      'products',
+      'categories',
+      'stock',
+      'low-stock',
+      'customers',
+      'outstanding',
+      'centers',
+      'reports-sales',
+    ],
+    status: 'Active',
+    created_at: '2026-01-01T00:00:00Z',
+  },
+];
+
+// Helper: Load All Roles (System + Custom Roles)
+export const loadAllRoles = () => {
+  try {
+    const saved = localStorage.getItem(ROLES_CATALOG_STORAGE_KEY);
+    let roles = [];
+    if (saved) {
+      roles = JSON.parse(saved);
+    }
+    if (!Array.isArray(roles) || roles.length === 0) {
+      roles = [...INITIAL_SYSTEM_ROLES];
+    }
+
+    // Ensure system roles (admin & executive) are always present
+    const hasAdmin = roles.some((r) => r.id === 'admin');
+    const hasExec = roles.some((r) => r.id === 'executive');
+    if (!hasAdmin) roles.unshift(INITIAL_SYSTEM_ROLES[0]);
+    if (!hasExec) roles.splice(1, 0, INITIAL_SYSTEM_ROLES[1]);
+
+    // Synchronize latest executive permissions from legacy storage if present
+    const legacyPerms = loadRolePermissions();
+    roles = roles.map((r) => {
+      if (r.id === 'admin') {
+        return { ...r, permissions: SYSTEM_MODULES.map((m) => m.id) };
+      }
+      if (r.id === 'executive' && legacyPerms?.executive) {
+        return { ...r, permissions: legacyPerms.executive };
+      }
+      return r;
+    });
+
+    return roles;
+  } catch (e) {
+    console.error(e);
+    return INITIAL_SYSTEM_ROLES;
+  }
+};
+
+// Helper: Save / Update a Role (CRUD Create / Update)
+export const saveRole = (roleData) => {
+  try {
+    const roles = loadAllRoles();
+    const isNew = !roleData.id;
+    const roleId = roleData.id || `custom_${Date.now()}`;
+
+    const newRoleObj = {
+      id: roleId,
+      name: roleData.name || 'New Custom Role',
+      name_si: roleData.name_si || roleData.name || 'නව භූමිකාව',
+      shortLabel: roleData.shortLabel || (roleData.name ? roleData.name.slice(0, 5).toUpperCase() : 'CUSTOM'),
+      badgeClass: roleData.badgeClass || 'badge-custom',
+      color: roleData.color || '#059669',
+      bg: roleData.bg || 'rgba(5, 150, 105, 0.14)',
+      border: roleData.border || 'rgba(5, 150, 105, 0.35)',
+      description: roleData.description || 'Custom organizational staff role.',
+      isSystem: roleId === 'admin' || roleId === 'executive',
+      canDelete: roleId !== 'admin' && roleId !== 'executive',
+      permissions: Array.isArray(roleData.permissions) ? roleData.permissions : ['dashboard'],
+      status: roleData.status || 'Active',
+      updated_at: new Date().toISOString(),
+    };
+
+    let updatedRoles = [];
+    if (isNew) {
+      updatedRoles = [...roles, { ...newRoleObj, created_at: new Date().toISOString() }];
+    } else {
+      updatedRoles = roles.map((r) => (r.id === roleId ? { ...r, ...newRoleObj } : r));
+    }
+
+    localStorage.setItem(ROLES_CATALOG_STORAGE_KEY, JSON.stringify(updatedRoles));
+
+    // Keep legacy storage in sync for executive role
+    if (roleId === 'executive') {
+      saveRolePermissions({
+        admin: SYSTEM_MODULES.map((m) => m.id),
+        executive: newRoleObj.permissions,
+      });
+    }
+
+    return newRoleObj;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+};
+
+// Helper: Delete a Custom Role (CRUD Delete)
+export const deleteRole = (roleId) => {
+  if (roleId === 'admin' || roleId === 'executive') {
+    return { success: false, message: 'Core system roles (Administrator / Executive) cannot be deleted.' };
+  }
+  try {
+    const roles = loadAllRoles();
+    const filtered = roles.filter((r) => r.id !== roleId);
+    localStorage.setItem(ROLES_CATALOG_STORAGE_KEY, JSON.stringify(filtered));
+    return { success: true };
+  } catch (e) {
+    console.error(e);
+    return { success: false, message: e.message };
+  }
+};
+
+// Helper: Reset Role to Factory Defaults
+export const resetRoleToDefaults = (roleId) => {
+  try {
+    if (roleId === 'admin') return INITIAL_SYSTEM_ROLES[0];
+    if (roleId === 'executive') {
+      const defaultExecPerms = DEFAULT_ROLE_PERMISSIONS.executive;
+      saveRolePermissions({
+        admin: SYSTEM_MODULES.map((m) => m.id),
+        executive: defaultExecPerms,
+      });
+      const roles = loadAllRoles();
+      const updated = roles.map((r) =>
+        r.id === 'executive' ? { ...r, permissions: defaultExecPerms } : r
+      );
+      localStorage.setItem(ROLES_CATALOG_STORAGE_KEY, JSON.stringify(updated));
+      return updated.find((r) => r.id === 'executive');
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return null;
+};
 
 // Helper: Load Saved Role Permissions
 export const loadRolePermissions = () => {
@@ -307,7 +481,18 @@ export const hasPageAccess = (roleOrUser, pageId) => {
   // The Users & Roles page and Main Dashboard are ALWAYS accessible to avoid lockout
   if (pageId === 'users' || pageId === 'dashboard') return true;
 
-  // Executive permissions check
+  // Check from live roles catalog
+  try {
+    const roles = loadAllRoles();
+    const matched = roles.find((r) => r.id === role);
+    if (matched && Array.isArray(matched.permissions)) {
+      return matched.permissions.includes(pageId);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  // Fallback to legacy executive permissions
   const rolePerms = loadRolePermissions();
   const allowed = rolePerms.executive || DEFAULT_ROLE_PERMISSIONS.executive;
   return allowed.includes(pageId);
