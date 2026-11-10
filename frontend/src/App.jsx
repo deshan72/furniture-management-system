@@ -45,12 +45,12 @@ export default function App() {
       case 'products':
         return {
           title: 'Products Catalog',
-          subtitle: 'Add/edit wooden furniture, wood types, prices, and dimensions',
+          subtitle: 'Manage Wood, Melamine, and Electrical items, prices, and stock',
         };
       case 'categories':
         return {
-          title: 'Furniture Categories',
-          subtitle: 'Manage Living Room, Bedroom, Dining, Office, and Custom categories',
+          title: 'Product Categories',
+          subtitle: 'Manage Wood, Melamine, and Electrical Items categories',
         };
       case 'stock':
         return {
@@ -201,8 +201,8 @@ export default function App() {
           {activeTab === 'products' && <ProductsPage />}
           {activeTab === 'categories' &&
             renderGenericPlaceholder(
-              'Furniture Categories Directory',
-              'Organize products into Living Room, Bedroom, Dining, Office, and Custom lines.'
+              'Product Categories Directory',
+              'Organize products into Wood, Melamine, and Electrical Items lines.'
             )}
           {activeTab === 'stock' && <ProductsPage initialStockFilter="all" />}
           {activeTab === 'low-stock' && <ProductsPage initialStockFilter="low_stock" />}
