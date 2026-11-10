@@ -304,6 +304,9 @@ export const hasPageAccess = (roleOrUser, pageId) => {
   // Admin has unconditional access to all modules
   if (role === 'admin') return true;
 
+  // The Users & Roles page and Main Dashboard are ALWAYS accessible to avoid lockout
+  if (pageId === 'users' || pageId === 'dashboard') return true;
+
   // Executive permissions check
   const rolePerms = loadRolePermissions();
   const allowed = rolePerms.executive || DEFAULT_ROLE_PERMISSIONS.executive;

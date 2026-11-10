@@ -39,7 +39,8 @@ export default function UsersPage({
   const [rolePermissions, setRolePermissions] = useState(() => loadRolePermissions());
 
   // Active simulated role: 'admin' | 'executive'
-  const [activeRole, setActiveRoleState] = useState(() => currentRole || currentUser?.role || getActiveRole());
+  const [internalActiveRole, setInternalActiveRole] = useState(() => currentRole || currentUser?.role || getActiveRole());
+  const activeRole = currentRole || currentUser?.role || internalActiveRole;
 
   // Currently inspected role tab: 'executive' (default for configuring) | 'admin'
   const [selectedRoleTab, setSelectedRoleTab] = useState('executive');
@@ -64,7 +65,7 @@ export default function UsersPage({
 
   // Switch Live Simulated Role (Admin vs Executive)
   const handleToggleLiveRole = (targetRole) => {
-    setActiveRoleState(targetRole);
+    setInternalActiveRole(targetRole);
     setActiveRole(targetRole);
     if (onRoleChange) {
       onRoleChange(targetRole);

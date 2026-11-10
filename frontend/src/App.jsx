@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Lock, Crown } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import DashboardPage from './pages/DashboardPage';
@@ -20,6 +20,12 @@ export default function App() {
 
   // Active User / Persona State
   const [currentUser, setCurrentUser] = useState(() => getActiveUser());
+
+  // One-click role switch handler
+  const handleSwitchRole = (newRole) => {
+    setActiveRole(newRole);
+    setCurrentUser(getActiveUser());
+  };
 
   // Theme State: 'light' | 'dark'
   const [theme, setTheme] = useState(() => {
@@ -223,7 +229,11 @@ export default function App() {
   const pageInfo = getPageInfo();
 
   // Check if current user is allowed to access the activeTab
-  const isPageAllowed = hasPageAccess(currentUser, activeTab);
+  // Crucial: Dashboard and Users & Roles configuration panel are ALWAYS allowed
+  const isPageAllowed =
+    activeTab === 'users' ||
+    activeTab === 'dashboard' ||
+    hasPageAccess(currentUser, activeTab);
 
   const renderGenericPlaceholder = (title, description) => (
     <div className="panel">
@@ -299,19 +309,19 @@ export default function App() {
 
         <div
           style={{
-            padding: '12px 18px',
+            padding: '14px 20px',
             borderRadius: '10px',
             background: 'var(--ash-50)',
             border: '1px solid var(--border-subtle)',
             fontSize: '0.85rem',
             color: 'var(--text-main)',
-            maxWidth: '500px',
-            lineHeight: '1.5',
+            maxWidth: '520px',
+            lineHeight: '1.6',
           }}
         >
           Your active persona is currently logged in as: <br />
           <strong>{currentUser?.name}</strong> (
-          <span style={{ color: roleMeta?.color || 'var(--primary)', fontWeight: 600 }}>
+          <span style={{ color: roleMeta?.color || 'var(--primary)', fontWeight: 700 }}>
             {roleMeta?.label}
           </span>
           ).<br />
@@ -320,7 +330,7 @@ export default function App() {
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '10px', justifyContent: 'center' }}>
           <button
             type="button"
             className="btn btn-outline"
@@ -334,11 +344,30 @@ export default function App() {
           <button
             type="button"
             className="btn btn-primary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 18px',
+              background: 'linear-gradient(135deg, #7E22CE 0%, #9333EA 100%)',
+              borderColor: '#9333EA',
+              color: '#FFFFFF',
+              fontWeight: 600,
+            }}
+            onClick={() => handleSwitchRole('admin')}
+          >
+            <Crown size={16} />
+            <span>Switch to Administrator (👑 පරිපාලක වෙත මාරු වන්න)</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline"
             style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
             onClick={() => setActiveTab('users')}
           >
             <Lock size={16} />
-            <span>Switch User / Manage Roles</span>
+            <span>Open Users & Roles (අවසර සැකසුම්)</span>
           </button>
         </div>
       </div>
@@ -365,6 +394,8 @@ export default function App() {
           centers={centers}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          currentUser={currentUser}
+          onSwitchRole={handleSwitchRole}
         />
 
         <main className="content-area">

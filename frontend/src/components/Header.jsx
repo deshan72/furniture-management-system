@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Building2, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Calendar, Building2, ChevronDown, Sun, Moon, Crown, Briefcase } from 'lucide-react';
 import { formatCenterCode } from '../utils/centersData';
 
 export default function Header({
@@ -12,6 +12,8 @@ export default function Header({
   onToggleTheme,
   onQuickAction,
   quickActionLabel,
+  currentUser,
+  onSwitchRole,
 }) {
   const [todayFormatted] = useState(() =>
     new Date().toLocaleDateString('en-GB', {
@@ -36,6 +38,36 @@ export default function Header({
       </div>
 
       <div className="header-actions">
+        {/* ==========================================
+            0. ROLE SIMULATOR BADGE & SWITCHER
+            ========================================== */}
+        {onSwitchRole && currentUser && (
+          <button
+            type="button"
+            className="header-role-btn"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              background: currentUser.role === 'admin' ? 'rgba(147, 51, 234, 0.14)' : 'rgba(37, 99, 235, 0.14)',
+              border: `1.5px solid ${currentUser.role === 'admin' ? 'rgba(147, 51, 234, 0.35)' : 'rgba(37, 99, 235, 0.35)'}`,
+              color: currentUser.role === 'admin' ? '#9333EA' : '#2563EB',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => onSwitchRole(currentUser.role === 'admin' ? 'executive' : 'admin')}
+            title={`Active Role: ${currentUser.role === 'admin' ? 'Administrator (Full Access)' : 'Executive Staff (Operational)'}. Click to switch role.`}
+          >
+            {currentUser.role === 'admin' ? <Crown size={14} /> : <Briefcase size={14} />}
+            <span>{currentUser.role === 'admin' ? '👑 Admin View' : '💼 Executive View'}</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.65, marginLeft: '2px' }}>⇄</span>
+          </button>
+        )}
+
         {/* ==========================================
             1. REGIONAL CENTER FILTER SELECTOR
             ========================================== */}
