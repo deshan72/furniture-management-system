@@ -103,7 +103,7 @@ export default function Sidebar({
     {
       title: 'Reports',
       items: [
-        { id: 'reports-sales', label: 'Sales Reports', icon: BarChart3 },
+        { id: 'reports', label: 'Reports', icon: BarChart3 },
         { id: 'reports-profit', label: 'Profit & Margins', icon: TrendingUp },
       ],
     },
@@ -166,7 +166,9 @@ export default function Sidebar({
 
             {group.items.map((item) => {
               const Icon = item.icon;
-              const isActive = activeTab === item.id;
+              const isActive =
+                activeTab === item.id ||
+                (item.id === 'reports' && activeTab === 'reports-sales');
               const isAllowed = hasPageAccess(currentUser, item.id);
 
               return (

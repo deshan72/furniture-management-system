@@ -129,10 +129,10 @@ export const SYSTEM_MODULES = [
 
   // Reports
   {
-    id: 'reports-sales',
-    label: 'Sales Reports',
+    id: 'reports',
+    label: 'Reports',
     category: 'Reports',
-    description: 'Analyze weekly and monthly furniture sales turnover, top-selling wooden models, and branch volume.',
+    description: 'Audit and export Sales Turnover, Credit Ledger, Inventory Valuation, Cash Flow, and Workshop Costs in CSV & PDF.',
     sensitivity: 'Operational',
   },
   {
@@ -185,6 +185,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'customers',
     'outstanding',
     'centers',
+    'reports',
     'reports-sales',
   ],
 };
@@ -264,6 +265,7 @@ export const INITIAL_SYSTEM_ROLES = [
       'customers',
       'outstanding',
       'centers',
+      'reports',
       'reports-sales',
     ],
     status: 'Active',
@@ -491,12 +493,18 @@ export const hasPageAccess = (roleOrUser, pageId) => {
   // The Users & Roles page and Main Dashboard are ALWAYS accessible to avoid lockout
   if (pageId === 'users' || pageId === 'dashboard') return true;
 
+  // Intercept reports aliases
+  const targetIds =
+    pageId === 'reports' || pageId === 'reports-sales'
+      ? ['reports', 'reports-sales']
+      : [pageId];
+
   // Check from live roles catalog
   try {
     const roles = loadAllRoles();
     const matched = roles.find((r) => r.id === role);
     if (matched && Array.isArray(matched.permissions)) {
-      return matched.permissions.includes(pageId);
+      return targetIds.some((id) => matched.permissions.includes(id));
     }
   } catch (e) {
     console.error(e);
@@ -505,7 +513,7 @@ export const hasPageAccess = (roleOrUser, pageId) => {
   // Fallback to legacy executive permissions
   const rolePerms = loadRolePermissions();
   const allowed = rolePerms.executive || DEFAULT_ROLE_PERMISSIONS.executive;
-  return allowed.includes(pageId);
+  return targetIds.some((id) => allowed.includes(id));
 };
 
 // Helper: Get Active User object based on active role

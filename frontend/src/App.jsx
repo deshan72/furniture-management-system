@@ -11,6 +11,7 @@ import CashHandlingPage from './pages/CashHandlingPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import BackupPage from './pages/BackupPage';
+import ReportsPage from './pages/ReportsPage';
 import { loadSavedCenters } from './utils/centersData';
 import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 
@@ -238,15 +239,16 @@ export default function App() {
           subtitle: 'Reconcile drawer cash with daily transaction records before closing',
         };
       // Reports
+      case 'reports':
       case 'reports-sales':
         return {
-          title: 'Sales & Revenue Reports',
-          subtitle: 'Analyze daily, weekly, and monthly furniture sales turnover',
+          title: 'Reports & Analytics Hub',
+          subtitle: 'Audit sales turnover, customer credit ledger, stock valuation, and cash flow with CSV & PDF export',
         };
       case 'reports-profit':
         return {
           title: 'Profit & Margins Report',
-          subtitle: 'Estimated gross profit factoring manufacturing and raw material costs',
+          subtitle: 'Estimated gross profit factoring manufacturing, raw timber, and workshop labor costs',
         };
       // Administration
       case 'settings':
@@ -524,16 +526,14 @@ export default function App() {
               {activeTab === 'day-close' && <CashHandlingPage />}
 
               {/* Reports */}
-              {activeTab === 'reports-sales' &&
-                renderGenericPlaceholder(
-                  'Sales Turnover & Volume Reports',
-                  'Generate sales turnover summaries by date range, payment mode, and furniture line.'
-                )}
-              {activeTab === 'reports-profit' &&
-                renderGenericPlaceholder(
-                  'Gross Profit & Cost Analysis',
-                  'Compare selling prices against timber and labor cost to verify profit margins.'
-                )}
+              {(activeTab === 'reports' || activeTab === 'reports-sales' || activeTab === 'reports-profit') && (
+                <ReportsPage
+                  initialReportType={activeTab === 'reports-profit' ? 'profit_margin' : 'sales_revenue'}
+                  selectedCenter={selectedCenter}
+                  centers={centers}
+                  onNavigate={setActiveTab}
+                />
+              )}
 
               {/* Administration */}
               {activeTab === 'settings' && <SettingsPage />}
