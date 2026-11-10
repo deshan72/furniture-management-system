@@ -1,5 +1,48 @@
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 
+const STORAGE_BUCKET = 'project product image';
+
+// Helper to upload Base64 image data URL directly to Supabase Storage bucket
+async function uploadBase64ToStorage(base64Str, prefix = 'product') {
+  if (!base64Str || typeof base64Str !== 'string' || !base64Str.startsWith('data:image/')) {
+    return base64Str; // Return as is if already a URL or empty
+  }
+
+  try {
+    const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return base64Str;
+
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    let ext = contentType.split('/')[1] || 'jpg';
+    if (ext === 'jpeg') ext = 'jpg';
+    const cleanPrefix = (prefix || 'product').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const fileName = `${cleanPrefix}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(fileName, buffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.warn('Storage upload error in controller:', uploadError.message);
+      return base64Str;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(fileName);
+
+    console.log(`✅ Uploaded image to Supabase Storage bucket "${STORAGE_BUCKET}": ${urlData?.publicUrl}`);
+    return urlData?.publicUrl || base64Str;
+  } catch (err) {
+    console.warn('Failed to upload image to Supabase Storage:', err.message);
+    return base64Str;
+  }
+}
+
 // @desc    Get all furniture products (with optional search, category, stock filter)
 // @route   GET /api/products
 export const getProducts = async (req, res, next) => {
@@ -64,7 +107,7 @@ export const getProductById = async (req, res, next) => {
 // @route   POST /api/products
 export const createProduct = async (req, res, next) => {
   try {
-    const {
+    let {
       item_code,
       name,
       category,
@@ -76,6 +119,11 @@ export const createProduct = async (req, res, next) => {
       image_url,
       description,
     } = req.body;
+
+    // Automatically upload image to Supabase Storage bucket 'project product image'
+    if (image_url && image_url.startsWith('data:image/')) {
+      image_url = await uploadBase64ToStorage(image_url, item_code || 'furn');
+    }
 
     const { data, error } = await supabase
       .from('products')
@@ -113,7 +161,17 @@ export const createProduct = async (req, res, next) => {
 export const updateProduct = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
+
+    // Automatically upload image to Supabase Storage bucket if changed
+    if (updates.image_url && updates.image_url.startsWith('data:image/')) {
+      updates.image_url = await uploadBase64ToStorage(updates.image_url, updates.item_code || 'furn');
+    }
+
+    // Clean primary key from updates payload
+    delete updates.id;
+    delete updates.created_at;
+    updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
       .from('products')

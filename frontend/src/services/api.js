@@ -1,6 +1,86 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+export const STORAGE_BUCKET = 'project product image';
+
+// Convert base64 Data URL to Blob for browser fetch upload
+export function dataUrlToBlob(dataUrl) {
+  const parts = dataUrl.split(',');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const binaryStr = atob(parts[1]);
+  const len = binaryStr.length;
+  const u8arr = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    u8arr[i] = binaryStr.charCodeAt(i);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
+// Upload image (File, Blob, or base64 data URL) directly to Supabase Storage bucket 'project product image'
+export async function uploadImageToSupabaseStorage(imageInput, itemCode = 'prod') {
+  if (!imageInput) return '';
+
+  // Already a public hosted URL (http / https)
+  if (typeof imageInput === 'string' && (imageInput.startsWith('http://') || imageInput.startsWith('https://'))) {
+    return imageInput;
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.warn('Supabase URL or Key is not configured for Storage upload.');
+    return imageInput;
+  }
+
+  try {
+    let blob;
+    let mimeType = 'image/jpeg';
+    let ext = 'jpg';
+
+    if (imageInput instanceof Blob || imageInput instanceof File) {
+      blob = imageInput;
+      mimeType = imageInput.type || 'image/jpeg';
+      ext = mimeType.split('/')[1] || 'jpg';
+      if (ext === 'jpeg') ext = 'jpg';
+    } else if (typeof imageInput === 'string' && imageInput.startsWith('data:image/')) {
+      blob = dataUrlToBlob(imageInput);
+      mimeType = blob.type || 'image/jpeg';
+      ext = mimeType.split('/')[1] || 'jpg';
+      if (ext === 'jpeg') ext = 'jpg';
+    } else {
+      return imageInput;
+    }
+
+    const cleanCode = (itemCode || 'prod').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const fileName = `${cleanCode}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}.${ext}`;
+    const encodedBucket = encodeURIComponent(STORAGE_BUCKET);
+    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${encodedBucket}/${fileName}`;
+
+    console.log(`📤 Uploading image to Supabase Storage bucket "${STORAGE_BUCKET}" (${fileName})...`);
+
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': mimeType,
+        'x-upsert': 'true',
+      },
+      body: blob,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `Supabase Storage upload failed with status ${res.status}`);
+    }
+
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${encodedBucket}/${fileName}`;
+    console.log(`✅ Supabase Storage upload complete: ${publicUrl}`);
+    return publicUrl;
+  } catch (err) {
+    console.error('Failed to upload image to Supabase Storage:', err);
+    throw err;
+  }
+}
 
 // Clean product object for Supabase schema (strips columns that do not exist in DB)
 function sanitizeProductPayload(raw) {
@@ -57,6 +137,13 @@ async function directSupabaseRequest(endpoint, options = {}) {
 
     if (method === 'POST') {
       const parsedBody = options.body ? JSON.parse(options.body) : {};
+      if (parsedBody.image_url && parsedBody.image_url.startsWith('data:image/')) {
+        try {
+          parsedBody.image_url = await uploadImageToSupabaseStorage(parsedBody.image_url, parsedBody.item_code);
+        } catch (uploadErr) {
+          console.warn('Storage upload fallback warning in directSupabaseRequest:', uploadErr);
+        }
+      }
       const payload = sanitizeProductPayload(parsedBody);
       const res = await fetch(`${SUPABASE_URL}/rest/v1/products`, {
         method: 'POST',
@@ -74,6 +161,13 @@ async function directSupabaseRequest(endpoint, options = {}) {
     if (method === 'PUT' || method === 'PATCH') {
       if (!id) throw new Error('Missing product ID for update');
       const parsedBody = options.body ? JSON.parse(options.body) : {};
+      if (parsedBody.image_url && parsedBody.image_url.startsWith('data:image/')) {
+        try {
+          parsedBody.image_url = await uploadImageToSupabaseStorage(parsedBody.image_url, parsedBody.item_code);
+        } catch (uploadErr) {
+          console.warn('Storage upload fallback warning in directSupabaseRequest:', uploadErr);
+        }
+      }
       const payload = sanitizeProductPayload(parsedBody);
       payload.updated_at = new Date().toISOString();
       const res = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${id}`, {

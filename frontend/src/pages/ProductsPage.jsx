@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
-import { apiRequest } from '../services/api';
+import { apiRequest, uploadImageToSupabaseStorage } from '../services/api';
 
 // Helper to compress and convert image File to optimized Base64 Data URL (~50-80 KB for fast database storage)
 const compressImageFile = (file, maxDim = 900, quality = 0.8) => {
@@ -481,6 +481,20 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     const nextCodeNum = 100 + products.length + 1;
     const assignedCode = newProduct.item_code?.trim() || `FURN-${nextCodeNum}`;
 
+    setIsSubmitting(true);
+
+    let finalImageUrl = newProduct.image_url?.trim() || '';
+
+    // If an image was selected (base64 data URL), upload directly to Supabase Storage bucket 'project product image'
+    if (finalImageUrl.startsWith('data:image/')) {
+      try {
+        finalImageUrl = await uploadImageToSupabaseStorage(finalImageUrl, assignedCode);
+      } catch (uploadErr) {
+        console.warn('Storage upload error in handleAddProduct:', uploadErr);
+        // Will continue or fallback to directSupabaseRequest
+      }
+    }
+
     const createdRecord = {
       id: `prod-${Date.now()}`,
       item_code: assignedCode,
@@ -493,12 +507,11 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       selling_price: Number(newProduct.selling_price) || 0,
       stock_quantity: Number(newProduct.stock_quantity) || 0,
       reorder_level: Number(newProduct.reorder_level) || 2,
-      image_url: newProduct.image_url?.trim() || '',
+      image_url: finalImageUrl,
       description: newProduct.description || '',
       created_at: new Date().toISOString(),
     };
 
-    setIsSubmitting(true);
     let finalSavedItem = createdRecord;
 
     // Send to database (Backend API or direct Supabase)
@@ -513,7 +526,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
         finalSavedItem = { ...createdRecord, ...res.data };
       }
       setDbConnected(true);
-      alert('✅ Product and Image successfully saved into the Supabase Database!');
+      alert('✅ Product and Image successfully saved into Supabase Storage & Database!');
     } catch (err) {
       console.warn('Database save warning:', err);
       alert(`⚠️ Saved locally, but database sync returned: ${err.message}. Please check connection.`);
@@ -539,16 +552,28 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       return;
     }
 
+    setIsSubmitting(true);
+
+    let finalImageUrl = editingProduct.image_url?.trim() || '';
+
+    // If a new image was chosen (base64 data URL), upload directly to Supabase Storage bucket 'project product image'
+    if (finalImageUrl.startsWith('data:image/')) {
+      try {
+        finalImageUrl = await uploadImageToSupabaseStorage(finalImageUrl, editingProduct.item_code);
+      } catch (uploadErr) {
+        console.warn('Storage upload error in handleUpdateProduct:', uploadErr);
+      }
+    }
+
     const updated = {
       ...editingProduct,
       cost_price: Number(editingProduct.cost_price) || 0,
       selling_price: Number(editingProduct.selling_price) || 0,
       stock_quantity: Number(editingProduct.stock_quantity) || 0,
       reorder_level: Number(editingProduct.reorder_level) || 2,
-      image_url: editingProduct.image_url?.trim() || '',
+      image_url: finalImageUrl,
     };
 
-    setIsSubmitting(true);
     let finalUpdatedItem = updated;
 
     try {
@@ -560,7 +585,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
         finalUpdatedItem = { ...updated, ...res.data };
       }
       setDbConnected(true);
-      alert('✅ Product and Image updated in Database!');
+      alert('✅ Product and Image updated in Supabase Storage & Database!');
     } catch (err) {
       console.warn('Update failed in database:', err);
       alert(`⚠️ Updated locally, but database reported: ${err.message}`);
@@ -1808,11 +1833,20 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           </div>
 
           <div className="modal-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)}>
+            <button type="button" className="btn btn-secondary" disabled={isSubmitting} onClick={() => setIsAddModalOpen(false)}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
-              <Plus size={16} /> Save Product
+            <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <RotateCcw size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                  Uploading & Saving...
+                </>
+              ) : (
+                <>
+                  <Plus size={16} /> Save Product
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -2064,11 +2098,20 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             </div>
 
             <div className="modal-actions">
-              <button type="button" className="btn btn-secondary" onClick={() => setIsEditModalOpen(false)}>
+              <button type="button" className="btn btn-secondary" disabled={isSubmitting} onClick={() => setIsEditModalOpen(false)}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary">
-                <CheckCircle size={16} /> Save Changes
+              <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <RotateCcw size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                    Uploading & Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} /> Save Changes
+                  </>
+                )}
               </button>
             </div>
           </form>
