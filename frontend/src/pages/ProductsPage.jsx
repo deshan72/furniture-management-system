@@ -816,7 +816,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           <table class="header-table">
             <tr>
               <td>
-                <img src="${window.location.origin}/logo-icon.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
+                <img src="${window.location.origin}/ds-logo.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
                 <div class="brand-sub">Workshop & Showroom Inventory Catalog</div>
                 <div class="report-title">Product Stock & Valuation Report</div>
               </td>

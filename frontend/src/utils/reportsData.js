@@ -464,11 +464,14 @@ export const printReportToPDF = ({
       </head>
       <body>
         <div class="header-box">
-          <div>
-            <h1 class="company-title">D&S FURNITURE (PVT) LTD</h1>
-            <div class="company-subtitle">Handcrafted Luxury Woodcraft • Showroom & Workshop Ledger</div>
-            <h2 class="doc-title">${reportTitle.toUpperCase()}</h2>
-            <p class="doc-sub">${subtitle}</p>
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <img src="${typeof window !== 'undefined' ? window.location.origin : ''}/ds-logo.png" alt="D&S Furniture" style="height: 52px; width: 52px; object-fit: contain; border-radius: 8px; border: 1px solid #CBD5E1; padding: 2px; background: #fff;" />
+            <div>
+              <h1 class="company-title">D&S FURNITURE (PVT) LTD</h1>
+              <div class="company-subtitle">Handcrafted Luxury Woodcraft • Showroom & Workshop Ledger</div>
+              <h2 class="doc-title">${reportTitle.toUpperCase()}</h2>
+              <p class="doc-sub">${subtitle}</p>
+            </div>
           </div>
           <div class="meta-box">
             <div><strong>Period:</strong> ${dateRangeText}</div>

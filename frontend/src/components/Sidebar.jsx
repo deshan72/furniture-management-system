@@ -119,22 +119,14 @@ export default function Sidebar({
 
   // User meta
   const roleMeta = currentUser ? ROLES_METADATA[currentUser.role] : null;
-  const initials = currentUser?.name
-    ? currentUser.name
-        .split(' ')
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase()
-    : 'DS';
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* Brand Header */}
       <div className="sidebar-brand-header">
         <div className="brand-identity">
-          <div className="brand-logo-icon">
-            <img src="/logo-icon.png" alt="D&S Furniture logo" className="brand-logo-img" />
+          <div className="brand-logo-icon" title="D&S Furniture">
+            <img src="/ds-logo.png" alt="D&S Furniture logo" className="brand-logo-img" />
           </div>
           <div className="brand-text-block">
             <div className="brand-name">
@@ -230,13 +222,27 @@ export default function Sidebar({
             className="user-avatar-circle"
             title={`${currentUser?.name || 'D&S Staff'} (${roleMeta?.shortLabel || 'Admin'})`}
             style={{
-              backgroundColor: roleMeta?.bg || 'var(--primary)',
-              color: roleMeta?.color || '#ffffff',
-              border: `1.5px solid ${roleMeta?.border || 'transparent'}`,
-              fontWeight: 700,
+              backgroundColor: '#FFFFFF',
+              border: `2px solid ${roleMeta?.color || '#38BDF8'}`,
+              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.25)',
+              padding: '2px',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '10px',
             }}
           >
-            {initials}
+            <img
+              src="/ds-logo.png"
+              alt="D&S Logo"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+            />
           </div>
           <div className="user-details">
             <span className="user-name">{currentUser?.name || 'D&S Furniture'}</span>

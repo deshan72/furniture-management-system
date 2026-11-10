@@ -1031,7 +1031,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           <table class="header-table">
             <tr>
               <td>
-                <img src="${window.location.origin}/logo-icon.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
+                <img src="${window.location.origin}/ds-logo.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
                 <div class="brand-sub">Workshop & Showroom Management</div>
                 <div class="report-title">Customer Directory & Credit Ledger Report</div>
               </td>
