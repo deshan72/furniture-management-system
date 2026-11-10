@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Armchair,
   Boxes,
@@ -29,10 +29,55 @@ import {
   Store,
   Sparkles,
   Zap,
+  Upload,
+  Image as ImageIcon,
+  Link as LinkIcon,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
+
+// Helper to compress and convert image File to optimized Base64 Data URL (~50-80 KB for fast database storage)
+const compressImageFile = (file, maxDim = 900, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      reject(new Error('Please select a valid image file (JPG, PNG, or WebP).'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('Failed to load image for compression.'));
+    };
+    reader.onerror = () => reject(new Error('Failed to read file from disk.'));
+  });
+};
 
 // Realistic initial product records across the 3 allowed categories (Wood, Melamine, Electrical Items)
 const INITIAL_PRODUCTS = [
@@ -48,6 +93,7 @@ const INITIAL_PRODUCTS = [
     selling_price: 98500,
     stock_quantity: 4,
     reorder_level: 2,
+    image_url: 'https://images.unsplash.com/photo-1615066390971-03e4e1c36ddf?auto=format&fit=crop&w=600&q=80',
     description: 'Solid Ceylon Teak wood top with heavy carved legs and 6 matching cushioned chairs.',
     created_at: '2026-09-15T10:00:00Z',
   },
@@ -63,6 +109,7 @@ const INITIAL_PRODUCTS = [
     selling_price: 78000,
     stock_quantity: 1,
     reorder_level: 2,
+    image_url: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?auto=format&fit=crop&w=600&q=80',
     description: 'Fitted with inner locker, solid brass hinges, full-length mirror, and polished drawers.',
     created_at: '2026-09-20T14:30:00Z',
   },
@@ -78,6 +125,7 @@ const INITIAL_PRODUCTS = [
     selling_price: 135000,
     stock_quantity: 3,
     reorder_level: 2,
+    image_url: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80',
     description: 'Water-resistant premium melamine board body with hydraulic soft-close hinges.',
     created_at: '2026-09-25T11:15:00Z',
   },
@@ -93,6 +141,7 @@ const INITIAL_PRODUCTS = [
     selling_price: 68500,
     stock_quantity: 2,
     reorder_level: 2,
+    image_url: 'https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&w=600&q=80',
     description: 'Modern executive desk with 3 lockable drawers, cable management ports, and keyboard tray.',
     created_at: '2026-10-01T09:00:00Z',
   },
@@ -108,6 +157,7 @@ const INITIAL_PRODUCTS = [
     selling_price: 28500,
     stock_quantity: 5,
     reorder_level: 2,
+    image_url: 'https://images.unsplash.com/photo-1622372738946-62e02505feb3?auto=format&fit=crop&w=600&q=80',
     description: 'Smart vanity mirror with 3-tone touch LED light, anti-fog heating pad, and power socket.',
     created_at: '2026-10-05T16:20:00Z',
   },
@@ -123,6 +173,7 @@ const INITIAL_PRODUCTS = [
     selling_price: 22500,
     stock_quantity: 0,
     reorder_level: 2,
+    image_url: 'https://images.unsplash.com/photo-1580481077111-94e82e2cbaef?auto=format&fit=crop&w=600&q=80',
     description: 'Traditional Sri Lankan plantation style relaxing veranda chair with handwoven rattan back.',
     created_at: '2026-10-08T13:10:00Z',
   },
@@ -181,6 +232,16 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
   const [adjustReason, setAdjustReason] = useState('Workshop completion');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
+  // Database connection & submitting state
+  const [dbConnected, setDbConnected] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Image file input refs & drag state
+  const addFileInputRef = useRef(null);
+  const editFileInputRef = useRef(null);
+  const [isAddDragging, setIsAddDragging] = useState(false);
+  const [isEditDragging, setIsEditDragging] = useState(false);
+
   // Form state for new product
   const [newProduct, setNewProduct] = useState({
     item_code: '',
@@ -193,8 +254,46 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     selling_price: '',
     stock_quantity: '1',
     reorder_level: '2',
+    image_url: '',
     description: '',
   });
+
+  // Handlers for Add Product image file selection
+  const processAddImageFile = async (file) => {
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+      setNewProduct((prev) => ({ ...prev, image_url: compressedDataUrl }));
+    } catch (err) {
+      alert(err.message || 'Failed to process product image.');
+    }
+  };
+
+  const handleNewImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processAddImageFile(file);
+    }
+    // reset input so same file can be re-selected if removed
+    e.target.value = '';
+  };
+
+  // Handlers for Edit Product image file selection
+  const processEditImageFile = async (file) => {
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+      setEditingProduct((prev) => ({ ...prev, image_url: compressedDataUrl }));
+    } catch (err) {
+      alert(err.message || 'Failed to process product image.');
+    }
+  };
+
+  const handleEditImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processEditImageFile(file);
+    }
+    e.target.value = '';
+  };
 
   // Save to localStorage whenever products change
   useEffect(() => {
@@ -212,17 +311,20 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     }
   }, [initialStockFilter]);
 
-  // Try fetching from backend API on mount
+  // Try fetching from database on mount
   useEffect(() => {
     let isMounted = true;
     apiRequest('/products')
       .then((res) => {
-        if (isMounted && res && res.data && res.data.length > 0) {
-          setProducts(res.data);
+        if (isMounted) {
+          setDbConnected(true);
+          if (res && res.data && res.data.length > 0) {
+            setProducts(res.data);
+          }
         }
       })
-      .catch(() => {
-        // Fallback already loaded
+      .catch((err) => {
+        console.warn('Initial load using local products:', err.message);
       });
     return () => {
       isMounted = false;
@@ -362,6 +464,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       selling_price: '',
       stock_quantity: '1',
       reorder_level: '2',
+      image_url: '',
       description: '',
     });
     setIsAddModalOpen(true);
@@ -390,21 +493,35 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       selling_price: Number(newProduct.selling_price) || 0,
       stock_quantity: Number(newProduct.stock_quantity) || 0,
       reorder_level: Number(newProduct.reorder_level) || 2,
+      image_url: newProduct.image_url?.trim() || '',
       description: newProduct.description || '',
       created_at: new Date().toISOString(),
     };
 
-    // Try sending to backend
+    setIsSubmitting(true);
+    let finalSavedItem = createdRecord;
+
+    // Send to database (Backend API or direct Supabase)
     try {
-      await apiRequest('/products', {
+      const res = await apiRequest('/products', {
         method: 'POST',
         body: JSON.stringify(createdRecord),
       });
-    } catch {
-      // Local state fallback continues
+
+      if (res?.data) {
+        // Use real Supabase database row with UUID
+        finalSavedItem = { ...createdRecord, ...res.data };
+      }
+      setDbConnected(true);
+      alert('✅ Product and Image successfully saved into the Supabase Database!');
+    } catch (err) {
+      console.warn('Database save warning:', err);
+      alert(`⚠️ Saved locally, but database sync returned: ${err.message}. Please check connection.`);
+    } finally {
+      setIsSubmitting(false);
     }
 
-    setProducts((prev) => [createdRecord, ...prev]);
+    setProducts((prev) => [finalSavedItem, ...prev.filter((p) => p.id !== finalSavedItem.id && p.id !== createdRecord.id)]);
     setIsAddModalOpen(false);
   };
 
@@ -428,21 +545,33 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       selling_price: Number(editingProduct.selling_price) || 0,
       stock_quantity: Number(editingProduct.stock_quantity) || 0,
       reorder_level: Number(editingProduct.reorder_level) || 2,
+      image_url: editingProduct.image_url?.trim() || '',
     };
 
-    setProducts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-
-    if (selectedProduct?.id === updated.id) {
-      setSelectedProduct(updated);
-    }
+    setIsSubmitting(true);
+    let finalUpdatedItem = updated;
 
     try {
-      await apiRequest(`/products/${updated.id}`, {
+      const res = await apiRequest(`/products/${updated.id}`, {
         method: 'PUT',
         body: JSON.stringify(updated),
       });
-    } catch {
-      // Local state persists
+      if (res?.data) {
+        finalUpdatedItem = { ...updated, ...res.data };
+      }
+      setDbConnected(true);
+      alert('✅ Product and Image updated in Database!');
+    } catch (err) {
+      console.warn('Update failed in database:', err);
+      alert(`⚠️ Updated locally, but database reported: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+
+    setProducts((prev) => prev.map((p) => (p.id === updated.id ? finalUpdatedItem : p)));
+
+    if (selectedProduct?.id === updated.id) {
+      setSelectedProduct(finalUpdatedItem);
     }
 
     setIsEditModalOpen(false);
@@ -450,11 +579,19 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
   };
 
   // Delete Product
-  const handleDeleteProduct = (id, name) => {
+  const handleDeleteProduct = async (id, name) => {
     if (window.confirm(`Are you sure you want to remove "${name}" from the product catalog?`)) {
       setProducts((prev) => prev.filter((p) => p.id !== id));
       if (selectedProduct?.id === id) {
         setIsViewModalOpen(false);
+      }
+      try {
+        await apiRequest(`/products/${id}`, {
+          method: 'DELETE',
+        });
+        setDbConnected(true);
+      } catch (err) {
+        console.warn('Delete in database warning:', err);
       }
     }
   };
@@ -1050,6 +1187,24 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ash-900)' }}>
               Furniture Catalog & Stock Ledger
             </h3>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                background: dbConnected ? '#ECFDF5' : '#FEF3C7',
+                color: dbConnected ? '#059669' : '#D97706',
+                border: `1px solid ${dbConnected ? '#A7F3D0' : '#FDE68A'}`,
+              }}
+              title={dbConnected ? 'Live database connected to Supabase' : 'Offline / Local cache mode'}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dbConnected ? '#10B981' : '#F59E0B' }}></span>
+              {dbConnected ? 'Database Connected' : 'Local Cache'}
+            </span>
           </div>
 
           {/* View Mode Toggle */}
@@ -1111,12 +1266,23 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                         {/* Product Info */}
                         <td>
                           <div className="table-user-cell">
+                            {prod.image_url ? (
+                              <img
+                                src={prod.image_url}
+                                alt={prod.name}
+                                className="product-table-thumb"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            ) : null}
                             <div
                               className="user-avatar"
                               style={{
                                 background: 'var(--primary-tint)',
                                 color: 'var(--primary)',
                                 borderRadius: '10px',
+                                display: prod.image_url ? 'none' : 'flex',
                               }}
                             >
                               <Armchair size={18} />
@@ -1261,19 +1427,26 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           <div className="customer-cards-grid">
             {filteredProducts.map((prod) => {
               return (
-                <div key={prod.id} className="customer-card-item">
+                <div key={prod.id} className="customer-card-item" style={{ overflow: 'hidden' }}>
+                  {prod.image_url ? (
+                    <div className="product-card-cover">
+                      <img src={prod.image_url} alt={prod.name} />
+                    </div>
+                  ) : null}
                   <div className="customer-card-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div
-                        className="user-avatar"
-                        style={{
-                          background: 'var(--primary-tint)',
-                          color: 'var(--primary)',
-                          borderRadius: '10px',
-                        }}
-                      >
-                        <Armchair size={18} />
-                      </div>
+                      {prod.image_url ? null : (
+                        <div
+                          className="user-avatar"
+                          style={{
+                            background: 'var(--primary-tint)',
+                            color: 'var(--primary)',
+                            borderRadius: '10px',
+                          }}
+                        >
+                          <Armchair size={18} />
+                        </div>
+                      )}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span className="customer-name" style={{ fontSize: '0.95rem' }}>
@@ -1520,6 +1693,108 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
               />
             </div>
 
+            {/* Product Image Upload Section */}
+            <div className="form-group full-width">
+              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ImageIcon size={15} color="var(--primary)" /> Product Photo / Image (භාණ්ඩයේ ඡායාරූපය)
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 400 }}>
+                  PNG, JPG, WebP • Stored directly in Database
+                </span>
+              </label>
+
+              {newProduct.image_url ? (
+                <div className="image-preview-container">
+                  <img
+                    src={newProduct.image_url}
+                    alt="Product Preview"
+                    className="image-preview-img"
+                  />
+                  <div className="image-preview-details">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 600, fontSize: '0.84rem' }}>
+                      <CheckCircle size={15} /> Image Ready to Store in Database
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--ash-600)', marginTop: '3px' }}>
+                      Optimized and ready to be saved with the product record.
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px' }}
+                        onClick={() => addFileInputRef.current?.click()}
+                      >
+                        <Upload size={13} /> Change Image
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px' }}
+                        onClick={() => setNewProduct({ ...newProduct, image_url: '' })}
+                      >
+                        <Trash2 size={13} /> Remove
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="file"
+                    ref={addFileInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleNewImageFileChange}
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`image-upload-dropzone ${isAddDragging ? 'dragging' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsAddDragging(true);
+                  }}
+                  onDragLeave={() => setIsAddDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsAddDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) processAddImageFile(file);
+                  }}
+                  onClick={() => addFileInputRef.current?.click()}
+                >
+                  <input
+                    type="file"
+                    ref={addFileInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleNewImageFileChange}
+                  />
+                  <div className="upload-dropzone-icon">
+                    <Upload size={22} color="var(--primary)" />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--ash-900)' }}>
+                      Click to Browse or Drag & Drop Product Image
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--ash-500)', marginTop: '3px' }}>
+                      Supports phone photos, camera uploads, and digital graphics
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Optional URL Input */}
+              <div style={{ marginTop: '8px' }}>
+                <input
+                  type="url"
+                  className="form-input"
+                  style={{ fontSize: '0.8rem', padding: '7px 12px' }}
+                  placeholder="Or paste direct image URL (https://...)"
+                  value={newProduct.image_url?.startsWith('data:') ? '' : newProduct.image_url}
+                  onChange={(e) => setNewProduct({ ...newProduct, image_url: e.target.value })}
+                />
+              </div>
+            </div>
+
             {/* Notes */}
             <div className="form-group full-width">
               <label className="form-label">Carpentry Specs & Description</label>
@@ -1676,6 +1951,108 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 />
               </div>
 
+              {/* Product Image Section (Edit) */}
+              <div className="form-group full-width">
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ImageIcon size={15} color="var(--primary)" /> Product Photo / Image (භාණ්ඩයේ ඡායාරූපය)
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 400 }}>
+                    PNG, JPG, WebP • Stored directly in Database
+                  </span>
+                </label>
+
+                {editingProduct.image_url ? (
+                  <div className="image-preview-container">
+                    <img
+                      src={editingProduct.image_url}
+                      alt="Product Preview"
+                      className="image-preview-img"
+                    />
+                    <div className="image-preview-details">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 600, fontSize: '0.84rem' }}>
+                        <CheckCircle size={15} /> Image Ready to Update in Database
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--ash-600)', marginTop: '3px' }}>
+                        Optimized and ready to be saved with the product record.
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px' }}
+                          onClick={() => editFileInputRef.current?.click()}
+                        >
+                          <Upload size={13} /> Change Image
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px' }}
+                          onClick={() => setEditingProduct({ ...editingProduct, image_url: '' })}
+                        >
+                          <Trash2 size={13} /> Remove
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="file"
+                      ref={editFileInputRef}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleEditImageFileChange}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className={`image-upload-dropzone ${isEditDragging ? 'dragging' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsEditDragging(true);
+                    }}
+                    onDragLeave={() => setIsEditDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsEditDragging(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) processEditImageFile(file);
+                    }}
+                    onClick={() => editFileInputRef.current?.click()}
+                  >
+                    <input
+                      type="file"
+                      ref={editFileInputRef}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleEditImageFileChange}
+                    />
+                    <div className="upload-dropzone-icon">
+                      <Upload size={22} color="var(--primary)" />
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--ash-900)' }}>
+                        Click to Browse or Drag & Drop New Photo
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--ash-500)', marginTop: '3px' }}>
+                        Replace or upload a new photo for this product
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Optional URL Input */}
+                <div style={{ marginTop: '8px' }}>
+                  <input
+                    type="url"
+                    className="form-input"
+                    style={{ fontSize: '0.8rem', padding: '7px 12px' }}
+                    placeholder="Or paste direct image URL (https://...)"
+                    value={editingProduct.image_url?.startsWith('data:') ? '' : (editingProduct.image_url || '')}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, image_url: e.target.value })}
+                  />
+                </div>
+              </div>
+
               <div className="form-group full-width">
                 <label className="form-label">Description & Notes</label>
                 <textarea
@@ -1718,19 +2095,33 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 marginBottom: '18px',
               }}
             >
-              <div
-                className="user-avatar"
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  fontSize: '1.25rem',
-                  borderRadius: '14px',
-                  background: 'var(--primary-tint)',
-                  color: 'var(--primary)',
-                }}
-              >
-                <Armchair size={28} />
-              </div>
+              {selectedProduct.image_url ? (
+                <img
+                  src={selectedProduct.image_url}
+                  alt={selectedProduct.name}
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '14px',
+                    objectFit: 'cover',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                />
+              ) : (
+                <div
+                  className="user-avatar"
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    fontSize: '1.25rem',
+                    borderRadius: '14px',
+                    background: 'var(--primary-tint)',
+                    color: 'var(--primary)',
+                  }}
+                >
+                  <Armchair size={28} />
+                </div>
+              )}
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--ash-900)' }}>
@@ -1758,6 +2149,30 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 </div>
               </div>
             </div>
+
+            {/* Product Photo Showcase */}
+            {selectedProduct.image_url && (
+              <div
+                style={{
+                  width: '100%',
+                  maxHeight: '260px',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  marginBottom: '18px',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--ash-100)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={selectedProduct.image_url}
+                  alt={selectedProduct.name}
+                  style={{ width: '100%', height: '260px', objectFit: 'cover' }}
+                />
+              </div>
+            )}
 
             {/* Quick Details Grid */}
             <div

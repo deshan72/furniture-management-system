@@ -113,3 +113,12 @@ CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_cash_transactions_created_at ON cash_transactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_cash_transactions_type ON cash_transactions(transaction_type);
+
+-- 10. ROW LEVEL SECURITY (RLS) SETTINGS
+-- Allow full read/write access for internal furniture management portal
+ALTER TABLE products DISABLE ROW LEVEL SECURITY;
+ALTER TABLE customers DISABLE ROW LEVEL SECURITY;
+ALTER TABLE orders DISABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items DISABLE ROW LEVEL SECURITY;
+ALTER TABLE cash_transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE daily_cash_balance DISABLE ROW LEVEL SECURITY;
