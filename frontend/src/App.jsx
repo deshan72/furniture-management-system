@@ -77,6 +77,52 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  // Automatic migration: purge legacy Sinhala text stored in browser localStorage
+  useEffect(() => {
+    try {
+      const keys = [
+        'ds_furniture_roles_catalog_v2',
+        'ds_furniture_role_permissions_v3',
+        'ds_furniture_store_settings_v2',
+        'dnd_centers_list',
+        'dnd_customers_list',
+        'dnd_products_list',
+      ];
+      keys.forEach((k) => {
+        const item = localStorage.getItem(k);
+        if (item && /[\u0D80-\u0DFF]/.test(item)) {
+          if (k === 'ds_furniture_roles_catalog_v2') {
+            try {
+              const roles = JSON.parse(item);
+              const cleaned = roles.map((r) => ({
+                ...r,
+                name: r.id === 'admin'
+                  ? 'Administrator (Super Admin / Owner)'
+                  : r.id === 'executive'
+                  ? 'Executive Staff (Showroom & Operations)'
+                  : (r.name || '').replace(/[\u0D80-\u0DFF]/g, '').trim(),
+                name_si: r.id === 'admin'
+                  ? 'Super Administrator'
+                  : r.id === 'executive'
+                  ? 'Executive Staff'
+                  : (r.name_si || '').replace(/[\u0D80-\u0DFF]/g, '').trim() || r.shortLabel || 'Custom Role',
+                description: (r.description || '').replace(/[\u0D80-\u0DFF]/g, '').trim(),
+              }));
+              localStorage.setItem(k, JSON.stringify(cleaned));
+            } catch {
+              localStorage.removeItem(k);
+            }
+          } else {
+            const sanitized = item.replace(/[\u0D80-\u0DFF]/g, '');
+            localStorage.setItem(k, sanitized);
+          }
+        }
+      });
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Sync centers & active user from localStorage if updated elsewhere
   useEffect(() => {
     const handleStorage = (e) => {

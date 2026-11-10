@@ -514,7 +514,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
       return;
     }
 
-    const headers = ['Center Code', 'Branch Code', 'Center Name', 'Sinhala Name', 'City', 'Officer In Charge', 'Phone', 'Address', 'Status', 'Registered Clients', 'Notes'];
+    const headers = ['Center Code', 'Branch Code', 'Center Name', 'Secondary Name', 'City', 'Officer In Charge', 'Phone', 'Address', 'Status', 'Registered Clients', 'Notes'];
     const rows = filteredCenters.map((c) => {
       const custCount = getCustomersForCenter(c).length;
       return [
@@ -1324,7 +1324,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
               />
             </div>
 
-            {/* Center Name & Sinhala Name */}
+            {/* Center Name & Secondary Name */}
             <div className="form-group">
               <label className="form-label">Center Name *</label>
               <input

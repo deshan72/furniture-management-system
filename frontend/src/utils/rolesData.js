@@ -283,23 +283,54 @@ export const loadAllRoles = () => {
       roles = [...INITIAL_SYSTEM_ROLES];
     }
 
+    // Synchronize latest executive permissions from legacy storage if present
+    const legacyPerms = loadRolePermissions();
+    roles = roles.map((r) => {
+      // Force clean English identity for baseline system roles
+      if (r.id === 'admin') {
+        return {
+          ...r,
+          name: 'Administrator (Super Admin / Owner)',
+          name_si: 'Super Administrator',
+          description: INITIAL_SYSTEM_ROLES[0].description,
+          permissions: SYSTEM_MODULES.map((m) => m.id),
+        };
+      }
+      if (r.id === 'executive') {
+        return {
+          ...r,
+          name: 'Executive Staff (Showroom & Operations)',
+          name_si: 'Executive Staff',
+          description: INITIAL_SYSTEM_ROLES[1].description,
+          permissions: legacyPerms?.executive || r.permissions || INITIAL_SYSTEM_ROLES[1].permissions,
+        };
+      }
+
+      // Sanitize custom roles to remove any legacy Sinhala characters
+      const cleanName = (r.name || '').replace(/[\u0D80-\u0DFF]/g, '').trim();
+      const cleanNameSi = (r.name_si || '').replace(/[\u0D80-\u0DFF]/g, '').trim();
+      const cleanDesc = (r.description || '').replace(/[\u0D80-\u0DFF]/g, '').trim();
+
+      return {
+        ...r,
+        name: cleanName || 'Custom Role',
+        name_si: cleanNameSi || r.shortLabel || 'Custom Role',
+        description: cleanDesc || 'Custom organizational staff role.',
+      };
+    });
+
     // Ensure system roles (admin & executive) are always present
     const hasAdmin = roles.some((r) => r.id === 'admin');
     const hasExec = roles.some((r) => r.id === 'executive');
     if (!hasAdmin) roles.unshift(INITIAL_SYSTEM_ROLES[0]);
     if (!hasExec) roles.splice(1, 0, INITIAL_SYSTEM_ROLES[1]);
 
-    // Synchronize latest executive permissions from legacy storage if present
-    const legacyPerms = loadRolePermissions();
-    roles = roles.map((r) => {
-      if (r.id === 'admin') {
-        return { ...r, permissions: SYSTEM_MODULES.map((m) => m.id) };
-      }
-      if (r.id === 'executive' && legacyPerms?.executive) {
-        return { ...r, permissions: legacyPerms.executive };
-      }
-      return r;
-    });
+    // Persist cleaned roles back to localStorage immediately
+    try {
+      localStorage.setItem(ROLES_CATALOG_STORAGE_KEY, JSON.stringify(roles));
+    } catch {
+      // ignore storage errors
+    }
 
     return roles;
   } catch (e) {

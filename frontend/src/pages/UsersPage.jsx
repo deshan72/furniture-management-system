@@ -500,7 +500,7 @@ export default function UsersPage({
             <input
               type="text"
               className="filter-search-input"
-              placeholder="Search roles by title, Sinhala, description or code..."
+              placeholder="Search roles by title, description or code..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -681,7 +681,11 @@ export default function UsersPage({
                             )}
                           </div>
                           <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                            {role.name_si || role.shortLabel || 'System Role'}
+                            {role.id === 'admin'
+                              ? 'Super Administrator'
+                              : role.id === 'executive'
+                              ? 'Showroom & Operations Staff'
+                              : (role.name_si && !/[\u0D80-\u0DFF]/.test(role.name_si) ? role.name_si : role.shortLabel || 'Custom Role')}
                           </span>
                         </div>
                       </div>
@@ -886,7 +890,11 @@ export default function UsersPage({
                           {role.name}
                         </h3>
                         <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                          {role.name_si}
+                          {role.id === 'admin'
+                            ? 'Super Administrator'
+                            : role.id === 'executive'
+                            ? 'Showroom & Operations Staff'
+                            : (role.name_si && !/[\u0D80-\u0DFF]/.test(role.name_si) ? role.name_si : role.shortLabel || 'Custom Role')}
                         </span>
                       </div>
                     </div>
@@ -1485,7 +1493,11 @@ export default function UsersPage({
                   {selectedRole.name}
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  {selectedRole.name_si} • Code: <strong>{selectedRole.shortLabel}</strong>
+                  {selectedRole.id === 'admin'
+                    ? 'Super Administrator'
+                    : selectedRole.id === 'executive'
+                    ? 'Showroom & Operations Staff'
+                    : (selectedRole.name_si && !/[\u0D80-\u0DFF]/.test(selectedRole.name_si) ? selectedRole.name_si : 'Custom Role')} • Code: <strong>{selectedRole.shortLabel}</strong>
                 </span>
                 <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-main)' }}>
                   {selectedRole.description}

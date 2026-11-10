@@ -554,7 +554,7 @@ export default function SettingsPage() {
               A/C: <strong>{settings.account_number}</strong> ({settings.account_name})
             </div>
 
-            {/* Sinhala Disclaimer */}
+            {/* Terms & Return Disclaimer */}
             <div style={{ fontSize: '0.6rem', color: '#64748B', textAlign: 'center', fontStyle: 'italic', borderTop: '1px dotted #CBD5E1', paddingTop: '6px' }}>
               {settings.invoice_terms_si}
             </div>
