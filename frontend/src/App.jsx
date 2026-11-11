@@ -211,6 +211,11 @@ export default function App() {
           title: 'Create New Center',
           subtitle: 'Register new regional centers and branch codes for customer identification',
         };
+      case 'add-client-to-center':
+        return {
+          title: 'Add Client to Center',
+          subtitle: 'Register new clients or assign existing customers to regional distribution centers',
+        };
       // Purchasing
       case 'suppliers':
         return {
@@ -499,10 +504,11 @@ export default function App() {
               )}
 
               {/* Centers */}
-              {(activeTab === 'centers' || activeTab === 'create-center') && (
+              {(activeTab === 'centers' || activeTab === 'create-center' || activeTab === 'add-client-to-center') && (
                 <CentersPage
                   key={activeTab}
                   initialOpenCreate={activeTab === 'create-center'}
+                  initialOpenAddClient={activeTab === 'add-client-to-center'}
                   headerCenter={selectedCenter}
                   onNavigate={setActiveTab}
                 />

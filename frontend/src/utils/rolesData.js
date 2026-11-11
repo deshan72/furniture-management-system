@@ -94,6 +94,13 @@ export const SYSTEM_MODULES = [
     description: 'Register new regional showroom distribution centers and assign branch codes (C001 format).',
     sensitivity: 'System Critical',
   },
+  {
+    id: 'add-client-to-center',
+    label: 'Add Client to Center',
+    category: 'Centers',
+    description: 'Register or assign customer profiles directly to regional distribution centers.',
+    sensitivity: 'Standard',
+  },
 
   // Finance & Cash
   {
@@ -185,6 +192,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'customers',
     'outstanding',
     'centers',
+    'add-client-to-center',
     'reports',
     'reports-sales',
   ],

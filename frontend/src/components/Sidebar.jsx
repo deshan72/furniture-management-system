@@ -24,6 +24,7 @@ import {
   Building2,
   PlusCircle,
   UserCheck,
+  UserPlus,
 } from 'lucide-react';
 import { hasPageAccess, ROLES_METADATA } from '../utils/rolesData';
 
@@ -84,6 +85,7 @@ export default function Sidebar({
       items: [
         { id: 'centers', label: 'Center Directory', icon: Building2 },
         { id: 'create-center', label: 'Create Center', icon: PlusCircle },
+        { id: 'add-client-to-center', label: 'Add Client to Center', icon: UserPlus },
       ],
     },
     {

@@ -20,12 +20,14 @@ import {
   ChevronDown,
   Store,
   Users,
+  UserPlus,
   MessageSquare,
   Sparkles,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
+import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 
 // Visual branch identity themes (Colors & Hub names)
 const BRANCH_THEMES = {
@@ -151,7 +153,12 @@ const INITIAL_CENTERS = [
   },
 ];
 
-export default function CentersPage({ initialOpenCreate = false, headerCenter = 'all', onNavigate }) {
+export default function CentersPage({
+  initialOpenCreate = false,
+  initialOpenAddClient = false,
+  headerCenter = 'all',
+  onNavigate,
+}) {
   // Centers List State with localStorage persistence
   const [centers, setCenters] = useState(() => {
     try {
@@ -172,19 +179,8 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
     return INITIAL_CENTERS;
   });
 
-  // Read customers to calculate active clients per center
-  const [customers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('dnd_customers_list');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // fallback
-    }
-    return [];
-  });
+  // Customers State (synchronized with localStorage)
+  const [customers, setCustomers] = useState(() => loadSavedCustomers());
 
   // Filter & Search States
   const [searchQuery, setSearchQuery] = useState('');
@@ -200,6 +196,48 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
   const [editingCenter, setEditingCenter] = useState(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
+
+  // Add Client to Center Modal States
+  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(initialOpenAddClient);
+  const [targetCenterForClient, setTargetCenterForClient] = useState(null);
+  const [clientModalTab, setClientModalTab] = useState('new'); // 'new' | 'existing'
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [assignmentFeedback, setAssignmentFeedback] = useState(null);
+
+  const [newClientForm, setNewClientForm] = useState({
+    first_name: '',
+    last_name: '',
+    nic: '',
+    phone: '',
+    whatsapp: '',
+    dob: '',
+    city: 'Maharagama',
+    address: '',
+    civil_status: 'Single',
+    category: 'custom_order',
+    outstanding_balance: '',
+    notes: '',
+  });
+
+  // Sync initialOpenAddClient prop
+  useEffect(() => {
+    if (initialOpenAddClient) {
+      setTargetCenterForClient(centers[0] || null);
+      setAssignmentFeedback(null);
+      setIsAddClientModalOpen(true);
+    }
+  }, [initialOpenAddClient, centers]);
+
+  // Sync external customer changes
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (!e || e.key === 'dnd_customers_list') {
+        setCustomers(loadSavedCustomers());
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // Form State for Add Center
   const [newCenter, setNewCenter] = useState({
@@ -507,6 +545,152 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
     }
   };
 
+  // Open Add Client to Center Modal
+  const handleOpenAddClient = (center = null) => {
+    const target = center || (centers.length > 0 ? centers[0] : null);
+    setTargetCenterForClient(target);
+    setNewClientForm({
+      first_name: '',
+      last_name: '',
+      nic: '',
+      phone: '',
+      whatsapp: '',
+      dob: '',
+      city: target?.city || 'Maharagama',
+      address: '',
+      civil_status: 'Single',
+      category: 'custom_order',
+      outstanding_balance: '',
+      notes: '',
+    });
+    setClientSearchQuery('');
+    setAssignmentFeedback(null);
+    setClientModalTab('new');
+    setIsAddClientModalOpen(true);
+  };
+
+  // Register brand new client to target center
+  const handleRegisterClientToCenter = (e) => {
+    e.preventDefault();
+    if (!targetCenterForClient) {
+      alert('Please select a regional center first.');
+      return;
+    }
+    if (!newClientForm.first_name || !newClientForm.first_name.trim()) {
+      alert('Please enter First Name.');
+      return;
+    }
+    if (!newClientForm.nic || !newClientForm.nic.trim()) {
+      alert('Please enter NIC (National Identity Card) Number.');
+      return;
+    }
+    if (!newClientForm.phone || !newClientForm.phone.trim()) {
+      alert('Please enter Phone Number.');
+      return;
+    }
+
+    const cleanNic = newClientForm.nic.trim().toUpperCase();
+    const existing = customers.find(
+      (c) =>
+        (c.nic && c.nic.trim().toUpperCase() === cleanNic) ||
+        (c.customer_id && c.customer_id.trim().toUpperCase() === cleanNic)
+    );
+
+    if (existing) {
+      const confirmReassign = window.confirm(
+        `Customer "${existing.name}" (NIC: ${cleanNic}) is already registered in the system (Current Center: ${existing.branch_code || 'None'}/${existing.center_code || 'None'}).\n\nDo you want to reassign this customer to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}?`
+      );
+      if (!confirmReassign) return;
+
+      const updated = customers.map((c) =>
+        c.id === existing.id
+          ? {
+              ...c,
+              branch_code: targetCenterForClient.branch_code,
+              center_code: targetCenterForClient.center_code,
+            }
+          : c
+      );
+      setCustomers(updated);
+      saveCustomersToStorage(updated);
+      setAssignmentFeedback({
+        type: 'success',
+        message: `Customer ${existing.name} (NIC: ${cleanNic}) successfully reassigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,
+      });
+      return;
+    }
+
+    const fullName = `${newClientForm.first_name || ''} ${newClientForm.last_name || ''}`.trim() || newClientForm.first_name;
+    const newRecord = {
+      id: `cust-${Date.now()}`,
+      customer_id: cleanNic,
+      branch_code: targetCenterForClient.branch_code,
+      center_code: targetCenterForClient.center_code,
+      contract_no: '1',
+      item_code: '',
+      first_name: newClientForm.first_name.trim(),
+      last_name: (newClientForm.last_name || '').trim(),
+      name: fullName,
+      civil_status: newClientForm.civil_status || 'Single',
+      dob: newClientForm.dob || '',
+      phone: newClientForm.phone.trim(),
+      whatsapp: (newClientForm.whatsapp || newClientForm.phone).trim(),
+      nic: cleanNic,
+      city: newClientForm.city || targetCenterForClient.city || 'Maharagama',
+      address: newClientForm.address || '',
+      category: newClientForm.category || 'custom_order',
+      outstanding_balance: Number(newClientForm.outstanding_balance) || 0,
+      total_spent: Number(newClientForm.outstanding_balance) || 0,
+      total_orders: 1,
+      notes: newClientForm.notes || '',
+      created_at: new Date().toISOString(),
+    };
+
+    const updated = [newRecord, ...customers];
+    setCustomers(updated);
+    saveCustomersToStorage(updated);
+    setAssignmentFeedback({
+      type: 'success',
+      message: `Client "${fullName}" (NIC: ${cleanNic}) successfully registered and assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,
+    });
+    // Reset form
+    setNewClientForm({
+      first_name: '',
+      last_name: '',
+      nic: '',
+      phone: '',
+      whatsapp: '',
+      dob: '',
+      city: targetCenterForClient.city || 'Maharagama',
+      address: '',
+      civil_status: 'Single',
+      category: 'custom_order',
+      outstanding_balance: '',
+      notes: '',
+    });
+  };
+
+  // Assign existing client to target center
+  const handleAssignExistingClient = (cust) => {
+    if (!targetCenterForClient) return;
+    const cleanNic = cust.nic || cust.customer_id;
+    const updated = customers.map((c) =>
+      c.id === cust.id
+        ? {
+            ...c,
+            branch_code: targetCenterForClient.branch_code,
+            center_code: targetCenterForClient.center_code,
+          }
+        : c
+    );
+    setCustomers(updated);
+    saveCustomersToStorage(updated);
+    setAssignmentFeedback({
+      type: 'success',
+      message: `Client "${cust.name}" (NIC: ${cleanNic}) successfully assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,
+    });
+  };
+
   // Export Centers to CSV
   const handleExportCSV = () => {
     if (!filteredCenters.length) {
@@ -762,6 +946,26 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                 </div>
               )}
             </div>
+
+            {/* Add Client to Center Button */}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleOpenAddClient(null)}
+              style={{
+                padding: '9px 16px',
+                fontSize: '0.86rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                color: 'var(--primary)',
+                borderColor: 'var(--primary-border)',
+                background: 'var(--primary-tint)',
+                fontWeight: 600,
+              }}
+            >
+              <UserPlus size={16} /> Add Client to Center
+            </button>
 
             {/* Create Center Button */}
             <button
@@ -1068,6 +1272,15 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                           <button
                             type="button"
                             className="icon-btn-action"
+                            style={{ color: 'var(--primary)' }}
+                            title="Add or Assign Client to this Center"
+                            onClick={() => handleOpenAddClient(center)}
+                          >
+                            <UserPlus size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn-action"
                             title="View Center Details"
                             onClick={() => {
                               setSelectedCenter(center);
@@ -1200,6 +1413,15 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                     </span>
 
                     <div className="action-btn-group">
+                      <button
+                        type="button"
+                        className="icon-btn-action"
+                        style={{ color: 'var(--primary)' }}
+                        title="Add or Assign Client to this Center"
+                        onClick={() => handleOpenAddClient(center)}
+                      >
+                        <UserPlus size={15} />
+                      </button>
                       <button
                         type="button"
                         className="icon-btn-action"
@@ -1704,18 +1926,31 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                 <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Users size={16} color="var(--primary)" /> Registered Clients under this Center
                 </h4>
-                <span
-                  style={{
-                    background: getCustomersForCenter(selectedCenter).length > 0 ? '#DCFCE7' : 'var(--ash-100)',
-                    color: getCustomersForCenter(selectedCenter).length > 0 ? '#15803D' : 'var(--ash-600)',
-                    padding: '2px 8px',
-                    borderRadius: '9999px',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                  }}
-                >
-                  {getCustomersForCenter(selectedCenter).length} Total
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ padding: '4px 10px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                    onClick={() => {
+                      setIsViewModalOpen(false);
+                      handleOpenAddClient(selectedCenter);
+                    }}
+                  >
+                    <UserPlus size={13} /> + Add Client
+                  </button>
+                  <span
+                    style={{
+                      background: getCustomersForCenter(selectedCenter).length > 0 ? '#DCFCE7' : 'var(--ash-100)',
+                      color: getCustomersForCenter(selectedCenter).length > 0 ? '#15803D' : 'var(--ash-600)',
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {getCustomersForCenter(selectedCenter).length} Total
+                  </span>
+                </div>
               </div>
 
               {getCustomersForCenter(selectedCenter).length === 0 ? (
@@ -1727,7 +1962,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                   <table className="custom-table" style={{ margin: 0, fontSize: '0.82rem' }}>
                     <thead>
                       <tr>
-                        <th>Customer ID</th>
+                        <th>NIC / ID</th>
                         <th>Client Name</th>
                         <th>Phone</th>
                         <th>Outstanding Balance</th>
@@ -1737,7 +1972,7 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
                       {getCustomersForCenter(selectedCenter).map((c) => (
                         <tr key={c.id}>
                           <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
-                            {c.customer_id}
+                            {c.nic || c.customer_id}
                           </td>
                           <td style={{ fontWeight: 600, color: 'var(--ash-900)' }}>{c.name}</td>
                           <td style={{ fontFamily: 'monospace' }}>{c.phone}</td>
@@ -1773,6 +2008,341 @@ export default function CentersPage({ initialOpenCreate = false, headerCenter = 
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* =========================================================
+          7. MODAL: ADD CLIENT TO REGIONAL CENTER
+          ========================================================= */}
+      <Modal
+        isOpen={isAddClientModalOpen}
+        onClose={() => {
+          setIsAddClientModalOpen(false);
+          setAssignmentFeedback(null);
+          if (onNavigate && initialOpenAddClient) {
+            onNavigate('centers');
+          }
+        }}
+        title="Add Client to Regional Center"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Target Center Selector */}
+          <div style={{ background: 'var(--ash-50)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
+            <label className="form-label" style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Building2 size={15} color="var(--primary)" /> Target Regional Center *
+            </label>
+            <select
+              className="form-select-full"
+              value={targetCenterForClient?.id || ''}
+              onChange={(e) => {
+                const found = centers.find((c) => c.id === e.target.value);
+                if (found) setTargetCenterForClient(found);
+              }}
+              style={{ fontWeight: 600 }}
+            >
+              {centers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.branch_code}/{c.center_code} — {c.name} ({c.city})
+                </option>
+              ))}
+            </select>
+            {targetCenterForClient && (
+              <div style={{ marginTop: '8px', fontSize: '0.78rem', color: 'var(--ash-600)', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                <span>📍 Branch: <strong>{targetCenterForClient.branch_code}</strong></span>
+                <span>🏛️ Center Code: <strong>{targetCenterForClient.center_code}</strong></span>
+                <span>👤 Officer: <strong>{targetCenterForClient.contact_person || 'N/A'}</strong></span>
+                <span>👥 Registered Clients: <strong>{getCustomersForCenter(targetCenterForClient).length}</strong></span>
+              </div>
+            )}
+          </div>
+
+          {/* Feedback Alert */}
+          {assignmentFeedback && (
+            <div style={{
+              background: '#DCFCE7',
+              border: '1px solid #86EFAC',
+              color: '#15803D',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '0.84rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle size={16} /> {assignmentFeedback.message}
+              </span>
+              <button
+                type="button"
+                onClick={() => setAssignmentFeedback(null)}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#15803D' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Tab switcher: Register New vs Assign Existing */}
+          <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--ash-200)', paddingBottom: '10px' }}>
+            <button
+              type="button"
+              className={`btn ${clientModalTab === 'new' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={() => {
+                setClientModalTab('new');
+                setAssignmentFeedback(null);
+              }}
+            >
+              <UserPlus size={14} /> Register New Client
+            </button>
+            <button
+              type="button"
+              className={`btn ${clientModalTab === 'existing' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '6px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={() => {
+                setClientModalTab('existing');
+                setAssignmentFeedback(null);
+              }}
+            >
+              <Users size={14} /> Assign Existing Client ({customers.length})
+            </button>
+          </div>
+
+          {clientModalTab === 'new' ? (
+            <form onSubmit={handleRegisterClientToCenter}>
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">First Name *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    placeholder="e.g. Sunil"
+                    value={newClientForm.first_name}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, first_name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Last Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Jayawardena"
+                    value={newClientForm.last_name}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, last_name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">NIC (National Identity Card) *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    placeholder="e.g. 198512345678 or 851234567V"
+                    value={newClientForm.nic}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, nic: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phone Number *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    required
+                    placeholder="077XXXXXXX"
+                    value={newClientForm.phone}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">WhatsApp Number</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="077XXXXXXX"
+                    value={newClientForm.whatsapp}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, whatsapp: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Date of Birth</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={newClientForm.dob}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, dob: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">City / Town</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Maharagama"
+                    value={newClientForm.city}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, city: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Civil Status</label>
+                  <select
+                    className="form-select-full"
+                    value={newClientForm.civil_status}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, civil_status: e.target.value })}
+                  >
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="form-group full-width">
+                  <label className="form-label">Full Delivery Address</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="House No, Street, Road, City"
+                    value={newClientForm.address}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, address: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Customer Category</label>
+                  <select
+                    className="form-select-full"
+                    value={newClientForm.category}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, category: e.target.value })}
+                  >
+                    <option value="custom_order">Custom Made Furniture</option>
+                    <option value="showroom">Showroom / Ready Stock</option>
+                    <option value="wholesale">Commercial / Wholesale</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Initial Outstanding Balance (LKR)</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    min="0"
+                    step="500"
+                    placeholder="0.00"
+                    value={newClientForm.outstanding_balance}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, outstanding_balance: e.target.value })}
+                  />
+                </div>
+                <div className="form-group full-width">
+                  <label className="form-label">Furniture Preferences & Notes</label>
+                  <textarea
+                    className="form-textarea"
+                    placeholder="e.g. Teak wood bedroom suite, showroom inquiries..."
+                    value={newClientForm.notes}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, notes: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '18px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setIsAddClientModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <UserPlus size={16} /> Save & Register to Center
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div>
+              {/* Search Existing Clients */}
+              <div style={{ position: 'relative', marginBottom: '12px' }}>
+                <Search size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--ash-400)' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ paddingLeft: '36px' }}
+                  placeholder="Filter existing clients by name, NIC, or phone..."
+                  value={clientSearchQuery}
+                  onChange={(e) => setClientSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--ash-200)', borderRadius: '10px' }}>
+                <table className="custom-table" style={{ margin: 0, fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr>
+                      <th>Client Name</th>
+                      <th>NIC</th>
+                      <th>Phone</th>
+                      <th>Current Center</th>
+                      <th style={{ textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customers
+                      .filter((c) => {
+                        if (!clientSearchQuery) return true;
+                        const q = clientSearchQuery.toLowerCase();
+                        return (
+                          (c.name && c.name.toLowerCase().includes(q)) ||
+                          (c.nic && c.nic.toLowerCase().includes(q)) ||
+                          (c.customer_id && c.customer_id.toLowerCase().includes(q)) ||
+                          (c.phone && c.phone.includes(q))
+                        );
+                      })
+                      .map((c) => {
+                        const isCurrentCenter =
+                          targetCenterForClient &&
+                          c.branch_code === targetCenterForClient.branch_code &&
+                          formatCenterCode(c.center_code) === formatCenterCode(targetCenterForClient.center_code);
+
+                        return (
+                          <tr key={c.id}>
+                            <td style={{ fontWeight: 600, color: 'var(--ash-900)' }}>{c.name}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--primary)' }}>
+                              {c.nic || c.customer_id}
+                            </td>
+                            <td style={{ fontFamily: 'monospace' }}>{c.phone}</td>
+                            <td>
+                              <span style={{
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '0.72rem',
+                                background: isCurrentCenter ? '#DCFCE7' : 'var(--ash-100)',
+                                color: isCurrentCenter ? '#15803D' : 'var(--ash-700)',
+                                fontWeight: 600,
+                              }}>
+                                {c.branch_code && c.center_code ? `${c.branch_code}/${c.center_code}` : 'Unassigned'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              {isCurrentCenter ? (
+                                <span style={{ fontSize: '0.74rem', color: '#16A34A', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                  <CheckCircle size={13} /> In Center
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  style={{ padding: '3px 10px', fontSize: '0.74rem' }}
+                                  onClick={() => handleAssignExistingClient(c)}
+                                >
+                                  Assign Here
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );
