@@ -93,6 +93,12 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const [formQuantity, setFormQuantity] = useState(1);
   const [formUnitPrice, setFormUnitPrice] = useState(0);
 
+  // Autocomplete Search & Suggestions state for Code & Name
+  const [codeSearchText, setCodeSearchText] = useState('');
+  const [nameSearchText, setNameSearchText] = useState('');
+  const [isCodeDropdownOpen, setIsCodeDropdownOpen] = useState(false);
+  const [isNameDropdownOpen, setIsNameDropdownOpen] = useState(false);
+
   const [formPassbookNo, setFormPassbookNo] = useState('');
   const [formPaymentType, setFormPaymentType] = useState('installment'); // 'installment' | 'cash'
   const [formDownPayment, setFormDownPayment] = useState(0);
@@ -154,6 +160,44 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     return buildContractNumber(pn, center, item);
   }, [formPassbookNo, formCenterCode, formSelectedProduct]);
 
+  // Suggestions for Code search (suggests matching items by item_code)
+  const codeSuggestions = useMemo(() => {
+    if (!codeSearchText.trim()) return products;
+    const q = codeSearchText.toLowerCase().trim();
+    return products.filter(
+      (p) => p.item_code?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q)
+    );
+  }, [products, codeSearchText]);
+
+  // Suggestions for Name search (suggests matching items by product name)
+  const nameSuggestions = useMemo(() => {
+    if (!nameSearchText.trim()) return products;
+    const q = nameSearchText.toLowerCase().trim();
+    return products.filter(
+      (p) => p.name?.toLowerCase().includes(q) || p.item_code?.toLowerCase().includes(q)
+    );
+  }, [products, nameSearchText]);
+
+  // Select a product from suggestions or direct selection
+  const handleSelectProduct = (prod) => {
+    if (prod) {
+      setFormProductId(prod.id);
+      setFormUnitPrice(prod.selling_price || 0);
+      setCodeSearchText(prod.item_code || '');
+      setNameSearchText(prod.name || '');
+      const total = (Number(formQuantity) || 1) * (prod.selling_price || 0);
+      setFormDownPayment(Math.round(total * 0.2));
+    } else {
+      setFormProductId('');
+      setFormUnitPrice(0);
+      setCodeSearchText('');
+      setNameSearchText('');
+      setFormDownPayment(0);
+    }
+    setIsCodeDropdownOpen(false);
+    setIsNameDropdownOpen(false);
+  };
+
   // Open "Add New Order" Modal & Initialize Defaults
   const handleOpenAddOrderModal = () => {
     const nextPn = generateNextPassbookNo(orders);
@@ -172,11 +216,15 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     const firstProd = products[0] || null;
     if (firstProd) {
       setFormProductId(firstProd.id);
+      setCodeSearchText(firstProd.item_code || '');
+      setNameSearchText(firstProd.name || '');
       setFormUnitPrice(firstProd.selling_price || 0);
       setFormQuantity(1);
       setFormDownPayment(Math.round((firstProd.selling_price || 0) * 0.2));
     } else {
       setFormProductId('');
+      setCodeSearchText('');
+      setNameSearchText('');
       setFormUnitPrice(0);
       setFormQuantity(1);
       setFormDownPayment(0);
@@ -193,6 +241,8 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setFormPaymentMethod('Cash');
     setFormNotes('');
     setShowQuickRegister(false);
+    setIsCodeDropdownOpen(false);
+    setIsNameDropdownOpen(false);
     setIsAddOrderModalOpen(true);
   };
 
@@ -204,17 +254,6 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       if (cust.center_code) setFormCenterCode(formatCenterCode(cust.center_code));
       if (cust.branch_code) setFormBranchCode(cust.branch_code);
       if (cust.address) setFormDeliveryAddress(cust.address);
-    }
-  };
-
-  // When product changes in form (by Code or Name)
-  const handleFormSelectProduct = (prodIdOrCode) => {
-    const prod = products.find((p) => p.id === prodIdOrCode || p.item_code === prodIdOrCode);
-    if (prod) {
-      setFormProductId(prod.id);
-      setFormUnitPrice(prod.selling_price || 0);
-      const total = (Number(formQuantity) || 1) * (prod.selling_price || 0);
-      setFormDownPayment(Math.round(total * 0.2));
     }
   };
 
@@ -1135,56 +1174,317 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             )}
           </div>
 
-          {/* STEP 2: SEARCH & SELECT FURNITURE ITEM (BY CODE OR NAME) */}
-          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
-            <label className="form-label" style={{ fontWeight: 800, marginBottom: '8px', fontSize: '0.86rem' }}>
-              2. Furniture Item Search (By Code or Name) *
-            </label>
+          {/* STEP 2: SEARCH & SELECT FURNITURE ITEM (BY CODE OR NAME WITH LIVE SUGGESTIONS) */}
+          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)', position: 'relative' }}>
+            {/* Click-outside backdrop when suggestions are open */}
+            {(isCodeDropdownOpen || isNameDropdownOpen) && (
+              <div
+                onClick={() => {
+                  setIsCodeDropdownOpen(false);
+                  setIsNameDropdownOpen(false);
+                }}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 55,
+                  background: 'transparent',
+                }}
+              />
+            )}
 
-            <div className="form-grid" style={{ gap: '10px' }}>
-              {/* Dual Search 1: By Product Code */}
-              <div className="form-group" style={{ margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label className="form-label" style={{ fontWeight: 800, margin: 0, fontSize: '0.86rem' }}>
+                2. Furniture Item Search (By Code or Name) *
+              </label>
+              {formSelectedProduct && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectProduct(null)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <RotateCcw size={12} /> Clear / Change Item
+                </button>
+              )}
+            </div>
+
+            <div className="form-grid" style={{ gap: '12px' }}>
+              {/* Dual Search 1: Search by Product Code with suggestions */}
+              <div className="form-group" style={{ margin: 0, position: 'relative' }}>
                 <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
                   Search by Product Code (WD / MEL / ELC)
                 </label>
-                <select
-                  className="form-select-full"
-                  value={formSelectedProduct ? formSelectedProduct.item_code : ''}
-                  onChange={(e) => handleFormSelectProduct(e.target.value)}
-                  style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.85rem' }}
-                >
-                  <option value="">-- Choose Product Code --</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.item_code}>
-                      {p.item_code} — {p.name}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative', zIndex: 58 }}>
+                  <Search
+                    size={15}
+                    style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--ash-400)', pointerEvents: 'none' }}
+                  />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Type code e.g. WD-001, MEL-001..."
+                    value={codeSearchText}
+                    onFocus={() => {
+                      setIsCodeDropdownOpen(true);
+                      setIsNameDropdownOpen(false);
+                    }}
+                    onChange={(e) => {
+                      setCodeSearchText(e.target.value);
+                      setIsCodeDropdownOpen(true);
+                      setIsNameDropdownOpen(false);
+                    }}
+                    style={{
+                      paddingLeft: '32px',
+                      paddingRight: codeSearchText ? '28px' : '10px',
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      fontSize: '0.86rem',
+                    }}
+                  />
+                  {codeSearchText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCodeSearchText('');
+                        setIsCodeDropdownOpen(true);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--ash-400)',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Live Code Suggestions Popover */}
+                {isCodeDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: '#fff',
+                      borderRadius: '8px',
+                      border: '1px solid var(--primary-border)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      zIndex: 65,
+                    }}
+                  >
+                    {codeSuggestions.length === 0 ? (
+                      <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--ash-500)' }}>
+                        No furniture items match code "{codeSearchText}"
+                      </div>
+                    ) : (
+                      codeSuggestions.map((item) => {
+                        const isChosen = formSelectedProduct?.id === item.id;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectProduct(item)}
+                            style={{
+                              padding: '9px 12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              borderBottom: '1px solid var(--ash-100)',
+                              cursor: 'pointer',
+                              background: isChosen ? 'var(--primary-tint)' : '#fff',
+                              transition: 'background 0.1s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : '#fff')
+                            }
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span
+                                style={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 800,
+                                  fontSize: '0.76rem',
+                                  color: 'var(--primary)',
+                                  background: '#EFF6FF',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #BFDBFE',
+                                }}
+                              >
+                                {item.item_code}
+                              </span>
+                              <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--ash-900)' }}>
+                                  {item.name}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'capitalize' }}>
+                                  {item.category?.replace('_', ' ')}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#16A34A', whiteSpace: 'nowrap' }}>
+                              {formatLKR(item.selling_price)}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Dual Search 2: By Product Name */}
-              <div className="form-group" style={{ margin: 0 }}>
+              {/* Dual Search 2: Search by Product Name with suggestions */}
+              <div className="form-group" style={{ margin: 0, position: 'relative' }}>
                 <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
                   Search by Product Name
                 </label>
-                <select
-                  className="form-select-full"
-                  value={formSelectedProduct ? formSelectedProduct.id : ''}
-                  onChange={(e) => handleFormSelectProduct(e.target.value)}
-                  style={{ fontWeight: 600, fontSize: '0.85rem' }}
-                >
-                  <option value="">-- Choose Product Name --</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.item_code})
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative', zIndex: 58 }}>
+                  <Search
+                    size={15}
+                    style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--ash-400)', pointerEvents: 'none' }}
+                  />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Type name e.g. Dining Table, Cupboard, Chair..."
+                    value={nameSearchText}
+                    onFocus={() => {
+                      setIsNameDropdownOpen(true);
+                      setIsCodeDropdownOpen(false);
+                    }}
+                    onChange={(e) => {
+                      setNameSearchText(e.target.value);
+                      setIsNameDropdownOpen(true);
+                      setIsCodeDropdownOpen(false);
+                    }}
+                    style={{
+                      paddingLeft: '32px',
+                      paddingRight: nameSearchText ? '28px' : '10px',
+                      fontWeight: 600,
+                      fontSize: '0.86rem',
+                    }}
+                  />
+                  {nameSearchText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNameSearchText('');
+                        setIsNameDropdownOpen(true);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '8px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--ash-400)',
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Live Name Suggestions Popover */}
+                {isNameDropdownOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: '#fff',
+                      borderRadius: '8px',
+                      border: '1px solid var(--primary-border)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
+                      maxHeight: '220px',
+                      overflowY: 'auto',
+                      zIndex: 65,
+                    }}
+                  >
+                    {nameSuggestions.length === 0 ? (
+                      <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--ash-500)' }}>
+                        No furniture items match name "{nameSearchText}"
+                      </div>
+                    ) : (
+                      nameSuggestions.map((item) => {
+                        const isChosen = formSelectedProduct?.id === item.id;
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => handleSelectProduct(item)}
+                            style={{
+                              padding: '9px 12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              borderBottom: '1px solid var(--ash-100)',
+                              cursor: 'pointer',
+                              background: isChosen ? 'var(--primary-tint)' : '#fff',
+                              transition: 'background 0.1s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : '#fff')
+                            }
+                          >
+                            <div>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--ash-900)' }}>
+                                {item.name}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                <span
+                                  style={{
+                                    fontFamily: 'monospace',
+                                    fontWeight: 800,
+                                    fontSize: '0.72rem',
+                                    color: 'var(--primary)',
+                                  }}
+                                >
+                                  {item.item_code}
+                                </span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'capitalize' }}>
+                                  • {item.category?.replace('_', ' ')}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#16A34A', whiteSpace: 'nowrap' }}>
+                              {formatLKR(item.selling_price)}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Auto-generated Item Amount & Quantity */}
-            {formSelectedProduct && (
+            {/* Auto-generated Item Amount & Quantity & Confirmation Box */}
+            {formSelectedProduct ? (
               <div
                 style={{
                   marginTop: '12px',
@@ -1233,6 +1533,20 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                     {formatLKR(formGrossTotal)}
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  marginTop: '10px',
+                  padding: '8px 12px',
+                  background: '#FFFBEB',
+                  borderRadius: '6px',
+                  border: '1px dashed #FDE68A',
+                  color: '#92400E',
+                  fontSize: '0.76rem',
+                }}
+              >
+                💡 Type an Item Code or Product Name above to view instant suggestions and auto-generate the item price.
               </div>
             )}
           </div>
