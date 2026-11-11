@@ -467,7 +467,9 @@ export default function App() {
               )}
 
               {/* Orders & Billing */}
-              {activeTab === 'orders' && <OrdersPage />}
+              {activeTab === 'orders' && (
+                <OrdersPage headerCenter={selectedCenter} onNavigate={setActiveTab} />
+              )}
               {activeTab === 'payments' &&
                 renderGenericPlaceholder(
                   'Payments & Customer Advances',
