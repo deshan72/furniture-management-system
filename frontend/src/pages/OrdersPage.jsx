@@ -17,10 +17,9 @@ import {
   MapPin,
   Calendar,
   Layers,
-  Sparkles,
-  ArrowRight,
   ShieldCheck,
-  Percent,
+  Eye,
+  ArrowRight,
   Clock,
   RotateCcw,
 } from 'lucide-react';
@@ -37,10 +36,7 @@ import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
 
 export default function OrdersPage({ headerCenter = 'all' }) {
-  // Main view tab: 'create' (Admin Order Desk) | 'history' (Placed Orders & Contracts)
-  const [activeTab, setActiveTab] = useState('create');
-
-  // Orders, customers, products and centers state
+  // Orders, customers, products and centers data
   const [orders, setOrders] = useState(() => loadSavedOrders());
   const [customers, setCustomers] = useState(() => loadSavedCustomers());
   const [products, setProducts] = useState(() => loadSavedProducts());
@@ -57,27 +53,22 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     return INITIAL_CENTERS;
   });
 
-  // Selected Order for separate display in History (Master-Detail view)
-  const [selectedOrderId, setSelectedOrderId] = useState(() => {
-    const list = loadSavedOrders();
-    return list.length > 0 ? list[0].id : null;
-  });
+  // Main Page Filters & View Controls
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'paid'
+  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
 
-  // History search & filters
-  const [historySearchQuery, setHistorySearchQuery] = useState('');
-  const [historyStatusFilter, setHistoryStatusFilter] = useState('all'); // 'all' | 'active' | 'paid'
-  const [historyViewMode, setHistoryViewMode] = useState('split'); // 'split' | 'table'
-
-  // Modals state
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  // Modals
+  const [isAddOrderModalOpen, setIsAddOrderModalOpen] = useState(false);
+  const [isViewDetailsModalOpen, setIsViewDetailsModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Selected Order for viewing details, printing, or paying
+  const [activeSelectedOrder, setActiveSelectedOrder] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [orderToPrint, setOrderToPrint] = useState(null);
 
-  // Success alert after placing order
-  const [placedOrderSuccess, setPlacedOrderSuccess] = useState(null);
-
-  // Quick register client drawer inside Order Desk
+  // Quick Register Customer inside Add Order Modal
   const [showQuickRegister, setShowQuickRegister] = useState(false);
   const [quickClient, setQuickClient] = useState({
     first_name: '',
@@ -91,36 +82,25 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   });
 
   // ==========================================
-  // ADMIN ORDER DESK (FORM STATE)
+  // ADD NEW ORDER FORM STATE
   // ==========================================
-  const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [selectedCenterCode, setSelectedCenterCode] = useState('C001');
-  const [selectedBranchCode, setSelectedBranchCode] = useState('MHG');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [formCustomerId, setFormCustomerId] = useState('');
+  const [formCenterCode, setFormCenterCode] = useState('C001');
+  const [formBranchCode, setFormBranchCode] = useState('MHG');
+  const [formDeliveryAddress, setFormDeliveryAddress] = useState('');
 
-  // Category filter in Item selection
-  const [itemCategoryFilter, setItemCategoryFilter] = useState('all'); // 'all' | 'wood' | 'melamine' | 'electrical_item'
+  const [formProductId, setFormProductId] = useState('');
+  const [formQuantity, setFormQuantity] = useState(1);
+  const [formUnitPrice, setFormUnitPrice] = useState(0);
 
-  // Product selection
-  const [selectedProductId, setSelectedProductId] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [unitPrice, setUnitPrice] = useState(0);
-
-  // Passbook & Contract Number
-  const [passbookNo, setPassbookNo] = useState(() => generateNextPassbookNo(loadSavedOrders()));
-
-  // Payment & Loan terms
-  const [paymentType, setPaymentType] = useState('installment'); // 'installment' | 'cash'
-  const [downPayment, setDownPayment] = useState(0);
-  const [loanFrequency, setLoanFrequency] = useState('monthly'); // 'monthly' | 'weekly'
-  const [loanTerms, setLoanTerms] = useState(12);
-  const [firstDueDate, setFirstDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [paymentMethod, setPaymentMethod] = useState('Cash');
-  const [orderNotes, setOrderNotes] = useState('');
+  const [formPassbookNo, setFormPassbookNo] = useState('');
+  const [formPaymentType, setFormPaymentType] = useState('installment'); // 'installment' | 'cash'
+  const [formDownPayment, setFormDownPayment] = useState(0);
+  const [formLoanFrequency, setFormLoanFrequency] = useState('monthly'); // 'monthly' | 'weekly'
+  const [formLoanTerms, setFormLoanTerms] = useState(12);
+  const [formFirstDueDate, setFormFirstDueDate] = useState('');
+  const [formPaymentMethod, setFormPaymentMethod] = useState('Cash');
+  const [formNotes, setFormNotes] = useState('');
 
   // Sync external changes from localStorage
   useEffect(() => {
@@ -133,117 +113,132 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // Filter active registered customers only
+  // Filter for active registered clients only
   const activeCustomers = useMemo(() => {
     return customers.filter((c) => c && c.status !== 'inactive');
   }, [customers]);
 
-  // Currently selected customer object
-  const activeSelectedCustomer = useMemo(() => {
-    return activeCustomers.find((c) => c.id === selectedCustomerId || (c.nic && c.nic === selectedCustomerId)) || null;
-  }, [activeCustomers, selectedCustomerId]);
+  // Form: Currently selected active customer
+  const formSelectedCustomer = useMemo(() => {
+    return activeCustomers.find((c) => c.id === formCustomerId || (c.nic && c.nic === formCustomerId)) || null;
+  }, [activeCustomers, formCustomerId]);
 
-  // Set default customer when customer list loads
-  useEffect(() => {
-    if (!selectedCustomerId && activeCustomers.length > 0) {
-      const first = activeCustomers[0];
-      setSelectedCustomerId(first.id);
-      setSelectedCenterCode(formatCenterCode(first.center_code || 'C001'));
-      setSelectedBranchCode(first.branch_code || 'MHG');
-      setDeliveryAddress(first.address || '');
-    }
-  }, [activeCustomers, selectedCustomerId]);
+  // Form: Currently selected product
+  const formSelectedProduct = useMemo(() => {
+    return products.find((p) => p.id === formProductId || p.item_code === formProductId) || null;
+  }, [products, formProductId]);
 
-  // Filter products by category
-  const filteredProducts = useMemo(() => {
-    if (itemCategoryFilter === 'all') return products;
-    return products.filter((p) => p.category === itemCategoryFilter);
-  }, [products, itemCategoryFilter]);
+  // Form: Auto-calculated Gross Order Total
+  const formGrossTotal = useMemo(() => {
+    return (Number(formQuantity) || 1) * (Number(formUnitPrice) || 0);
+  }, [formQuantity, formUnitPrice]);
 
-  // Currently selected product object
-  const selectedProduct = useMemo(() => {
-    return products.find((p) => p.id === selectedProductId || p.item_code === selectedProductId) || null;
-  }, [products, selectedProductId]);
+  // Form: Loan Balance calculation
+  const formLoanBalance = useMemo(() => {
+    if (formPaymentType === 'cash') return 0;
+    return Math.max(0, formGrossTotal - (Number(formDownPayment) || 0));
+  }, [formPaymentType, formGrossTotal, formDownPayment]);
 
-  // Set default product when products list loads
-  useEffect(() => {
-    if (!selectedProductId && products.length > 0) {
-      const first = products[0];
-      setSelectedProductId(first.id);
-      setUnitPrice(first.selling_price || 0);
-      setDownPayment(Math.round((first.selling_price || 0) * 0.2));
-    }
-  }, [products, selectedProductId]);
+  // Form: Auto-calculated Installment Value
+  const formCalculatedInstallment = useMemo(() => {
+    if (formPaymentType === 'cash' || formLoanBalance <= 0) return 0;
+    const t = Number(formLoanTerms) || 1;
+    return Math.ceil(formLoanBalance / t);
+  }, [formPaymentType, formLoanBalance, formLoanTerms]);
 
-  // Total order value calculation
-  const totalOrderValue = useMemo(() => {
-    return (Number(quantity) || 1) * (Number(unitPrice) || 0);
-  }, [quantity, unitPrice]);
-
-  // Loan Balance calculation
-  const loanBalance = useMemo(() => {
-    if (paymentType === 'cash') return 0;
-    return Math.max(0, totalOrderValue - (Number(downPayment) || 0));
-  }, [paymentType, totalOrderValue, downPayment]);
-
-  // Installment value auto-calculation
-  const calculatedInstallmentValue = useMemo(() => {
-    if (paymentType === 'cash' || loanBalance <= 0) return 0;
-    const t = Number(loanTerms) || 1;
-    return Math.ceil(loanBalance / t);
-  }, [paymentType, loanBalance, loanTerms]);
-
-  // Generated Contract Number: (pn / center code / item code)
-  const currentContractNumber = useMemo(() => {
-    const pn = passbookNo || 'PN-001';
-    const center = selectedCenterCode || 'C001';
-    const item = selectedProduct ? selectedProduct.item_code : 'WD-001';
+  // Form: Real-time Contract Code (pn / center code / item code)
+  const formContractCode = useMemo(() => {
+    const pn = formPassbookNo || 'PN-001';
+    const center = formCenterCode || 'C001';
+    const item = formSelectedProduct ? formSelectedProduct.item_code : 'WD-001';
     return buildContractNumber(pn, center, item);
-  }, [passbookNo, selectedCenterCode, selectedProduct]);
+  }, [formPassbookNo, formCenterCode, formSelectedProduct]);
 
-  // When customer changes
-  const handleSelectCustomer = (custId) => {
-    setSelectedCustomerId(custId);
+  // Open "Add New Order" Modal & Initialize Defaults
+  const handleOpenAddOrderModal = () => {
+    const nextPn = generateNextPassbookNo(orders);
+    setFormPassbookNo(nextPn);
+
+    const firstCust = activeCustomers[0] || null;
+    if (firstCust) {
+      setFormCustomerId(firstCust.id);
+      setFormCenterCode(formatCenterCode(firstCust.center_code || 'C001'));
+      setFormBranchCode(firstCust.branch_code || 'MHG');
+      setFormDeliveryAddress(firstCust.address || '');
+    } else {
+      setFormCustomerId('');
+    }
+
+    const firstProd = products[0] || null;
+    if (firstProd) {
+      setFormProductId(firstProd.id);
+      setFormUnitPrice(firstProd.selling_price || 0);
+      setFormQuantity(1);
+      setFormDownPayment(Math.round((firstProd.selling_price || 0) * 0.2));
+    } else {
+      setFormProductId('');
+      setFormUnitPrice(0);
+      setFormQuantity(1);
+      setFormDownPayment(0);
+    }
+
+    setFormPaymentType('installment');
+    setFormLoanFrequency('monthly');
+    setFormLoanTerms(12);
+
+    const nextMonth = new Date();
+    nextMonth.setDate(nextMonth.getDate() + 30);
+    setFormFirstDueDate(nextMonth.toISOString().slice(0, 10));
+
+    setFormPaymentMethod('Cash');
+    setFormNotes('');
+    setShowQuickRegister(false);
+    setIsAddOrderModalOpen(true);
+  };
+
+  // When customer changes in form
+  const handleFormSelectCustomer = (custId) => {
+    setFormCustomerId(custId);
     const cust = activeCustomers.find((c) => c.id === custId);
     if (cust) {
-      if (cust.center_code) setSelectedCenterCode(formatCenterCode(cust.center_code));
-      if (cust.branch_code) setSelectedBranchCode(cust.branch_code);
-      if (cust.address) setDeliveryAddress(cust.address);
+      if (cust.center_code) setFormCenterCode(formatCenterCode(cust.center_code));
+      if (cust.branch_code) setFormBranchCode(cust.branch_code);
+      if (cust.address) setFormDeliveryAddress(cust.address);
     }
   };
 
-  // When product changes (by Code or Name)
-  const handleSelectProduct = (prodIdOrCode) => {
+  // When product changes in form (by Code or Name)
+  const handleFormSelectProduct = (prodIdOrCode) => {
     const prod = products.find((p) => p.id === prodIdOrCode || p.item_code === prodIdOrCode);
     if (prod) {
-      setSelectedProductId(prod.id);
-      setUnitPrice(prod.selling_price || 0);
-      const total = (Number(quantity) || 1) * (prod.selling_price || 0);
-      setDownPayment(Math.round(total * 0.2));
+      setFormProductId(prod.id);
+      setFormUnitPrice(prod.selling_price || 0);
+      const total = (Number(formQuantity) || 1) * (prod.selling_price || 0);
+      setFormDownPayment(Math.round(total * 0.2));
     }
   };
 
-  // When frequency changes
-  const handleFrequencyChange = (freq) => {
-    setLoanFrequency(freq);
+  // When loan frequency changes
+  const handleFormFrequencyChange = (freq) => {
+    setFormLoanFrequency(freq);
     if (freq === 'weekly') {
       const nextWeek = new Date();
       nextWeek.setDate(nextWeek.getDate() + 7);
-      setFirstDueDate(nextWeek.toISOString().slice(0, 10));
+      setFormFirstDueDate(nextWeek.toISOString().slice(0, 10));
     } else {
       const nextMonth = new Date();
       nextMonth.setDate(nextMonth.getDate() + 30);
-      setFirstDueDate(nextMonth.toISOString().slice(0, 10));
+      setFormFirstDueDate(nextMonth.toISOString().slice(0, 10));
     }
   };
 
-  // Quick preset down payment percentage
+  // Quick percent preset for down payment
   const handleSetDownPaymentPercent = (pct) => {
-    const calculated = Math.round(totalOrderValue * (pct / 100));
-    setDownPayment(calculated);
+    const calculated = Math.round(formGrossTotal * (pct / 100));
+    setFormDownPayment(calculated);
   };
 
-  // Quick Register Customer
+  // Quick Register Customer inside Modal
   const handleQuickRegisterClient = (e) => {
     e.preventDefault();
     if (!quickClient.first_name || !quickClient.nic || !quickClient.phone) {
@@ -256,8 +251,8 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       (c) => (c.nic && c.nic.trim().toUpperCase() === cleanNic) || c.customer_id === cleanNic
     );
     if (existing) {
-      alert(`Customer with NIC "${cleanNic}" already exists. Selecting them automatically.`);
-      setSelectedCustomerId(existing.id);
+      alert(`Customer with NIC "${cleanNic}" already exists. Selected automatically.`);
+      setFormCustomerId(existing.id);
       setShowQuickRegister(false);
       return;
     }
@@ -285,7 +280,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       total_spent: 0,
       total_orders: 0,
       status: 'active',
-      notes: 'Quick registered during order placement',
+      notes: 'Registered during order creation',
       created_at: new Date().toISOString(),
     };
 
@@ -293,36 +288,36 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setCustomers(updated);
     saveCustomersToStorage(updated);
 
-    setSelectedCustomerId(newCust.id);
-    setSelectedCenterCode(newCust.center_code);
-    setSelectedBranchCode(newCust.branch_code);
-    setDeliveryAddress(newCust.address);
+    setFormCustomerId(newCust.id);
+    setFormCenterCode(newCust.center_code);
+    setFormBranchCode(newCust.branch_code);
+    setFormDeliveryAddress(newCust.address);
     setShowQuickRegister(false);
   };
 
-  // Submit and Place New Order
-  const handlePlaceOrder = (andPrint = false) => {
-    if (!activeSelectedCustomer) {
+  // Submit and Place Order
+  const handleConfirmPlaceOrder = (andPrint = false) => {
+    if (!formSelectedCustomer) {
       alert('Please select an active registered customer. Only active clients can place orders.');
       return;
     }
-    if (!selectedProduct) {
+    if (!formSelectedProduct) {
       alert('Please select a furniture item.');
       return;
     }
 
-    const finalPassbook = (passbookNo || 'PN-001').trim().toUpperCase();
+    const finalPassbook = (formPassbookNo || 'PN-001').trim().toUpperCase();
     const finalContract = buildContractNumber(
       finalPassbook,
-      selectedCenterCode || activeSelectedCustomer.center_code || 'C001',
-      selectedProduct.item_code
+      formCenterCode || formSelectedCustomer.center_code || 'C001',
+      formSelectedProduct.item_code
     );
 
-    const isInstallment = paymentType === 'installment';
-    const finalGross = Number(totalOrderValue);
-    const finalAdvance = isInstallment ? Math.min(Number(downPayment) || 0, finalGross) : finalGross;
+    const isInstallment = formPaymentType === 'installment';
+    const finalGross = Number(formGrossTotal);
+    const finalAdvance = isInstallment ? Math.min(Number(formDownPayment) || 0, finalGross) : finalGross;
     const finalBalanceDue = Math.max(0, finalGross - finalAdvance);
-    const finalTerms = isInstallment ? Number(loanTerms) || 1 : 1;
+    const finalTerms = isInstallment ? Number(formLoanTerms) || 1 : 1;
     const finalInstallmentVal = isInstallment ? Math.ceil(finalBalanceDue / finalTerms) : 0;
 
     const newOrder = {
@@ -331,42 +326,41 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       contract_no: finalContract,
       passbook_no: finalPassbook,
       date: new Date().toISOString().slice(0, 10),
-      customer_id: activeSelectedCustomer.nic || activeSelectedCustomer.customer_id,
-      customer_name: activeSelectedCustomer.name,
-      customer_phone: activeSelectedCustomer.phone,
-      customer_nic: activeSelectedCustomer.nic || activeSelectedCustomer.customer_id,
-      customer_address: deliveryAddress || activeSelectedCustomer.address,
-      branch_code: selectedBranchCode || activeSelectedCustomer.branch_code || 'MHG',
-      center_code: formatCenterCode(selectedCenterCode || activeSelectedCustomer.center_code || 'C001'),
-      item_id: selectedProduct.id,
-      item_code: selectedProduct.item_code,
-      item_name: selectedProduct.name,
-      category: selectedProduct.category,
-      quantity: Number(quantity),
-      unit_price: Number(unitPrice),
+      customer_id: formSelectedCustomer.nic || formSelectedCustomer.customer_id,
+      customer_name: formSelectedCustomer.name,
+      customer_phone: formSelectedCustomer.phone,
+      customer_nic: formSelectedCustomer.nic || formSelectedCustomer.customer_id,
+      customer_address: formDeliveryAddress || formSelectedCustomer.address,
+      branch_code: formBranchCode || formSelectedCustomer.branch_code || 'MHG',
+      center_code: formatCenterCode(formCenterCode || formSelectedCustomer.center_code || 'C001'),
+      item_id: formSelectedProduct.id,
+      item_code: formSelectedProduct.item_code,
+      item_name: formSelectedProduct.name,
+      category: formSelectedProduct.category,
+      quantity: Number(formQuantity),
+      unit_price: Number(formUnitPrice),
       gross_amount: finalGross,
       advance_paid: finalAdvance,
       balance_due: finalBalanceDue,
-      payment_type: paymentType,
-      loan_frequency: isInstallment ? loanFrequency : null,
+      payment_type: formPaymentType,
+      loan_frequency: isInstallment ? formLoanFrequency : null,
       loan_terms: finalTerms,
       installment_value: finalInstallmentVal,
-      first_due_date: isInstallment ? firstDueDate : null,
+      first_due_date: isInstallment ? formFirstDueDate : null,
       installments_paid: isInstallment && finalBalanceDue <= 0 ? finalTerms : finalAdvance > 0 ? 1 : 0,
-      payment_method: paymentMethod,
+      payment_method: formPaymentMethod,
       status: finalBalanceDue <= 0 ? 'Fully Paid' : 'Active Loan',
-      notes: orderNotes || `Order placed for ${selectedProduct.name}`,
+      notes: formNotes || `Order for ${formSelectedProduct.name}`,
       created_at: new Date().toISOString(),
     };
 
     const updatedOrders = [newOrder, ...orders];
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
-    setSelectedOrderId(newOrder.id);
 
     // Update customer stats
     const updatedCustomers = customers.map((c) => {
-      if (c.id === activeSelectedCustomer.id) {
+      if (c.id === formSelectedCustomer.id) {
         return {
           ...c,
           outstanding_balance: (c.outstanding_balance || 0) + finalBalanceDue,
@@ -379,100 +373,37 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setCustomers(updatedCustomers);
     saveCustomersToStorage(updatedCustomers);
 
-    // Increment Passbook Number for next order
-    setPassbookNo(generateNextPassbookNo(updatedOrders));
-    setOrderNotes('');
-
-    setPlacedOrderSuccess(newOrder);
+    setIsAddOrderModalOpen(false);
 
     if (andPrint) {
-      setOrderToPrint(newOrder);
+      setActiveSelectedOrder(newOrder);
       setIsPrintModalOpen(true);
+    } else {
+      setActiveSelectedOrder(newOrder);
+      setIsViewDetailsModalOpen(true);
     }
   };
-
-  // Reset Order Form
-  const handleResetForm = () => {
-    if (window.confirm('Reset the order form to defaults?')) {
-      if (activeCustomers.length > 0) {
-        setSelectedCustomerId(activeCustomers[0].id);
-        setSelectedCenterCode(formatCenterCode(activeCustomers[0].center_code || 'C001'));
-        setSelectedBranchCode(activeCustomers[0].branch_code || 'MHG');
-        setDeliveryAddress(activeCustomers[0].address || '');
-      }
-      if (products.length > 0) {
-        setSelectedProductId(products[0].id);
-        setUnitPrice(products[0].selling_price || 0);
-        setQuantity(1);
-        setDownPayment(Math.round((products[0].selling_price || 0) * 0.2));
-      }
-      setPaymentType('installment');
-      setLoanFrequency('monthly');
-      setLoanTerms(12);
-      setOrderNotes('');
-      setPlacedOrderSuccess(null);
-    }
-  };
-
-  // Filtered orders list for History view
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      // Search
-      if (historySearchQuery.trim()) {
-        const q = historySearchQuery.toLowerCase().trim();
-        const matchInvoice = order.invoice_no?.toLowerCase().includes(q);
-        const matchContract = order.contract_no?.toLowerCase().includes(q);
-        const matchCust = order.customer_name?.toLowerCase().includes(q);
-        const matchNic = (order.customer_nic || order.customer_id)?.toLowerCase().includes(q);
-        const matchItem = (order.item_name || order.items_summary)?.toLowerCase().includes(q);
-        const matchCode = order.item_code?.toLowerCase().includes(q);
-        if (!matchInvoice && !matchContract && !matchCust && !matchNic && !matchItem && !matchCode) {
-          return false;
-        }
-      }
-
-      // Status filter
-      if (historyStatusFilter === 'active' && Number(order.balance_due) <= 0) return false;
-      if (historyStatusFilter === 'paid' && Number(order.balance_due) > 0) return false;
-
-      // Header Center filter
-      if (headerCenter && headerCenter !== 'all') {
-        const parts = headerCenter.split('/');
-        if (parts.length === 2 && formatCenterCode(order.center_code) !== formatCenterCode(parts[1])) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [orders, historySearchQuery, historyStatusFilter, headerCenter]);
-
-  // Selected Order object for separate display in History
-  const activeDisplayedOrder = useMemo(() => {
-    if (!orders.length) return null;
-    return orders.find((o) => o.id === selectedOrderId) || filteredOrders[0] || orders[0] || null;
-  }, [orders, selectedOrderId, filteredOrders]);
 
   // Record Installment Payment
   const handleRecordInstallment = (e) => {
     e.preventDefault();
-    if (!activeDisplayedOrder) return;
+    if (!activeSelectedOrder) return;
     const amt = Number(paymentAmount);
     if (isNaN(amt) || amt <= 0) {
       alert('Please enter a valid payment amount.');
       return;
     }
-    if (amt > activeDisplayedOrder.balance_due) {
-      alert(`Amount exceeds outstanding balance of ${formatLKR(activeDisplayedOrder.balance_due)}.`);
+    if (amt > activeSelectedOrder.balance_due) {
+      alert(`Amount exceeds balance due of ${formatLKR(activeSelectedOrder.balance_due)}.`);
       return;
     }
 
-    const newBal = Math.max(0, activeDisplayedOrder.balance_due - amt);
-    const newPaidCount = (activeDisplayedOrder.installments_paid || 0) + 1;
+    const newBal = Math.max(0, activeSelectedOrder.balance_due - amt);
+    const newPaidCount = (activeSelectedOrder.installments_paid || 0) + 1;
     const newStatus = newBal <= 0 ? 'Fully Paid' : 'Active Loan';
 
     const updatedOrders = orders.map((o) => {
-      if (o.id === activeDisplayedOrder.id) {
+      if (o.id === activeSelectedOrder.id) {
         return {
           ...o,
           balance_due: newBal,
@@ -488,7 +419,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
     // Update customer outstanding balance
     const updatedCustomers = customers.map((c) => {
-      if (c.nic === activeDisplayedOrder.customer_nic || c.id === activeDisplayedOrder.customer_id) {
+      if (c.nic === activeSelectedOrder.customer_nic || c.id === activeSelectedOrder.customer_id) {
         return {
           ...c,
           outstanding_balance: Math.max(0, (c.outstanding_balance || 0) - amt),
@@ -499,19 +430,28 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setCustomers(updatedCustomers);
     saveCustomersToStorage(updatedCustomers);
 
+    const updatedCurrent = {
+      ...activeSelectedOrder,
+      balance_due: newBal,
+      advance_paid: (activeSelectedOrder.advance_paid || 0) + amt,
+      status: newStatus,
+    };
+    setActiveSelectedOrder(updatedCurrent);
+
     setIsPaymentModalOpen(false);
     setPaymentAmount('');
-    alert(`Installment payment of ${formatLKR(amt)} recorded! Remaining balance: ${formatLKR(newBal)}`);
+    alert(`Installment of ${formatLKR(amt)} recorded! Remaining balance: ${formatLKR(newBal)}`);
   };
 
-  // Delete / Cancel Order
+  // Cancel / Delete Order
   const handleDeleteOrder = (orderId, contractNo) => {
     if (window.confirm(`Are you sure you want to cancel order "${contractNo}"?`)) {
       const updated = orders.filter((o) => o.id !== orderId);
       setOrders(updated);
       saveOrdersToStorage(updated);
-      if (selectedOrderId === orderId) {
-        setSelectedOrderId(updated.length > 0 ? updated[0].id : null);
+      if (activeSelectedOrder && activeSelectedOrder.id === orderId) {
+        setIsViewDetailsModalOpen(false);
+        setActiveSelectedOrder(null);
       }
     }
   };
@@ -562,22 +502,53 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     document.body.removeChild(link);
   };
 
+  // Filtered orders list
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      // Search
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchInvoice = order.invoice_no?.toLowerCase().includes(q);
+        const matchContract = order.contract_no?.toLowerCase().includes(q);
+        const matchCust = order.customer_name?.toLowerCase().includes(q);
+        const matchNic = (order.customer_nic || order.customer_id)?.toLowerCase().includes(q);
+        const matchItem = (order.item_name || order.items_summary)?.toLowerCase().includes(q);
+        const matchCode = order.item_code?.toLowerCase().includes(q);
+        if (!matchInvoice && !matchContract && !matchCust && !matchNic && !matchItem && !matchCode) {
+          return false;
+        }
+      }
+
+      // Status
+      if (statusFilter === 'active' && Number(order.balance_due) <= 0) return false;
+      if (statusFilter === 'paid' && Number(order.balance_due) > 0) return false;
+
+      // Header Center filter
+      if (headerCenter && headerCenter !== 'all') {
+        const parts = headerCenter.split('/');
+        if (parts.length === 2 && formatCenterCode(order.center_code) !== formatCenterCode(parts[1])) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [orders, searchQuery, statusFilter, headerCenter]);
+
   const activeLoansCount = orders.filter((o) => Number(o.balance_due) > 0).length;
   const settledCount = orders.filter((o) => Number(o.balance_due) <= 0).length;
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* =========================================================
-          TOP NAVIGATION BAR: 2 DEDICATED WORKSPACES
-          1. Place Order (Admin Desk)
-          2. Placed Orders & Contracts (Separate View)
+          1. HEADER: CLEAN, PROMINENT "+ Add New Order" BUTTON
           ========================================================= */}
       <div
         style={{
           background: '#fff',
           borderRadius: '12px',
           border: '1px solid var(--ash-200)',
-          padding: '12px 18px',
+          padding: '16px 20px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -586,592 +557,895 @@ export default function OrdersPage({ headerCenter = 'all' }) {
           boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* TAB 1: Place New Order (Admin Desk) */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('create')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '9px 18px',
-              borderRadius: '8px',
-              border: activeTab === 'create' ? '2px solid var(--primary)' : '1px solid var(--ash-200)',
-              background: activeTab === 'create' ? 'var(--primary)' : '#fff',
-              color: activeTab === 'create' ? '#fff' : 'var(--ash-700)',
-              fontWeight: 800,
-              fontSize: '0.88rem',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              boxShadow: activeTab === 'create' ? '0 2px 8px rgba(37,99,235,0.25)' : 'none',
-            }}
-          >
-            <ShoppingCart size={17} /> Place Order (Admin Desk)
-          </button>
-
-          {/* TAB 2: Placed Orders Ledger */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '9px 18px',
-              borderRadius: '8px',
-              border: activeTab === 'history' ? '2px solid var(--primary)' : '1px solid var(--ash-200)',
-              background: activeTab === 'history' ? 'var(--primary)' : '#fff',
-              color: activeTab === 'history' ? '#fff' : 'var(--ash-700)',
-              fontWeight: 800,
-              fontSize: '0.88rem',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              boxShadow: activeTab === 'history' ? '0 2px 8px rgba(37,99,235,0.25)' : 'none',
-            }}
-          >
-            <FileText size={17} /> Placed Orders & Contracts ({orders.length})
-          </button>
+        <div>
+          <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--ash-900)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <ShoppingCart size={24} color="var(--primary)" /> Orders & Invoices
+          </h2>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)' }}>
+            <span>Total Orders: <strong style={{ color: 'var(--ash-900)' }}>{orders.length}</strong></span>
+            <span>•</span>
+            <span style={{ color: '#D97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#D97706' }}></span>
+              Active Loans: <strong>{activeLoansCount}</strong>
+            </span>
+            <span>•</span>
+            <span style={{ color: '#16A34A', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16A34A' }}></span>
+              Fully Settled: <strong>{settledCount}</strong>
+            </span>
+          </div>
         </div>
 
-        {/* Global Quick Summary Stats */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.82rem', color: 'var(--ash-600)' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            Total Orders: <strong style={{ color: 'var(--ash-900)' }}>{orders.length}</strong>
-          </span>
-          <span>•</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#D97706' }}></span>
-            Active Loans: <strong style={{ color: '#D97706' }}>{activeLoansCount}</strong>
-          </span>
-          <span>•</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#16A34A' }}></span>
-            Fully Settled: <strong style={{ color: '#16A34A' }}>{settledCount}</strong>
-          </span>
-
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             type="button"
             className="btn btn-secondary"
             onClick={handleExportCSV}
-            style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px', marginLeft: '6px' }}
+            style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <Download size={13} /> Export CSV
+            <Download size={14} /> Export CSV
+          </button>
+
+          {/* MAIN PROMINENT "+ Add New Order" BUTTON IN HEADER */}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleOpenAddOrderModal}
+            style={{
+              padding: '10px 22px',
+              fontSize: '0.92rem',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(37,99,235,0.28)',
+            }}
+          >
+            <Plus size={18} strokeWidth={2.5} /> Add New Order
           </button>
         </div>
       </div>
 
       {/* =========================================================
-          VIEW 1: ADMIN ORDER PLACEMENT DESK (PROFESSIONAL WORKSPACE)
+          2. SEARCH & FILTER BAR
           ========================================================= */}
-      {activeTab === 'create' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Order Placement Success Banner */}
-          {placedOrderSuccess && (
-            <div
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        {/* Search Input */}
+        <div style={{ position: 'relative', flex: 1, minWidth: '320px' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
+          <input
+            type="text"
+            className="form-input"
+            style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
+            placeholder="Search by client name, NIC, contract (PN/Center/Item), invoice, or item code..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
               style={{
-                background: '#ECFDF5',
-                border: '1px solid #A7F3D0',
-                borderRadius: '10px',
-                padding: '14px 18px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '10px',
+                position: 'absolute',
+                right: '10px',
+                top: '9px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--ash-400)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <CheckCircle size={22} color="#059669" />
-                <div>
-                  <div style={{ fontWeight: 800, color: '#065F46', fontSize: '0.92rem' }}>
-                    Order Placed Successfully! Contract No: <strong>{placedOrderSuccess.contract_no}</strong>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#047857' }}>
-                    Client: <strong>{placedOrderSuccess.customer_name}</strong> (NIC: {placedOrderSuccess.customer_nic}) • Item: {placedOrderSuccess.item_name}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setOrderToPrint(placedOrderSuccess);
-                    setIsPrintModalOpen(true);
-                  }}
-                  style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}
-                >
-                  <Printer size={14} /> Print Agreement
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setSelectedOrderId(placedOrderSuccess.id);
-                    setActiveTab('history');
-                  }}
-                  style={{ padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}
-                >
-                  View in Orders Ledger <ArrowRight size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPlacedOrderSuccess(null)}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#065F46' }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
+              <X size={14} />
+            </button>
           )}
+        </div>
 
-          {/* 2-Column POS Layout */}
-          <div
+        {/* Status Filters */}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            type="button"
+            className={`btn ${statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+            onClick={() => setStatusFilter('all')}
+          >
+            All Orders ({orders.length})
+          </button>
+          <button
+            type="button"
+            className={`btn ${statusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+            onClick={() => setStatusFilter('active')}
+          >
+            Active Loans ({activeLoansCount})
+          </button>
+          <button
+            type="button"
+            className={`btn ${statusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+            onClick={() => setStatusFilter('paid')}
+          >
+            Fully Settled ({settledCount})
+          </button>
+        </div>
+
+        {/* View Layout Switcher */}
+        <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
+          <button
+            type="button"
+            onClick={() => setViewMode('cards')}
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(500px, 1.45fr) minmax(360px, 1fr)',
-              gap: '20px',
-              alignItems: 'start',
+              border: 'none',
+              background: viewMode === 'cards' ? '#fff' : 'transparent',
+              color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
             }}
           >
-            {/* LEFT COLUMN: 3-Step Interactive Configuration */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* STEP 1: ACTIVE CLIENT SELECTION */}
+            <LayoutGrid size={14} /> Cards View
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            style={{
+              border: 'none',
+              background: viewMode === 'table' ? '#fff' : 'transparent',
+              color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+            }}
+          >
+            <List size={14} /> Table View
+          </button>
+        </div>
+      </div>
+
+      {/* =========================================================
+          3. BELOW: ORDER DETAILS / PLACED ORDERS LIST
+          "pahalin oredr details pennanna"
+          ========================================================= */}
+      {filteredOrders.length === 0 ? (
+        <div
+          style={{
+            padding: '60px',
+            textAlign: 'center',
+            background: '#fff',
+            borderRadius: '12px',
+            border: '1px dashed var(--ash-300)',
+            color: 'var(--ash-500)',
+          }}
+        >
+          <ShoppingCart size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
+          <div style={{ fontSize: '1rem', fontWeight: 700 }}>No orders found matching your search</div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--ash-400)', marginTop: '4px' }}>
+            Click "+ Add New Order" above to place an order for a client.
+          </p>
+        </div>
+      ) : viewMode === 'cards' ? (
+        /* CLIENT-FRIENDLY MODERN CARDS GRID */
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+          {filteredOrders.map((order) => {
+            const isPaid = Number(order.balance_due) <= 0;
+
+            return (
               <div
+                key={order.id}
                 style={{
                   background: '#fff',
                   borderRadius: '12px',
                   border: '1px solid var(--ash-200)',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                  padding: '18px 20px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                  padding: '16px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div
-                      style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        background: 'var(--primary)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                      }}
-                    >
-                      1
-                    </div>
-                    <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: 'var(--ash-900)' }}>
-                      Select Active Client
-                    </h3>
+                <div>
+                  {/* Top Bar: Contract Number Badge & Date */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span
                       style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '9999px',
-                        background: '#DCFCE7',
-                        color: '#15803D',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
+                        fontFamily: 'monospace',
+                        fontWeight: 800,
+                        fontSize: '0.76rem',
+                        color: 'var(--primary)',
+                        background: 'var(--primary-tint)',
+                        padding: '3px 8px',
+                        borderRadius: '5px',
+                        border: '1px solid var(--primary-border)',
                       }}
                     >
-                      <ShieldCheck size={12} /> Active Clients Only
+                      📜 {order.contract_no}
+                    </span>
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '9999px',
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        background: isPaid ? '#DCFCE7' : '#FEF3C7',
+                        color: isPaid ? '#15803D' : '#B45309',
+                      }}
+                    >
+                      {isPaid ? 'Fully Paid' : 'Active Loan'}
                     </span>
                   </div>
 
+                  {/* Client Info */}
+                  <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ash-900)' }}>
+                    {order.customer_name}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px', fontSize: '0.78rem', color: 'var(--ash-600)' }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                      🆔 {order.customer_nic || order.customer_id}
+                    </span>
+                    <span>•</span>
+                    <span>📞 {order.customer_phone}</span>
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                    📍 Center: {order.branch_code}/{order.center_code} • Date: {formatDate(order.date)}
+                  </div>
+
+                  {/* Furniture Item Box */}
+                  <div
+                    style={{
+                      background: 'var(--ash-50)',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      marginTop: '10px',
+                      border: '1px solid var(--ash-200)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--ash-800)' }}>
+                      🛋️ {order.item_name}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Code: {order.item_code}</span>
+                      <span>Qty: {order.quantity || 1}</span>
+                    </div>
+                  </div>
+
+                  {/* Financial Breakdown */}
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--ash-500)' }}>Order Value:</span>
+                      <strong style={{ color: 'var(--ash-900)' }}>{formatLKR(order.gross_amount)}</strong>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--ash-500)' }}>
+                        {order.payment_type === 'installment' ? 'Installment Plan:' : 'Payment Type:'}
+                      </span>
+                      <span style={{ fontWeight: 700, color: 'var(--ash-800)' }}>
+                        {order.payment_type === 'installment'
+                          ? `${formatLKR(order.installment_value)} / ${order.loan_frequency}`
+                          : 'Full Cash'}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        borderTop: '1px dashed var(--ash-200)',
+                        paddingTop: '6px',
+                        marginTop: '2px',
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color: 'var(--ash-700)' }}>Remaining Balance:</span>
+                      <strong style={{ color: isPaid ? '#16A34A' : '#DC2626', fontSize: '0.92rem' }}>
+                        {formatLKR(order.balance_due)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Actions for each card */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--ash-100)', paddingTop: '10px' }}>
                   <button
                     type="button"
-                    onClick={() => setShowQuickRegister(!showQuickRegister)}
-                    style={{
-                      background: 'transparent',
-                      border: '1px dashed var(--primary)',
-                      color: 'var(--primary)',
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
+                    className="btn btn-secondary"
+                    style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    onClick={() => {
+                      setActiveSelectedOrder(order);
+                      setIsViewDetailsModalOpen(true);
                     }}
                   >
-                    <UserPlus size={13} /> {showQuickRegister ? 'Cancel Quick Add' : '+ Quick Register Client'}
+                    <Eye size={13} /> View Details
                   </button>
-                </div>
 
-                {/* Quick Register Inline Form */}
-                {showQuickRegister && (
-                  <div
-                    style={{
-                      background: 'var(--ash-50)',
-                      border: '1px solid var(--primary-border)',
-                      borderRadius: '8px',
-                      padding: '12px',
-                      marginBottom: '12px',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '8px' }}>
-                      ⚡ Quick Register New Walk-in Client
-                    </div>
-                    <div className="form-grid" style={{ gap: '8px' }}>
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.72rem' }}>First Name *</label>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="e.g. Sunil"
-                          value={quickClient.first_name}
-                          onChange={(e) => setQuickClient({ ...quickClient, first_name: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.72rem' }}>Last Name</label>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="e.g. Perera"
-                          value={quickClient.last_name}
-                          onChange={(e) => setQuickClient({ ...quickClient, last_name: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.72rem' }}>NIC (National Identity Card) *</label>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="e.g. 198512345678"
-                          value={quickClient.nic}
-                          onChange={(e) => setQuickClient({ ...quickClient, nic: e.target.value })}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.72rem' }}>Phone Number *</label>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="077XXXXXXX"
-                          value={quickClient.phone}
-                          onChange={(e) => setQuickClient({ ...quickClient, phone: e.target.value })}
-                        />
-                      </div>
-                    </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {Number(order.balance_due) > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => {
+                          setActiveSelectedOrder(order);
+                          setPaymentAmount(order.installment_value || '');
+                          setIsPaymentModalOpen(true);
+                        }}
+                      >
+                        <CreditCard size={13} /> Pay
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      className="btn btn-primary"
-                      style={{ marginTop: '8px', padding: '5px 14px', fontSize: '0.76rem', fontWeight: 700 }}
-                      onClick={handleQuickRegisterClient}
+                      className="btn btn-secondary"
+                      style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      onClick={() => {
+                        setActiveSelectedOrder(order);
+                        setIsPrintModalOpen(true);
+                      }}
                     >
-                      Save & Select Client
+                      <Printer size={13} /> Print
                     </button>
                   </div>
-                )}
-
-                {/* Customer Dropdown */}
-                <div className="form-group" style={{ margin: 0 }}>
-                  <select
-                    className="form-select-full"
-                    value={selectedCustomerId}
-                    onChange={(e) => handleSelectCustomer(e.target.value)}
-                    style={{ fontWeight: 600, fontSize: '0.88rem', padding: '10px 12px' }}
-                  >
-                    <option value="">-- Choose Registered Active Client ({activeCustomers.length}) --</option>
-                    {activeCustomers.map((cust) => (
-                      <option key={cust.id} value={cust.id}>
-                        {cust.name} — NIC: {cust.nic || cust.customer_id} (📞 {cust.phone})
-                      </option>
-                    ))}
-                  </select>
                 </div>
-
-                {/* Selected Client Card Details */}
-                {activeSelectedCustomer && (
-                  <div
-                    style={{
-                      marginTop: '12px',
-                      background: 'var(--ash-50)',
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--ash-200)',
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                      gap: '10px',
-                      fontSize: '0.8rem',
-                    }}
-                  >
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Client Name</span>
-                      <div style={{ fontWeight: 800, color: 'var(--ash-900)', fontSize: '0.92rem' }}>{activeSelectedCustomer.name}</div>
-                    </div>
-
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>National Identity Card</span>
-                      <div style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '0.92rem' }}>
-                        🆔 {activeSelectedCustomer.nic || activeSelectedCustomer.customer_id}
-                      </div>
-                    </div>
-
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Contact Phone</span>
-                      <div style={{ fontWeight: 700, color: 'var(--ash-800)' }}>📞 {activeSelectedCustomer.phone}</div>
-                    </div>
-
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Distribution Center</span>
-                      <div style={{ fontWeight: 700, color: 'var(--ash-800)' }}>
-                        📍 {selectedBranchCode}/{selectedCenterCode}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* TABLE VIEW (Alternative dense view) */
+        <div className="table-responsive" style={{ background: '#fff', borderRadius: '12px', border: '1px solid var(--ash-200)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          <table className="custom-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th>Contract Code (pn/center/item)</th>
+                <th>Client Name & NIC</th>
+                <th>Furniture Item</th>
+                <th>Order Value</th>
+                <th>Payment Plan</th>
+                <th>Balance Due</th>
+                <th style={{ textAlign: 'center' }}>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredOrders.map((order) => {
+                const isPaid = Number(order.balance_due) <= 0;
+                return (
+                  <tr key={order.id}>
+                    <td>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '0.84rem' }}>
+                        {order.contract_no}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 800 }}>{order.customer_name}</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--ash-600)' }}>🆔 {order.customer_nic}</div>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{order.item_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontFamily: 'monospace' }}>{order.item_code}</div>
+                    </td>
+                    <td style={{ fontWeight: 800 }}>{formatLKR(order.gross_amount)}</td>
+                    <td style={{ fontSize: '0.78rem' }}>
+                      {order.payment_type === 'installment'
+                        ? `${formatLKR(order.installment_value)} / ${order.loan_frequency}`
+                        : 'Full Cash'}
+                    </td>
+                    <td style={{ fontWeight: 800, color: isPaid ? '#16A34A' : '#DC2626' }}>
+                      {formatLKR(order.balance_due)}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '9999px',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          background: isPaid ? '#DCFCE7' : '#FEF3C7',
+                          color: isPaid ? '#15803D' : '#B45309',
+                        }}
+                      >
+                        {isPaid ? 'Fully Paid' : 'Active Loan'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: '0.74rem' }}
+                          onClick={() => {
+                            setActiveSelectedOrder(order);
+                            setIsViewDetailsModalOpen(true);
+                          }}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: '0.74rem' }}
+                          onClick={() => {
+                            setActiveSelectedOrder(order);
+                            setIsPrintModalOpen(true);
+                          }}
+                        >
+                          Print
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-              {/* STEP 2: FURNITURE ITEM SELECTION & PRICING */}
+      {/* =========================================================
+          4. MODAL: ADD NEW ORDER (CLEAN, CLIENT-FRIENDLY & PROFESSIONAL)
+          ========================================================= */}
+      <Modal
+        isOpen={isAddOrderModalOpen}
+        onClose={() => setIsAddOrderModalOpen(false)}
+        title="Create New Furniture Order & Contract"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* STEP 1: SELECT ACTIVE CLIENT */}
+          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label className="form-label" style={{ fontWeight: 800, margin: 0, fontSize: '0.86rem' }}>
+                1. Select Active Customer *
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowQuickRegister(!showQuickRegister)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <UserPlus size={13} /> {showQuickRegister ? 'Cancel' : '+ Quick Register Client'}
+              </button>
+            </div>
+
+            {/* Quick Register inline drawer */}
+            {showQuickRegister && (
               <div
                 style={{
                   background: '#fff',
-                  borderRadius: '12px',
-                  border: '1px solid var(--ash-200)',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                  padding: '18px 20px',
+                  border: '1px solid var(--primary-border)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  marginBottom: '10px',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div
-                      style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        background: 'var(--primary)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                      }}
-                    >
-                      2
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '6px' }}>
+                  Register New Customer:
+                </div>
+                <div className="form-grid" style={{ gap: '8px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>First Name *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Sunil"
+                      value={quickClient.first_name}
+                      onChange={(e) => setQuickClient({ ...quickClient, first_name: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>Last Name</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Perera"
+                      value={quickClient.last_name}
+                      onChange={(e) => setQuickClient({ ...quickClient, last_name: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>NIC *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="198512345678"
+                      value={quickClient.nic}
+                      onChange={(e) => setQuickClient({ ...quickClient, nic: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>Phone *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="077XXXXXXX"
+                      value={quickClient.phone}
+                      onChange={(e) => setQuickClient({ ...quickClient, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ marginTop: '8px', padding: '4px 12px', fontSize: '0.76rem', fontWeight: 700 }}
+                  onClick={handleQuickRegisterClient}
+                >
+                  Save & Select Client
+                </button>
+              </div>
+            )}
+
+            <select
+              className="form-select-full"
+              value={formCustomerId}
+              onChange={(e) => handleFormSelectCustomer(e.target.value)}
+              style={{ fontWeight: 600, fontSize: '0.88rem' }}
+            >
+              <option value="">-- Choose Registered Active Client ({activeCustomers.length}) --</option>
+              {activeCustomers.map((cust) => (
+                <option key={cust.id} value={cust.id}>
+                  {cust.name} — NIC: {cust.nic || cust.customer_id} (📞 {cust.phone})
+                </option>
+              ))}
+            </select>
+
+            {formSelectedCustomer && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  background: '#fff',
+                  border: '1px solid var(--ash-200)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '0.78rem',
+                }}
+              >
+                <div>
+                  Client: <strong style={{ color: 'var(--ash-900)' }}>{formSelectedCustomer.name}</strong> •{' '}
+                  NIC: <strong style={{ color: 'var(--primary)', fontFamily: 'monospace' }}>{formSelectedCustomer.nic || formSelectedCustomer.customer_id}</strong>
+                </div>
+                <div style={{ color: 'var(--ash-600)' }}>
+                  📍 Center: <strong>{formBranchCode}/{formCenterCode}</strong>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* STEP 2: SEARCH & SELECT FURNITURE ITEM (BY CODE OR NAME) */}
+          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
+            <label className="form-label" style={{ fontWeight: 800, marginBottom: '8px', fontSize: '0.86rem' }}>
+              2. Furniture Item Search (By Code or Name) *
+            </label>
+
+            <div className="form-grid" style={{ gap: '10px' }}>
+              {/* Dual Search 1: By Product Code */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
+                  Search by Product Code (WD / MEL / ELC)
+                </label>
+                <select
+                  className="form-select-full"
+                  value={formSelectedProduct ? formSelectedProduct.item_code : ''}
+                  onChange={(e) => handleFormSelectProduct(e.target.value)}
+                  style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.85rem' }}
+                >
+                  <option value="">-- Choose Product Code --</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.item_code}>
+                      {p.item_code} — {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dual Search 2: By Product Name */}
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
+                  Search by Product Name
+                </label>
+                <select
+                  className="form-select-full"
+                  value={formSelectedProduct ? formSelectedProduct.id : ''}
+                  onChange={(e) => handleFormSelectProduct(e.target.value)}
+                  style={{ fontWeight: 600, fontSize: '0.85rem' }}
+                >
+                  <option value="">-- Choose Product Name --</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.item_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Auto-generated Item Amount & Quantity */}
+            {formSelectedProduct && (
+              <div
+                style={{
+                  marginTop: '12px',
+                  background: '#fff',
+                  border: '1px solid var(--ash-200)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                  gap: '10px',
+                  alignItems: 'center',
+                }}
+              >
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
+                    Item Amount (Auto-generated LKR) *
+                  </label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    value={formUnitPrice}
+                    onChange={(e) => setFormUnitPrice(Number(e.target.value))}
+                    style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.95rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
+                    Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    min="1"
+                    value={formQuantity}
+                    onChange={(e) => setFormQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    style={{ fontWeight: 800, fontSize: '0.95rem' }}
+                  />
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
+                    Total Order Value
+                  </span>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--ash-900)' }}>
+                    {formatLKR(formGrossTotal)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* STEP 3: CONTRACT CODE (pn / center code / item code) */}
+          <div
+            style={{
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+                CONTRACT CODE (pn / center code / item code)
+              </div>
+              <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.05rem', color: '#1D4ED8', marginTop: '2px' }}>
+                📜 {formContractCode}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.74rem', color: '#1E40AF', fontWeight: 600 }}>Passbook:</span>
+              <input
+                type="text"
+                value={formPassbookNo}
+                onChange={(e) => setFormPassbookNo(e.target.value)}
+                style={{
+                  width: '85px',
+                  padding: '3px 8px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  borderRadius: '4px',
+                  border: '1px solid #93C5FD',
+                  background: '#fff',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* STEP 4: INSTALLMENT PLAN, TERMS & FREQUENCY */}
+          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <label className="form-label" style={{ fontWeight: 800, margin: 0, fontSize: '0.86rem' }}>
+                3. Payment Terms & Installment Plan
+              </label>
+              <div style={{ display: 'flex', background: 'var(--ash-200)', padding: '2px', borderRadius: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setFormPaymentType('installment')}
+                  style={{
+                    border: 'none',
+                    background: formPaymentType === 'installment' ? 'var(--primary)' : 'transparent',
+                    color: formPaymentType === 'installment' ? '#fff' : 'var(--ash-700)',
+                    padding: '4px 10px',
+                    borderRadius: '5px',
+                    fontWeight: 700,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Installment Loan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormPaymentType('cash');
+                    setFormDownPayment(formGrossTotal);
+                  }}
+                  style={{
+                    border: 'none',
+                    background: formPaymentType === 'cash' ? 'var(--primary)' : 'transparent',
+                    color: formPaymentType === 'cash' ? '#fff' : 'var(--ash-700)',
+                    padding: '4px 10px',
+                    borderRadius: '5px',
+                    fontWeight: 700,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Full Cash
+                </button>
+              </div>
+            </div>
+
+            {formPaymentType === 'installment' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div className="form-grid" style={{ gap: '10px' }}>
+                  {/* Down Payment */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700, margin: 0 }}>
+                        Down Payment (Advance LKR)
+                      </label>
+                      <div style={{ display: 'flex', gap: '3px' }}>
+                        {[10, 20, 30].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => handleSetDownPaymentPercent(pct)}
+                            style={{
+                              border: '1px solid var(--ash-300)',
+                              background: '#fff',
+                              fontSize: '0.66rem',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {pct}%
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: 'var(--ash-900)' }}>
-                      Furniture Item & Price
-                    </h3>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={formDownPayment}
+                      onChange={(e) => setFormDownPayment(Math.max(0, Number(e.target.value)))}
+                      style={{ fontWeight: 700 }}
+                    />
                   </div>
 
-                  {/* Category Pills */}
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {[
-                      { id: 'all', label: 'All Items' },
-                      { id: 'wood', label: 'Wood (WD)' },
-                      { id: 'melamine', label: 'Melamine (MEL)' },
-                      { id: 'electrical_item', label: 'Electric (ELC)' },
-                    ].map((cat) => (
+                  {/* Loan Frequency */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                      Loan Frequency *
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
                       <button
-                        key={cat.id}
                         type="button"
-                        onClick={() => setItemCategoryFilter(cat.id)}
-                        style={{
-                          border: 'none',
-                          background: itemCategoryFilter === cat.id ? 'var(--primary)' : 'var(--ash-100)',
-                          color: itemCategoryFilter === cat.id ? '#fff' : 'var(--ash-600)',
-                          padding: '3px 9px',
-                          borderRadius: '6px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
+                        className={`btn ${formLoanFrequency === 'monthly' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ flex: 1, padding: '6px', fontSize: '0.76rem', fontWeight: 700 }}
+                        onClick={() => handleFormFrequencyChange('monthly')}
                       >
-                        {cat.label}
+                        Monthly
                       </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="form-grid" style={{ gap: '12px' }}>
-                  {/* Select by Item Code */}
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-                      Select by Item Code (WD / MEL / ELC) *
-                    </label>
-                    <select
-                      className="form-select-full"
-                      value={selectedProduct ? selectedProduct.item_code : ''}
-                      onChange={(e) => handleSelectProduct(e.target.value)}
-                      style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.85rem' }}
-                    >
-                      <option value="">-- Choose Item Code --</option>
-                      {filteredProducts.map((p) => (
-                        <option key={p.id} value={p.item_code}>
-                          {p.item_code} — {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Select by Item Name */}
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-                      Or Select by Furniture Name *
-                    </label>
-                    <select
-                      className="form-select-full"
-                      value={selectedProduct ? selectedProduct.id : ''}
-                      onChange={(e) => handleSelectProduct(e.target.value)}
-                      style={{ fontWeight: 600, fontSize: '0.85rem' }}
-                    >
-                      <option value="">-- Choose Furniture Name --</option>
-                      {filteredProducts.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.item_code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Selected Item Pricing & Quantity Details */}
-                {selectedProduct && (
-                  <div
-                    style={{
-                      marginTop: '14px',
-                      background: 'var(--ash-50)',
-                      padding: '12px 14px',
-                      borderRadius: '8px',
-                      border: '1px solid var(--ash-200)',
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                      gap: '12px',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div>
-                      <label className="form-label" style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
-                        Item Value / Unit Price (LKR) *
-                      </label>
-                      <input
-                        type="number"
-                        className="form-input"
-                        value={unitPrice}
-                        onChange={(e) => setUnitPrice(Number(e.target.value))}
-                        style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--primary)' }}
-                      />
+                      <button
+                        type="button"
+                        className={`btn ${formLoanFrequency === 'weekly' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ flex: 1, padding: '6px', fontSize: '0.76rem', fontWeight: 700 }}
+                        onClick={() => handleFormFrequencyChange('weekly')}
+                      >
+                        Weekly
+                      </button>
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="form-label" style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
-                        Quantity *
-                      </label>
+                  {/* Terms */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                      Terms ({formLoanFrequency === 'weekly' ? 'Weeks' : 'Months'}) *
+                    </label>
+                    <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
                       <input
                         type="number"
                         className="form-input"
                         min="1"
-                        value={quantity}
-                        onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                        style={{ fontWeight: 800, fontSize: '0.95rem' }}
+                        value={formLoanTerms}
+                        onChange={(e) => setFormLoanTerms(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                        style={{ fontWeight: 700, width: '75px' }}
                       />
-                    </div>
-
-                    <div>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
-                        Total Gross Value
-                      </span>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--ash-900)' }}>
-                        {formatLKR(totalOrderValue)}
-                      </div>
+                      {[6, 12, 16, 24].map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setFormLoanTerms(t)}
+                          style={{
+                            border: '1px solid var(--ash-300)',
+                            background: formLoanTerms === t ? 'var(--primary)' : '#fff',
+                            color: formLoanTerms === t ? '#fff' : 'var(--ash-700)',
+                            fontSize: '0.7rem',
+                            padding: '5px 7px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* STEP 3: CONTRACT & REPAYMENT SCHEME */}
-              <div
-                style={{
-                  background: '#fff',
-                  borderRadius: '12px',
-                  border: '1px solid var(--ash-200)',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                  padding: '18px 20px',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div
-                      style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        background: 'var(--primary)',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                      }}
-                    >
-                      3
-                    </div>
-                    <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: 'var(--ash-900)' }}>
-                      Contract & Payment Terms
-                    </h3>
-                  </div>
-
-                  {/* Payment Type Toggle */}
-                  <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentType('installment')}
-                      style={{
-                        border: 'none',
-                        background: paymentType === 'installment' ? 'var(--primary)' : 'transparent',
-                        color: paymentType === 'installment' ? '#fff' : 'var(--ash-700)',
-                        padding: '5px 12px',
-                        borderRadius: '6px',
-                        fontWeight: 700,
-                        fontSize: '0.78rem',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      💼 Installment Loan
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentType('cash');
-                        setDownPayment(totalOrderValue);
-                      }}
-                      style={{
-                        border: 'none',
-                        background: paymentType === 'cash' ? 'var(--primary)' : 'transparent',
-                        color: paymentType === 'cash' ? '#fff' : 'var(--ash-700)',
-                        padding: '5px 12px',
-                        borderRadius: '6px',
-                        fontWeight: 700,
-                        fontSize: '0.78rem',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      💵 Full Cash Sale
-                    </button>
+                  {/* First Due Date */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                      First Due Date
+                    </label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={formFirstDueDate}
+                      onChange={(e) => setFormFirstDueDate(e.target.value)}
+                    />
                   </div>
                 </div>
 
-                {/* Contract Number Display Banner */}
+                {/* Auto Installment Banner */}
                 <div
                   style={{
-                    background: '#EFF6FF',
-                    border: '1px solid #BFDBFE',
+                    background: '#FEF9C3',
+                    border: '1px solid #FEF08A',
                     borderRadius: '8px',
                     padding: '10px 14px',
-                    marginBottom: '14px',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -1180,959 +1454,210 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
-                      OFFICIAL CONTRACT NUMBER (pn / center code / item code)
-                    </div>
-                    <div style={{ fontFamily: 'monospace', fontWeight: 900, color: '#1D4ED8', fontSize: '1.05rem', marginTop: '2px' }}>
-                      📜 {currentContractNumber}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <label style={{ fontSize: '0.74rem', color: '#1E40AF', fontWeight: 600 }}>Passbook No:</label>
-                    <input
-                      type="text"
-                      value={passbookNo}
-                      onChange={(e) => setPassbookNo(e.target.value)}
-                      style={{
-                        width: '90px',
-                        padding: '4px 8px',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        fontFamily: 'monospace',
-                        borderRadius: '4px',
-                        border: '1px solid #93C5FD',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Installment Loan Configuration */}
-                {paymentType === 'installment' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div className="form-grid" style={{ gap: '12px' }}>
-                      {/* Down Payment with Quick Percent Buttons */}
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                          <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700, margin: 0 }}>
-                            Down Payment / Advance (LKR)
-                          </label>
-                          <div style={{ display: 'flex', gap: '3px' }}>
-                            {[10, 20, 30, 50].map((pct) => (
-                              <button
-                                key={pct}
-                                type="button"
-                                onClick={() => handleSetDownPaymentPercent(pct)}
-                                style={{
-                                  border: '1px solid var(--ash-300)',
-                                  background: '#fff',
-                                  fontSize: '0.68rem',
-                                  padding: '1px 5px',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {pct}%
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <input
-                          type="number"
-                          className="form-input"
-                          value={downPayment}
-                          onChange={(e) => setDownPayment(Math.max(0, Number(e.target.value)))}
-                          style={{ fontWeight: 700, fontSize: '0.9rem' }}
-                        />
-                      </div>
-
-                      {/* Loan Frequency */}
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-                          Repayment Frequency *
-                        </label>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            type="button"
-                            className={`btn ${loanFrequency === 'monthly' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ flex: 1, padding: '7px', fontSize: '0.78rem', fontWeight: 700 }}
-                            onClick={() => handleFrequencyChange('monthly')}
-                          >
-                            Monthly
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn ${loanFrequency === 'weekly' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ flex: 1, padding: '7px', fontSize: '0.78rem', fontWeight: 700 }}
-                            onClick={() => handleFrequencyChange('weekly')}
-                          >
-                            Weekly
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Loan Terms */}
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-                          Installment Terms ({loanFrequency === 'weekly' ? 'Weeks' : 'Months'}) *
-                        </label>
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          <input
-                            type="number"
-                            className="form-input"
-                            min="1"
-                            value={loanTerms}
-                            onChange={(e) => setLoanTerms(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                            style={{ fontWeight: 700, fontSize: '0.9rem', width: '80px' }}
-                          />
-                          {[6, 12, 16, 24].map((t) => (
-                            <button
-                              key={t}
-                              type="button"
-                              onClick={() => setLoanTerms(t)}
-                              style={{
-                                border: '1px solid var(--ash-300)',
-                                background: loanTerms === t ? 'var(--primary)' : '#fff',
-                                color: loanTerms === t ? '#fff' : 'var(--ash-700)',
-                                fontSize: '0.72rem',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontWeight: 700,
-                              }}
-                            >
-                              {t}T
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* First Due Date */}
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700 }}>
-                          First Due Date *
-                        </label>
-                        <input
-                          type="date"
-                          className="form-input"
-                          value={firstDueDate}
-                          onChange={(e) => setFirstDueDate(e.target.value)}
-                          style={{ fontSize: '0.85rem' }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Auto-calculated Installment Banner */}
-                    <div
-                      style={{
-                        background: '#FEF9C3',
-                        border: '1px solid #FEF08A',
-                        borderRadius: '8px',
-                        padding: '12px 16px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '10px',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#854D0E', fontWeight: 700, textTransform: 'uppercase' }}>
-                          AUTO-CALCULATED REPAYMENT VALUE
-                        </div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#A16207', marginTop: '2px' }}>
-                          {formatLKR(calculatedInstallmentValue)} / {loanFrequency === 'weekly' ? 'week' : 'month'}
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#713F12', marginTop: '2px' }}>
-                          {loanTerms} installments • Starting {formatDate(firstDueDate)}
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.72rem', color: '#854D0E', fontWeight: 700 }}>TOTAL LOAN BALANCE</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#DC2626', marginTop: '2px' }}>
-                          {formatLKR(loanBalance)}
-                        </div>
-                      </div>
+                    <span style={{ fontSize: '0.7rem', color: '#854D0E', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Auto Installment Plan:
+                    </span>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#A16207' }}>
+                      {formatLKR(formCalculatedInstallment)} / {formLoanFrequency === 'weekly' ? 'week' : 'month'}
                     </div>
                   </div>
-                ) : (
-                  <div
-                    style={{
-                      background: '#DCFCE7',
-                      border: '1px solid #86EFAC',
-                      borderRadius: '8px',
-                      padding: '14px',
-                      color: '#166534',
-                      fontSize: '0.85rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span>Full Cash Sale (No Installments Required)</span>
-                    <span style={{ fontSize: '1.1rem' }}>{formatLKR(totalOrderValue)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
 
-            {/* RIGHT COLUMN: LIVE REAL-TIME CONTRACT & BILL VOUCHER PREVIEW */}
-            <div style={{ position: 'sticky', top: '20px' }}>
-              <div
-                style={{
-                  background: '#fff',
-                  borderRadius: '12px',
-                  border: '1px solid var(--ash-300)',
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.06)',
-                  padding: '22px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '16px',
-                }}
-              >
-                {/* Paper Bill Header */}
-                <div style={{ borderBottom: '2px solid var(--ash-900)', paddingBottom: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 900, color: 'var(--ash-900)', letterSpacing: '0.5px' }}>
-                        D&S FURNITURE WORKSHOP
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
-                        Hire-Purchase Agreement & Order Voucher
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--ash-600)', marginTop: '2px' }}>
-                        Regional Center: <strong>{selectedBranchCode}/{selectedCenterCode}</strong>
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                      <span
-                        style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 800,
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          background: paymentType === 'installment' ? '#FEF3C7' : '#DCFCE7',
-                          color: paymentType === 'installment' ? '#B45309' : '#15803D',
-                        }}
-                      >
-                        {paymentType === 'installment' ? 'HIRE PURCHASE' : 'CASH SALE'}
-                      </span>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#854D0E', fontWeight: 700 }}>REMAINING BALANCE</span>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#DC2626' }}>
+                      {formatLKR(formLoanBalance)}
                     </div>
                   </div>
-                </div>
-
-                {/* Contract Number Callout */}
-                <div style={{ background: 'var(--ash-50)', padding: '10px 12px', borderRadius: '8px', border: '1px dashed var(--ash-300)' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
-                    OFFICIAL CONTRACT NO (PN / CENTER / ITEM)
-                  </div>
-                  <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.05rem', color: 'var(--primary)', marginTop: '2px' }}>
-                    📜 {currentContractNumber}
-                  </div>
-                </div>
-
-                {/* Client Profile Box */}
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
-                    ACTIVE CLIENT
-                  </div>
-                  {activeSelectedCustomer ? (
-                    <div style={{ marginTop: '4px', fontSize: '0.85rem' }}>
-                      <div style={{ fontWeight: 800, color: 'var(--ash-900)' }}>{activeSelectedCustomer.name}</div>
-                      <div style={{ fontFamily: 'monospace', color: 'var(--primary)', fontWeight: 700, fontSize: '0.82rem' }}>
-                        🆔 NIC: {activeSelectedCustomer.nic || activeSelectedCustomer.customer_id}
-                      </div>
-                      <div style={{ color: 'var(--ash-600)', fontSize: '0.78rem' }}>
-                        📞 {activeSelectedCustomer.phone}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ color: '#DC2626', fontSize: '0.8rem', fontStyle: 'italic', marginTop: '4px' }}>
-                      Please select an active client
-                    </div>
-                  )}
-                </div>
-
-                {/* Selected Item Breakdown Table */}
-                <div style={{ borderTop: '1px solid var(--ash-200)', paddingTop: '10px' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>
-                    ITEM BREAKDOWN
-                  </div>
-                  {selectedProduct ? (
-                    <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                      <tbody>
-                        <tr>
-                          <td style={{ padding: '4px 0', fontWeight: 700 }}>
-                            {selectedProduct.name}
-                            <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--ash-500)', fontFamily: 'monospace' }}>
-                              Code: {selectedProduct.item_code}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'center', padding: '4px' }}>x{quantity}</td>
-                          <td style={{ textAlign: 'right', padding: '4px 0', fontWeight: 700 }}>
-                            {formatLKR(totalOrderValue)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div style={{ color: '#DC2626', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                      No item selected
-                    </div>
-                  )}
-                </div>
-
-                {/* Financial Summary */}
-                <div
-                  style={{
-                    borderTop: '1px solid var(--ash-200)',
-                    paddingTop: '10px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    fontSize: '0.82rem',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--ash-600)' }}>Gross Order Total:</span>
-                    <strong style={{ color: 'var(--ash-900)' }}>{formatLKR(totalOrderValue)}</strong>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--ash-600)' }}>Advance / Down Payment:</span>
-                    <strong style={{ color: '#16A34A' }}>
-                      {formatLKR(paymentType === 'installment' ? downPayment : totalOrderValue)}
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      borderTop: '1px dashed var(--ash-300)',
-                      paddingTop: '6px',
-                      fontSize: '0.92rem',
-                    }}
-                  >
-                    <span style={{ fontWeight: 800, color: 'var(--ash-900)' }}>Balance to Finance:</span>
-                    <strong style={{ color: Number(loanBalance) > 0 ? '#DC2626' : '#16A34A' }}>
-                      {formatLKR(loanBalance)}
-                    </strong>
-                  </div>
-
-                  {paymentType === 'installment' && Number(loanBalance) > 0 && (
-                    <div
-                      style={{
-                        background: '#FEF3C7',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        marginTop: '4px',
-                        fontSize: '0.8rem',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <span style={{ color: '#854D0E', fontWeight: 700 }}>
-                        {loanTerms} x {loanFrequency === 'weekly' ? 'Weekly' : 'Monthly'}:
-                      </span>
-                      <strong style={{ color: '#92400E' }}>
-                        {formatLKR(calculatedInstallmentValue)} / {loanFrequency === 'weekly' ? 'wk' : 'mo'}
-                      </strong>
-                    </div>
-                  )}
-                </div>
-
-                {/* Big Action Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => handlePlaceOrder(false)}
-                    disabled={!activeSelectedCustomer || !selectedProduct}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      fontSize: '0.92rem',
-                      fontWeight: 800,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      borderRadius: '8px',
-                    }}
-                  >
-                    <CheckCircle size={18} /> Confirm & Place Order
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => handlePlaceOrder(true)}
-                    disabled={!activeSelectedCustomer || !selectedProduct}
-                    style={{
-                      width: '100%',
-                      padding: '9px',
-                      fontSize: '0.84rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <Printer size={15} color="var(--accent-gold)" /> Place & Print Agreement
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetForm}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--ash-500)',
-                      fontSize: '0.76rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      marginTop: '4px',
-                    }}
-                  >
-                    <RotateCcw size={13} /> Reset Form
-                  </button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div style={{ color: '#166534', fontWeight: 700, fontSize: '0.85rem' }}>
+                Full Cash Settlement: {formatLKR(formGrossTotal)}
+              </div>
+            )}
           </div>
-        </div>
-      )}
 
-      {/* =========================================================
-          VIEW 2: PLACED ORDERS & CONTRACTS (DEDICATED VIEW)
-          "oerder krpu tika wenama view karala"
-          ========================================================= */}
-      {activeTab === 'history' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* Sub Header for Placed Orders */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            {/* Search Input */}
-            <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
-              <input
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
-                placeholder="Search by client name, NIC, contract (PN/Center/Item), or item code..."
-                value={historySearchQuery}
-                onChange={(e) => setHistorySearchQuery(e.target.value)}
-              />
-              {historySearchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setHistorySearchQuery('')}
-                  style={{
-                    position: 'absolute',
-                    right: '10px',
-                    top: '9px',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--ash-400)',
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+          {/* Modal Actions */}
+          <div className="modal-actions" style={{ marginTop: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsAddOrderModalOpen(false)}
+            >
+              Cancel
+            </button>
 
-            {/* Quick Status Filter Pills */}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                type="button"
-                className={`btn ${historyStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', fontSize: '0.78rem' }}
-                onClick={() => setHistoryStatusFilter('all')}
-              >
-                All Orders ({orders.length})
-              </button>
-              <button
-                type="button"
-                className={`btn ${historyStatusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', fontSize: '0.78rem' }}
-                onClick={() => setHistoryStatusFilter('active')}
-              >
-                Active Loans ({activeLoansCount})
-              </button>
-              <button
-                type="button"
-                className={`btn ${historyStatusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', fontSize: '0.78rem' }}
-                onClick={() => setHistoryStatusFilter('paid')}
-              >
-                Fully Settled ({settledCount})
-              </button>
-            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleConfirmPlaceOrder(true)}
+              disabled={!formSelectedCustomer || !formSelectedProduct}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+            >
+              <Printer size={15} /> Place & Print Bill
+            </button>
 
-            {/* View Mode Toggle: Split / Table */}
-            <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setHistoryViewMode('split')}
-                style={{
-                  border: 'none',
-                  background: historyViewMode === 'split' ? '#fff' : 'transparent',
-                  color: historyViewMode === 'split' ? 'var(--primary)' : 'var(--ash-600)',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  boxShadow: historyViewMode === 'split' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                }}
-              >
-                <LayoutGrid size={14} /> Detail View
-              </button>
-              <button
-                type="button"
-                onClick={() => setHistoryViewMode('table')}
-                style={{
-                  border: 'none',
-                  background: historyViewMode === 'table' ? '#fff' : 'transparent',
-                  color: historyViewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  boxShadow: historyViewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                }}
-              >
-                <List size={14} /> Table View
-              </button>
-            </div>
-
-            {/* Quick Button to go back to Place Order */}
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => setActiveTab('create')}
-              style={{ padding: '8px 16px', fontSize: '0.82rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={() => handleConfirmPlaceOrder(false)}
+              disabled={!formSelectedCustomer || !formSelectedProduct}
+              style={{ fontWeight: 800, padding: '9px 18px' }}
             >
-              <Plus size={15} /> Place New Order
+              <CheckCircle size={16} /> Confirm & Place Order
             </button>
           </div>
-
-          {/* SPLIT MASTER-DETAIL VIEW */}
-          {historyViewMode === 'split' ? (
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(340px, 420px) 1fr',
-                gap: '18px',
-                alignItems: 'start',
-              }}
-            >
-              {/* LEFT LIST: Orders List */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--ash-600)', padding: '0 4px' }}>
-                  CUSTOMER ORDERS ({filteredOrders.length})
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    maxHeight: 'calc(100vh - 280px)',
-                    overflowY: 'auto',
-                    paddingRight: '4px',
-                  }}
-                >
-                  {filteredOrders.length === 0 ? (
-                    <div
-                      style={{
-                        padding: '30px',
-                        textAlign: 'center',
-                        background: '#fff',
-                        borderRadius: '10px',
-                        border: '1px dashed var(--ash-300)',
-                        color: 'var(--ash-500)',
-                      }}
-                    >
-                      No orders match your search.
-                    </div>
-                  ) : (
-                    filteredOrders.map((order) => {
-                      const isSelected = activeDisplayedOrder && activeDisplayedOrder.id === order.id;
-                      const isPaid = Number(order.balance_due) <= 0;
-
-                      return (
-                        <div
-                          key={order.id}
-                          onClick={() => setSelectedOrderId(order.id)}
-                          style={{
-                            padding: '12px 14px',
-                            background: '#fff',
-                            borderRadius: '10px',
-                            border: isSelected ? '2px solid var(--primary)' : '1px solid var(--ash-200)',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            boxShadow: isSelected ? '0 2px 8px rgba(37,99,235,0.12)' : 'none',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span
-                              style={{
-                                fontFamily: 'monospace',
-                                fontWeight: 800,
-                                fontSize: '0.74rem',
-                                color: 'var(--primary)',
-                                background: 'var(--primary-tint)',
-                                padding: '1px 6px',
-                                borderRadius: '4px',
-                              }}
-                            >
-                              📜 {order.contract_no}
-                            </span>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
-                              {formatDate(order.date)}
-                            </span>
-                          </div>
-
-                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--ash-900)' }}>
-                            {order.customer_name}
-                          </div>
-
-                          <div style={{ fontSize: '0.76rem', color: 'var(--ash-600)', marginTop: '2px' }}>
-                            🆔 NIC: <strong style={{ color: 'var(--ash-800)' }}>{order.customer_nic || order.customer_id}</strong>
-                          </div>
-
-                          <div style={{ fontSize: '0.78rem', color: 'var(--ash-700)', marginTop: '4px', fontWeight: 600 }}>
-                            🛋️ {order.item_name} ({order.item_code})
-                          </div>
-
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              marginTop: '8px',
-                              paddingTop: '6px',
-                              borderTop: '1px dashed var(--ash-200)',
-                            }}
-                          >
-                            <div>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>Value: </span>
-                              <span style={{ fontWeight: 800, fontSize: '0.82rem' }}>{formatLKR(order.gross_amount)}</span>
-                            </div>
-                            <span
-                              style={{
-                                padding: '2px 8px',
-                                borderRadius: '9999px',
-                                fontSize: '0.7rem',
-                                fontWeight: 800,
-                                background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                                color: isPaid ? '#15803D' : '#B45309',
-                              }}
-                            >
-                              {isPaid ? 'Settled' : `Bal: ${formatLKR(order.balance_due)}`}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* RIGHT PANEL: SELECTED ORDER DISPLAYED SEPARATELY */}
-              <div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--ash-600)', padding: '0 4px', marginBottom: '10px' }}>
-                  ORDER & CONTRACT DETAILS
-                </div>
-
-                {activeDisplayedOrder ? (
-                  <div
-                    style={{
-                      background: '#fff',
-                      borderRadius: '12px',
-                      border: '1px solid var(--ash-200)',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
-                      padding: '22px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '18px',
-                    }}
-                  >
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--ash-200)', paddingBottom: '14px' }}>
-                      <div>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
-                          OFFICIAL CONTRACT NUMBER
-                        </span>
-                        <div style={{ fontFamily: 'monospace', fontSize: '1.2rem', fontWeight: 900, color: 'var(--primary)', marginTop: '2px' }}>
-                          📜 {activeDisplayedOrder.contract_no}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--ash-600)', marginTop: '2px' }}>
-                          Invoice: <strong>{activeDisplayedOrder.invoice_no}</strong> • Date: <strong>{formatDate(activeDisplayedOrder.date)}</strong>
-                        </div>
-                      </div>
-
-                      <div style={{ textAlign: 'right' }}>
-                        <span
-                          style={{
-                            padding: '4px 12px',
-                            borderRadius: '9999px',
-                            fontSize: '0.8rem',
-                            fontWeight: 800,
-                            background: Number(activeDisplayedOrder.balance_due) <= 0 ? '#DCFCE7' : '#FEF3C7',
-                            color: Number(activeDisplayedOrder.balance_due) <= 0 ? '#15803D' : '#B45309',
-                            border: Number(activeDisplayedOrder.balance_due) <= 0 ? '1px solid #86EFAC' : '1px solid #FDE68A',
-                          }}
-                        >
-                          {Number(activeDisplayedOrder.balance_due) <= 0 ? '✅ Fully Settled' : '⏳ Active Loan'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 2-Column Info: Customer & Item */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                      {/* Customer Card */}
-                      <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
-                          ACTIVE CLIENT DETAILS
-                        </div>
-                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--ash-900)', marginTop: '4px' }}>
-                          {activeDisplayedOrder.customer_name}
-                        </div>
-                        <div style={{ marginTop: '6px', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ color: 'var(--primary)', fontFamily: 'monospace', fontWeight: 700 }}>
-                            🆔 NIC: {activeDisplayedOrder.customer_nic || activeDisplayedOrder.customer_id}
-                          </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Phone size={13} color="var(--ash-500)" /> {activeDisplayedOrder.customer_phone}
-                          </span>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <MapPin size={13} color="var(--ash-500)" /> {activeDisplayedOrder.customer_address || 'No address specified'}
-                          </span>
-                          <span style={{ color: 'var(--ash-600)' }}>
-                            📍 Center: <strong>{activeDisplayedOrder.branch_code}/{activeDisplayedOrder.center_code}</strong>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Furniture Item Card */}
-                      <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
-                          FURNITURE ITEM PURCHASED
-                        </div>
-                        <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--ash-900)', marginTop: '4px' }}>
-                          {activeDisplayedOrder.item_name}
-                        </div>
-                        <div style={{ marginTop: '6px', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--ash-700)' }}>
-                            Item Code: {activeDisplayedOrder.item_code}
-                          </span>
-                          <span>
-                            Quantity: <strong>{activeDisplayedOrder.quantity} Unit(s)</strong>
-                          </span>
-                          <span>
-                            Unit Price: <strong>{formatLKR(activeDisplayedOrder.unit_price)}</strong>
-                          </span>
-                          <span style={{ color: 'var(--primary)', fontWeight: 800 }}>
-                            Total Value: {formatLKR(activeDisplayedOrder.gross_amount)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Financial & Installment Terms Box */}
-                    <div style={{ background: '#FEF9C3', border: '1px solid #FEF08A', borderRadius: '10px', padding: '16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                        <div>
-                          <div style={{ fontSize: '0.74rem', color: '#854D0E', fontWeight: 700, textTransform: 'uppercase' }}>
-                            PAYMENT & REPAYMENT TERMS
-                          </div>
-                          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#A16207', marginTop: '2px' }}>
-                            {activeDisplayedOrder.payment_type === 'installment'
-                              ? `${formatLKR(activeDisplayedOrder.installment_value)} / ${activeDisplayedOrder.loan_frequency === 'weekly' ? 'week' : 'month'}`
-                              : 'Full Cash Sale'}
-                          </div>
-                          {activeDisplayedOrder.payment_type === 'installment' && (
-                            <div style={{ fontSize: '0.78rem', color: '#713F12', marginTop: '2px' }}>
-                              Plan: {activeDisplayedOrder.loan_terms} installments ({activeDisplayedOrder.loan_frequency}) • Advance: {formatLKR(activeDisplayedOrder.advance_paid)}
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.76rem', color: '#854D0E', fontWeight: 700 }}>REMAINING BALANCE</div>
-                          <div style={{ fontSize: '1.4rem', fontWeight: 900, color: Number(activeDisplayedOrder.balance_due) > 0 ? '#DC2626' : '#16A34A' }}>
-                            {formatLKR(activeDisplayedOrder.balance_due)}
-                          </div>
-                          {activeDisplayedOrder.first_due_date && Number(activeDisplayedOrder.balance_due) > 0 && (
-                            <div style={{ fontSize: '0.74rem', color: '#713F12', marginTop: '2px' }}>
-                              Next Due: <strong>{formatDate(activeDisplayedOrder.first_due_date)}</strong>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Actions Bar */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid var(--ash-200)' }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
-                        onClick={() => handleDeleteOrder(activeDisplayedOrder.id, activeDisplayedOrder.contract_no)}
-                      >
-                        <Trash2 size={14} /> Cancel Order
-                      </button>
-
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        {Number(activeDisplayedOrder.balance_due) > 0 && (
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                            onClick={() => {
-                              setPaymentAmount(activeDisplayedOrder.installment_value || '');
-                              setIsPaymentModalOpen(true);
-                            }}
-                          >
-                            <CreditCard size={15} /> Record Payment
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-                          onClick={() => {
-                            setOrderToPrint(activeDisplayedOrder);
-                            setIsPrintModalOpen(true);
-                          }}
-                        >
-                          <Printer size={15} color="var(--accent-gold)" /> Print Bill / Contract
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ padding: '60px', background: '#fff', borderRadius: '12px', border: '1px dashed var(--ash-300)', textAlign: 'center', color: 'var(--ash-500)' }}>
-                    Select an order from the list or click "Place New Order" above.
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* TABLE VIEW */
-            <div className="table-responsive" style={{ background: '#fff', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
-              <table className="custom-table" style={{ margin: 0 }}>
-                <thead>
-                  <tr>
-                    <th>Contract No (pn/center/item)</th>
-                    <th>Client Name & NIC</th>
-                    <th>Furniture Item</th>
-                    <th>Total Value</th>
-                    <th>Payment Plan</th>
-                    <th>Balance Due</th>
-                    <th style={{ textAlign: 'center' }}>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredOrders.map((order) => {
-                    const isPaid = Number(order.balance_due) <= 0;
-                    return (
-                      <tr key={order.id}>
-                        <td>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)' }}>
-                            {order.contract_no}
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 800 }}>{order.customer_name}</div>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--ash-600)' }}>🆔 {order.customer_nic}</div>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{order.item_name}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontFamily: 'monospace' }}>{order.item_code}</div>
-                        </td>
-                        <td style={{ fontWeight: 800 }}>{formatLKR(order.gross_amount)}</td>
-                        <td style={{ fontSize: '0.78rem' }}>
-                          {order.payment_type === 'installment'
-                            ? `${formatLKR(order.installment_value)} / ${order.loan_frequency}`
-                            : 'Cash'}
-                        </td>
-                        <td style={{ fontWeight: 800, color: isPaid ? '#16A34A' : '#DC2626' }}>
-                          {formatLKR(order.balance_due)}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '9999px',
-                              fontSize: '0.72rem',
-                              fontWeight: 800,
-                              background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                              color: isPaid ? '#15803D' : '#B45309',
-                            }}
-                          >
-                            {isPaid ? 'Settled' : 'Active Loan'}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ padding: '3px 8px', fontSize: '0.74rem' }}
-                            onClick={() => {
-                              setSelectedOrderId(order.id);
-                              setHistoryViewMode('split');
-                            }}
-                          >
-                            View Order
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
-      )}
+      </Modal>
 
       {/* =========================================================
-          MODAL: RECORD INSTALLMENT PAYMENT
+          5. MODAL: VIEW ORDER DETAILS (CLEAN DIALOG)
+          ========================================================= */}
+      <Modal
+        isOpen={isViewDetailsModalOpen}
+        onClose={() => setIsViewDetailsModalOpen(false)}
+        title={activeSelectedOrder ? `Contract Details - ${activeSelectedOrder.contract_no}` : 'Order Details'}
+      >
+        {activeSelectedOrder && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Header info */}
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '12px 14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 700 }}>OFFICIAL CONTRACT CODE</span>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.15rem', fontWeight: 900, color: '#1D4ED8' }}>
+                  📜 {activeSelectedOrder.contract_no}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#1E40AF', marginTop: '2px' }}>
+                  Invoice: {activeSelectedOrder.invoice_no} • Date: {formatDate(activeSelectedOrder.date)}
+                </div>
+              </div>
+
+              <span
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '9999px',
+                  fontSize: '0.76rem',
+                  fontWeight: 800,
+                  background: Number(activeSelectedOrder.balance_due) <= 0 ? '#DCFCE7' : '#FEF3C7',
+                  color: Number(activeSelectedOrder.balance_due) <= 0 ? '#15803D' : '#B45309',
+                }}
+              >
+                {Number(activeSelectedOrder.balance_due) <= 0 ? 'Fully Paid' : 'Active Loan'}
+              </span>
+            </div>
+
+            {/* 2-Column Info: Customer & Item */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ background: 'var(--ash-50)', padding: '12px', borderRadius: '8px', border: '1px solid var(--ash-200)', fontSize: '0.82rem' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Client Information</span>
+                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--ash-900)', marginTop: '2px' }}>
+                  {activeSelectedOrder.customer_name}
+                </div>
+                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                    🆔 NIC: {activeSelectedOrder.customer_nic || activeSelectedOrder.customer_id}
+                  </span>
+                  <span>📞 {activeSelectedOrder.customer_phone}</span>
+                  <span>📍 {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}</span>
+                </div>
+              </div>
+
+              <div style={{ background: 'var(--ash-50)', padding: '12px', borderRadius: '8px', border: '1px solid var(--ash-200)', fontSize: '0.82rem' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Furniture Item</span>
+                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--ash-900)', marginTop: '2px' }}>
+                  {activeSelectedOrder.item_name}
+                </div>
+                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Code: {activeSelectedOrder.item_code}</span>
+                  <span>Quantity: {activeSelectedOrder.quantity} Unit(s)</span>
+                  <span>Unit Price: {formatLKR(activeSelectedOrder.unit_price)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment & Terms */}
+            <div style={{ background: '#FEF9C3', border: '1px solid #FEF08A', borderRadius: '8px', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', color: '#854D0E', fontWeight: 700 }}>PAYMENT PLAN</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#A16207' }}>
+                    {activeSelectedOrder.payment_type === 'installment'
+                      ? `${formatLKR(activeSelectedOrder.installment_value)} / ${activeSelectedOrder.loan_frequency}`
+                      : 'Full Cash Sale'}
+                  </div>
+                  {activeSelectedOrder.payment_type === 'installment' && (
+                    <div style={{ fontSize: '0.76rem', color: '#713F12' }}>
+                      {activeSelectedOrder.loan_terms} terms • Advance: {formatLKR(activeSelectedOrder.advance_paid)}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#854D0E', fontWeight: 700 }}>BALANCE DUE</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: Number(activeSelectedOrder.balance_due) > 0 ? '#DC2626' : '#16A34A' }}>
+                    {formatLKR(activeSelectedOrder.balance_due)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--ash-200)', paddingTop: '10px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ color: '#DC2626', borderColor: '#FCA5A5' }}
+                onClick={() => handleDeleteOrder(activeSelectedOrder.id, activeSelectedOrder.contract_no)}
+              >
+                <Trash2 size={14} /> Cancel Order
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {Number(activeSelectedOrder.balance_due) > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setIsViewDetailsModalOpen(false);
+                      setPaymentAmount(activeSelectedOrder.installment_value || '');
+                      setIsPaymentModalOpen(true);
+                    }}
+                  >
+                    <CreditCard size={14} /> Record Payment
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setIsViewDetailsModalOpen(false);
+                    setIsPrintModalOpen(true);
+                  }}
+                >
+                  <Printer size={14} /> Print Bill
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* =========================================================
+          6. MODAL: RECORD INSTALLMENT PAYMENT
           ========================================================= */}
       <Modal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        title={activeDisplayedOrder ? `Pay Installment - ${activeDisplayedOrder.contract_no}` : 'Record Payment'}
+        title={activeSelectedOrder ? `Pay Installment - ${activeSelectedOrder.contract_no}` : 'Record Payment'}
       >
-        {activeDisplayedOrder && (
+        {activeSelectedOrder && (
           <form onSubmit={handleRecordInstallment}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ background: 'var(--ash-50)', padding: '10px 12px', borderRadius: '8px', fontSize: '0.84rem' }}>
-                <div>Client: <strong>{activeDisplayedOrder.customer_name}</strong></div>
-                <div>NIC: <strong>{activeDisplayedOrder.customer_nic}</strong></div>
-                <div>Remaining Balance: <strong style={{ color: '#DC2626' }}>{formatLKR(activeDisplayedOrder.balance_due)}</strong></div>
-                <div>Installment Due: <strong>{formatLKR(activeDisplayedOrder.installment_value)}</strong></div>
+                <div>Client: <strong>{activeSelectedOrder.customer_name}</strong></div>
+                <div>NIC: <strong>{activeSelectedOrder.customer_nic}</strong></div>
+                <div>Remaining Balance: <strong style={{ color: '#DC2626' }}>{formatLKR(activeSelectedOrder.balance_due)}</strong></div>
+                <div>Installment Due: <strong>{formatLKR(activeSelectedOrder.installment_value)}</strong></div>
               </div>
 
               <div className="form-group">
@@ -2142,7 +1667,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   className="form-input"
                   required
                   min="1"
-                  max={activeDisplayedOrder.balance_due}
+                  max={activeSelectedOrder.balance_due}
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--primary)' }}
@@ -2167,14 +1692,14 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       </Modal>
 
       {/* =========================================================
-          MODAL: PRINT BILL / CONTRACT RECEIPT
+          7. MODAL: PRINT BILL / CONTRACT RECEIPT
           ========================================================= */}
       <Modal
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
-        title={orderToPrint ? `Print Bill - ${orderToPrint.contract_no}` : 'Print Bill'}
+        title={activeSelectedOrder ? `Print Bill - ${activeSelectedOrder.contract_no}` : 'Print Bill'}
       >
-        {orderToPrint && (
+        {activeSelectedOrder && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div
               id="printable-bill"
@@ -2191,13 +1716,13 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900 }}>D&S FURNITURE WORKSHOP</h3>
                   <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                    Center: {orderToPrint.branch_code}/{orderToPrint.center_code}
+                    Center: {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '0.74rem', color: '#64748b' }}>CONTRACT RECEIPT</div>
                   <div style={{ fontFamily: 'monospace', fontSize: '0.95rem', fontWeight: 900, color: '#2563eb' }}>
-                    {orderToPrint.contract_no}
+                    {activeSelectedOrder.contract_no}
                   </div>
                 </div>
               </div>
@@ -2205,13 +1730,13 @@ export default function OrdersPage({ headerCenter = 'all' }) {
               {/* Meta */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', margin: '14px 0', fontSize: '0.82rem' }}>
                 <div>
-                  <div>Customer: <strong>{orderToPrint.customer_name}</strong></div>
-                  <div>NIC: <strong>{orderToPrint.customer_nic}</strong></div>
-                  <div>Phone: {orderToPrint.customer_phone}</div>
+                  <div>Customer: <strong>{activeSelectedOrder.customer_name}</strong></div>
+                  <div>NIC: <strong>{activeSelectedOrder.customer_nic}</strong></div>
+                  <div>Phone: {activeSelectedOrder.customer_phone}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div>Date: {formatDate(orderToPrint.date)}</div>
-                  <div>Invoice No: <strong>{orderToPrint.invoice_no}</strong></div>
+                  <div>Date: {formatDate(activeSelectedOrder.date)}</div>
+                  <div>Invoice No: <strong>{activeSelectedOrder.invoice_no}</strong></div>
                 </div>
               </div>
 
@@ -2228,11 +1753,11 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                 <tbody>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '6px' }}>
-                      {orderToPrint.item_name} ({orderToPrint.item_code})
+                      {activeSelectedOrder.item_name} ({activeSelectedOrder.item_code})
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'center' }}>{orderToPrint.quantity}</td>
-                    <td style={{ padding: '6px', textAlign: 'right' }}>{formatLKR(orderToPrint.unit_price)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800 }}>{formatLKR(orderToPrint.gross_amount)}</td>
+                    <td style={{ padding: '6px', textAlign: 'center' }}>{activeSelectedOrder.quantity}</td>
+                    <td style={{ padding: '6px', textAlign: 'right' }}>{formatLKR(activeSelectedOrder.unit_price)}</td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800 }}>{formatLKR(activeSelectedOrder.gross_amount)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -2242,20 +1767,20 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                 <div style={{ width: '250px', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>Gross Amount:</span>
-                    <strong>{formatLKR(orderToPrint.gross_amount)}</strong>
+                    <strong>{formatLKR(activeSelectedOrder.gross_amount)}</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>Advance Received:</span>
-                    <strong>{formatLKR(orderToPrint.advance_paid)}</strong>
+                    <strong>{formatLKR(activeSelectedOrder.advance_paid)}</strong>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #cbd5e1', paddingTop: '4px', color: '#dc2626', fontWeight: 900 }}>
                     <span>Remaining Balance:</span>
-                    <span>{formatLKR(orderToPrint.balance_due)}</span>
+                    <span>{formatLKR(activeSelectedOrder.balance_due)}</span>
                   </div>
-                  {orderToPrint.payment_type === 'installment' && (
+                  {activeSelectedOrder.payment_type === 'installment' && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', background: '#f1f5f9', padding: '4px 6px', borderRadius: '4px', marginTop: '2px', fontSize: '0.78rem' }}>
                       <span>Installment Plan:</span>
-                      <strong>{formatLKR(orderToPrint.installment_value)} / {orderToPrint.loan_frequency}</strong>
+                      <strong>{formatLKR(activeSelectedOrder.installment_value)} / {activeSelectedOrder.loan_frequency}</strong>
                     </div>
                   )}
                 </div>
