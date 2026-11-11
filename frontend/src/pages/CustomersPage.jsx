@@ -29,12 +29,13 @@ import {
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
+import { INITIAL_CENTERS } from '../utils/centersData';
 
-// Realistic initial Sri Lankan furniture client records
+// Realistic initial Sri Lankan furniture client records (Identified primarily by NIC)
 const INITIAL_CUSTOMERS = [
   {
     id: 'cust-1',
-    customer_id: 'MHG/C001/1/DT001',
+    customer_id: '197814502391',
     branch_code: 'MHG',
     center_code: 'C001',
     contract_no: '1',
@@ -58,7 +59,7 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-2',
-    customer_id: 'MHG/C002/1/WR003',
+    customer_id: '198578901234',
     branch_code: 'MHG',
     center_code: 'C002',
     contract_no: '1',
@@ -82,7 +83,7 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-3',
-    customer_id: 'MRT/C001/2/BS002',
+    customer_id: '196923405678',
     branch_code: 'MRT',
     center_code: 'C001',
     contract_no: '2',
@@ -106,7 +107,7 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-4',
-    customer_id: 'NGB/C001/5/CT010',
+    customer_id: '199412308976',
     branch_code: 'NGB',
     center_code: 'C001',
     contract_no: '5',
@@ -130,7 +131,7 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-5',
-    customer_id: 'DHW/C001/1/OD004',
+    customer_id: '199145607890',
     branch_code: 'DHW',
     center_code: 'C001',
     contract_no: '1',
@@ -154,7 +155,7 @@ const INITIAL_CUSTOMERS = [
   },
   {
     id: 'cust-6',
-    customer_id: 'CMB/C003/2/TV002',
+    customer_id: '197234509812',
     branch_code: 'CMB',
     center_code: 'C003',
     contract_no: '2',
@@ -178,20 +179,6 @@ const INITIAL_CUSTOMERS = [
   },
 ];
 
-// =========================================================
-// Customer ID format: BRANCH CODE / CENTER CODE / CONTRACT NO / ITEM CODE
-//   - Contract No = the customer's nth item count
-//   e.g. MHG/C001/2/DT001
-// =========================================================
-const CUSTOMER_ID_FIELDS = [
-  { key: 'branch_code', label: 'Branch Code', si: 'Branch', placeholder: 'e.g. MHG' },
-  { key: 'center_code', label: 'Center Code', si: 'Center', placeholder: 'e.g. C001' },
-  { key: 'contract_no', label: 'Contract No', si: 'Item #', placeholder: 'e.g. 1', numeric: true },
-  { key: 'item_code', label: 'Item Code', si: 'SKU / Item', placeholder: 'e.g. DT001' },
-];
-
-const LAST_ID_PREFIX_KEY = 'dnd_last_customer_id_prefix';
-
 // Normalizes and formats center codes into 'C001' style (C followed by 3 digits)
 const formatCenterCode = (val) => {
   const clean = String(val || '').trim().toUpperCase();
@@ -213,105 +200,26 @@ const normalizeIdPart = (key, value) => {
 const normalizeDigits = (str) => String(str || '').replace(/\D/g, '');
 const normalizeNic = (str) => String(str || '').trim().toUpperCase();
 
-const buildCustomerId = (parts) =>
-  CUSTOMER_ID_FIELDS.map((f) => normalizeIdPart(f.key, parts?.[f.key])).join('/');
-
-const isCustomerIdComplete = (parts) =>
-  CUSTOMER_ID_FIELDS.every((f) => normalizeIdPart(f.key, parts?.[f.key]) !== '');
-
-// Splits an existing customer_id into its 4 parts (empty parts if it is in an older format)
-const parseCustomerId = (customer) => {
-  if (customer && CUSTOMER_ID_FIELDS.some((f) => customer[f.key])) {
-    return CUSTOMER_ID_FIELDS.reduce(
-      (acc, f) => ({
-        ...acc,
-        [f.key]: f.key === 'center_code' ? formatCenterCode(customer[f.key]) : (customer[f.key] || ''),
-      }),
-      {}
-    );
-  }
-  const segments = String(customer?.customer_id || '').split('/');
-  return CUSTOMER_ID_FIELDS.reduce(
-    (acc, f, idx) => ({
-      ...acc,
-      [f.key]: segments.length === CUSTOMER_ID_FIELDS.length
-        ? (f.key === 'center_code' ? formatCenterCode(segments[idx]) : segments[idx])
-        : '',
-    }),
-    {}
-  );
-};
-
-// Seed migration map for default mock customers
+// Seed migration map for default mock customers (Identified primarily by NIC)
 const SAMPLE_MIGRATION_MAP = {
-  'cust-1': { customer_id: 'MHG/C001/1/DT001', branch_code: 'MHG', center_code: 'C001', contract_no: '1', item_code: 'DT001' },
-  'cust-2': { customer_id: 'MHG/C002/1/WR003', branch_code: 'MHG', center_code: 'C002', contract_no: '1', item_code: 'WR003' },
-  'cust-3': { customer_id: 'MRT/C001/2/BS002', branch_code: 'MRT', center_code: 'C001', contract_no: '2', item_code: 'BS002' },
-  'cust-4': { customer_id: 'NGB/C001/5/CT010', branch_code: 'NGB', center_code: 'C001', contract_no: '5', item_code: 'CT010' },
-  'cust-5': { customer_id: 'DHW/C001/1/OD004', branch_code: 'DHW', center_code: 'C001', contract_no: '1', item_code: 'OD004' },
-  'cust-6': { customer_id: 'CMB/C003/2/TV002', branch_code: 'CMB', center_code: 'C003', contract_no: '2', item_code: 'TV002' },
+  'cust-1': { customer_id: '197814502391', branch_code: 'MHG', center_code: 'C001', nic: '197814502391' },
+  'cust-2': { customer_id: '198578901234', branch_code: 'MHG', center_code: 'C002', nic: '198578901234' },
+  'cust-3': { customer_id: '196923405678', branch_code: 'MRT', center_code: 'C001', nic: '196923405678' },
+  'cust-4': { customer_id: '199412308976', branch_code: 'NGB', center_code: 'C001', nic: '199412308976' },
+  'cust-5': { customer_id: '199145607890', branch_code: 'DHW', center_code: 'C001', nic: '199145607890' },
+  'cust-6': { customer_id: '197234509812', branch_code: 'CMB', center_code: 'C003', nic: '197234509812' },
 };
 
-const CITY_BRANCH_CODES = {
-  maharagama: 'MHG',
-  kottawa: 'MHG',
-  moratuwa: 'MRT',
-  negombo: 'NGB',
-  dehiwala: 'DHW',
-  colombo: 'CMB',
-  kandy: 'KDY',
-  galle: 'GAL',
-  kurunegala: 'KRN',
-  gampaha: 'GMP',
-};
-
-// Converts any legacy CUST-XXXX or incomplete ID to standard BRANCH/CENTER/CONTRACT/ITEM
-const migrateCustomerRecord = (c, idx = 0) => {
-  if (SAMPLE_MIGRATION_MAP[c.id]) {
-    const seed = SAMPLE_MIGRATION_MAP[c.id];
-    return {
-      ...c,
-      ...seed,
-      first_name: c.first_name || (c.name ? c.name.split(' ')[0] : ''),
-      last_name: c.last_name || (c.name ? c.name.split(' ').slice(1).join(' ') : ''),
-      civil_status: c.civil_status || 'Single',
-      dob: c.dob || '',
-    };
-  }
-
-  const parts = String(c.customer_id || '').split('/');
-  if (parts.length === 4 && parts.every((p) => p.trim() !== '')) {
-    const normCenter = formatCenterCode(c.center_code || parts[1]);
-    const updatedId = `${parts[0].toUpperCase()}/${normCenter}/${parts[2]}/${parts[3].toUpperCase()}`;
-    return {
-      ...c,
-      customer_id: updatedId,
-      branch_code: c.branch_code || parts[0].toUpperCase(),
-      center_code: normCenter,
-      contract_no: c.contract_no || parts[2],
-      item_code: c.item_code || parts[3].toUpperCase(),
-      first_name: c.first_name || (c.name ? c.name.split(' ')[0] : ''),
-      last_name: c.last_name || (c.name ? c.name.split(' ').slice(1).join(' ') : ''),
-      civil_status: c.civil_status || 'Single',
-      dob: c.dob || '',
-    };
-  }
-
-  const cityKey = String(c.city || '').toLowerCase().trim();
-  const branch_code = c.branch_code || CITY_BRANCH_CODES[cityKey] || (c.city ? c.city.slice(0, 3).toUpperCase() : 'MHG');
-  const center_code = formatCenterCode(c.center_code || 'C001');
-  const contract_no = c.contract_no || String(c.total_orders || 1);
-  const numOnly = String(c.customer_id || '').replace(/\D/g, '') || String(idx + 1);
-  const item_code = c.item_code || `ITM${numOnly.padStart(3, '0').slice(-3)}`;
-  const customer_id = `${branch_code}/${center_code}/${contract_no}/${item_code}`;
-
+// Converts customer record to NIC-first identity
+const migrateCustomerRecord = (c) => {
+  const seed = SAMPLE_MIGRATION_MAP[c.id];
+  const cleanNic = c.nic ? String(c.nic).trim().toUpperCase() : (seed?.nic || '');
+  const customerId = cleanNic || c.customer_id || '';
   return {
     ...c,
-    customer_id,
-    branch_code,
-    center_code,
-    contract_no,
-    item_code,
+    ...(seed || {}),
+    customer_id: customerId,
+    nic: cleanNic || c.nic || '',
     first_name: c.first_name || (c.name ? c.name.split(' ')[0] : ''),
     last_name: c.last_name || (c.name ? c.name.split(' ').slice(1).join(' ') : ''),
     civil_status: c.civil_status || 'Single',
@@ -336,17 +244,8 @@ const getCustomerContractStats = (customersList, customer) => {
     return false;
   });
 
-  const existingContractNos = matchingRecords
-    .map((r) => {
-      const parsed = parseCustomerId(r);
-      const val = Number(r.contract_no || parsed.contract_no);
-      return isNaN(val) ? 0 : val;
-    })
-    .filter((n) => n > 0);
-
-  const maxContractFromRecords = existingContractNos.length > 0 ? Math.max(...existingContractNos) : 0;
-  const count = Math.max(matchingRecords.length, Number(customer.total_orders) || 0, maxContractFromRecords);
-  const nextContractNo = (maxContractFromRecords > 0 ? maxContractFromRecords : count) + 1;
+  const count = Math.max(matchingRecords.length, Number(customer.total_orders) || 0);
+  const nextContractNo = count + 1;
 
   return {
     count,
@@ -355,11 +254,7 @@ const getCustomerContractStats = (customersList, customer) => {
   };
 };
 
-// Composite Customer ID input (Branch / Center / Contract / Item)
-function CustomerIdBuilder({ values, onChange, legacyId }) {
-  const preview = buildCustomerId(values);
-  const complete = isCustomerIdComplete(values);
-
+export default function CustomersPage({ initialDebtFilter = 'all', selectedCenter = 'all' }) {
   // Available centers from center management
   const availableCenters = useMemo(() => {
     try {
@@ -371,83 +266,10 @@ function CustomerIdBuilder({ values, onChange, legacyId }) {
     } catch {
       // fallback
     }
-    return [];
+    return INITIAL_CENTERS;
   }, []);
 
-  const handleSelectCenter = (centerId) => {
-    const center = availableCenters.find((c) => c.id === centerId);
-    if (center) {
-      onChange('branch_code', center.branch_code?.toUpperCase() || '');
-      onChange('center_code', center.center_code?.toUpperCase() || '');
-    }
-  };
-
-  return (
-    <div className="form-group full-width">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
-        <label className="form-label" style={{ marginBottom: 0 }}>
-          Customer ID * — Branch / Center / Contract / Item
-        </label>
-        {availableCenters.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-faint)' }}>Choose Center:</span>
-            <select
-              style={{
-                fontSize: '0.75rem',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                border: '1px solid var(--ash-300)',
-                background: '#fff',
-                cursor: 'pointer',
-              }}
-              value=""
-              onChange={(e) => handleSelectCenter(e.target.value)}
-            >
-              <option value="" disabled>
-                -- Select Center Code --
-              </option>
-              {availableCenters.map((cntr) => (
-                <option key={cntr.id} value={cntr.id}>
-                  {cntr.branch_code}/{cntr.center_code} — {cntr.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      <div className="cust-id-builder">
-        {CUSTOMER_ID_FIELDS.map((f, idx) => (
-          <React.Fragment key={f.key}>
-            {idx > 0 && <span className="cust-id-sep">/</span>}
-            <div className="cust-id-part">
-              <span className="cust-id-part-label">
-                {f.label}
-                <small>{f.si}</small>
-              </span>
-              <input
-                type={f.numeric ? 'number' : 'text'}
-                min={f.numeric ? 1 : undefined}
-                className="form-input"
-                required
-                placeholder={f.placeholder}
-                value={values?.[f.key] ?? ''}
-                onChange={(e) => onChange(f.key, f.numeric ? e.target.value : e.target.value.replace(/\//g, '').toUpperCase())}
-              />
-            </div>
-          </React.Fragment>
-        ))}
-      </div>
-      <div className={`cust-id-preview ${complete ? 'is-complete' : ''}`}>
-        Customer ID: <strong>{complete ? preview : 'BRANCH/CENTER/CONTRACT/ITEM'}</strong>
-        {legacyId && !complete && <span className="cust-id-legacy"> (Old ID: {legacyId})</span>}
-      </div>
-    </div>
-  );
-}
-
-export default function CustomersPage({ initialDebtFilter = 'all', selectedCenter = 'all' }) {
-  // Customers List State (with local storage persistence & auto-migration to BRANCH/CENTER/CONTRACT/ITEM)
+  // Customers List State (with local storage persistence & auto-migration to NIC-first identity)
   const [customers, setCustomers] = useState(() => {
     try {
       const saved = localStorage.getItem('dnd_customers_list');
@@ -495,11 +317,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [matchedCustomerAlert, setMatchedCustomerAlert] = useState(null);
 
-  // Form State for Add Customer
+  // Form State for Add Customer (NIC is the primary identifier)
   const [newCustomer, setNewCustomer] = useState({
     customer_id: '',
-    branch_code: '',
-    center_code: '',
+    branch_code: 'MHG',
+    center_code: 'C001',
     contract_no: '1',
     item_code: '',
     first_name: '',
@@ -681,19 +503,13 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     cityFilter !== 'all' ||
     sortBy !== 'recent';
 
-  // Open Add New Customer Modal (Branch & Center codes pre-filled from the last entry)
+  // Open Add New Customer Modal (NIC is the primary customer identifier)
   const handleOpenAddModal = () => {
-    let lastPrefix = {};
-    try {
-      lastPrefix = JSON.parse(localStorage.getItem(LAST_ID_PREFIX_KEY) || '{}') || {};
-    } catch {
-      lastPrefix = {};
-    }
     setMatchedCustomerAlert(null);
     setNewCustomer({
       customer_id: '',
-      branch_code: lastPrefix.branch_code || '',
-      center_code: lastPrefix.center_code || '',
+      branch_code: selectedCenter && selectedCenter.includes('/') ? selectedCenter.split('/')[0] : 'MHG',
+      center_code: selectedCenter && selectedCenter.includes('/') ? selectedCenter.split('/')[1] : 'C001',
       contract_no: '1',
       item_code: '',
       first_name: '',
@@ -743,9 +559,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
         matchedBy: field,
       });
 
-      const parsedId = parseCustomerId(matched);
-      const existingBranch = matched.branch_code || parsedId.branch_code || currentCustomerState.branch_code;
-      const existingCenter = matched.center_code || parsedId.center_code || currentCustomerState.center_code;
+      const existingBranch = matched.branch_code || currentCustomerState.branch_code || 'MHG';
+      const existingCenter = matched.center_code || currentCustomerState.center_code || 'C001';
 
       setNewCustomer((prev) => ({
         ...prev,
@@ -777,7 +592,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     }));
   };
 
-  // Add new customer handler
+  // Add new customer handler (Identified by NIC)
   const handleAddCustomer = async (e) => {
     e.preventDefault();
     const fullName = `${newCustomer.first_name || ''} ${newCustomer.last_name || ''}`.trim() || newCustomer.name;
@@ -785,42 +600,38 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       alert('Please fill in First Name.');
       return;
     }
+    if (!newCustomer.nic || !newCustomer.nic.trim()) {
+      alert('Please fill in NIC (National Identity Card) Number as the customer identification.');
+      return;
+    }
     if (!newCustomer.phone) {
       alert('Please fill in Phone Number.');
       return;
     }
 
-    if (!isCustomerIdComplete(newCustomer)) {
-      alert('Please fill Branch Code, Center Code, Contract No and Item Code for the Customer ID.');
-      return;
-    }
-    const assignedCustomerId = buildCustomerId(newCustomer);
-    if (customers.some((c) => (c.customer_id || '').toUpperCase() === assignedCustomerId)) {
-      alert(`Customer ID "${assignedCustomerId}" already exists. Please use a different Contract No or Item Code.`);
-      return;
-    }
+    const cleanNic = newCustomer.nic.trim().toUpperCase();
 
-    try {
-      localStorage.setItem(
-        LAST_ID_PREFIX_KEY,
-        JSON.stringify({
-          branch_code: normalizeIdPart(newCustomer.branch_code),
-          center_code: normalizeIdPart(newCustomer.center_code),
-        })
+    // Check if customer with this NIC already exists
+    const existingWithNic = customers.find(
+      (c) => normalizeNic(c.nic) === normalizeNic(cleanNic)
+    );
+    if (existingWithNic && !matchedCustomerAlert) {
+      const confirmUse = window.confirm(
+        `A customer with NIC "${cleanNic}" already exists (${existingWithNic.name}). Do you want to record this transaction under the existing customer?`
       );
-    } catch {
-      // ignore storage errors
+      if (!confirmUse) return;
     }
 
     const totalOrders = matchedCustomerAlert ? matchedCustomerAlert.previousCount + 1 : 1;
+    const assignedCustomerId = cleanNic;
 
     const createdRecord = {
       id: `cust-${Date.now()}`,
       customer_id: assignedCustomerId,
-      branch_code: normalizeIdPart(newCustomer.branch_code),
-      center_code: normalizeIdPart(newCustomer.center_code),
-      contract_no: normalizeIdPart(newCustomer.contract_no),
-      item_code: normalizeIdPart(newCustomer.item_code),
+      branch_code: normalizeIdPart('branch_code', newCustomer.branch_code || 'MHG'),
+      center_code: normalizeIdPart('center_code', newCustomer.center_code || 'C001'),
+      contract_no: String(totalOrders),
+      item_code: '',
       first_name: newCustomer.first_name || '',
       last_name: newCustomer.last_name || '',
       name: fullName,
@@ -828,7 +639,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       dob: newCustomer.dob || '',
       phone: newCustomer.phone,
       whatsapp: newCustomer.whatsapp || newCustomer.phone,
-      nic: newCustomer.nic || '',
+      nic: cleanNic,
       city: newCustomer.city || 'Maharagama',
       address: newCustomer.address || '',
       category: newCustomer.category || 'custom_order',
@@ -1103,21 +914,23 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       firstName = parts[0] || '';
       lastName = parts.slice(1).join(' ') || '';
     }
+    const cleanNic = customer.nic ? String(customer.nic).trim().toUpperCase() : (customer.customer_id || '');
     setEditingCustomer({
       ...customer,
-      ...parseCustomerId(customer),
-      legacy_customer_id: customer.customer_id || '',
-      customer_id: customer.customer_id || '',
+      customer_id: cleanNic,
+      nic: cleanNic,
       first_name: firstName,
       last_name: lastName,
       name: customer.name || `${firstName} ${lastName}`.trim(),
       civil_status: customer.civil_status || 'Single',
       dob: customer.dob || '',
+      branch_code: customer.branch_code || 'MHG',
+      center_code: customer.center_code || 'C001',
     });
     setIsEditModalOpen(true);
   };
 
-  // Save Updated Customer Details
+  // Save Updated Customer Details (Identified by NIC)
   const handleUpdateCustomer = async (e) => {
     e.preventDefault();
     const fullName = `${editingCustomer.first_name || ''} ${editingCustomer.last_name || ''}`.trim() || editingCustomer.name;
@@ -1125,22 +938,22 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       alert('Please fill in First Name.');
       return;
     }
+    if (!editingCustomer?.nic || !editingCustomer?.nic.trim()) {
+      alert('Please fill in NIC (National Identity Card) Number as the customer identification.');
+      return;
+    }
     if (!editingCustomer?.phone) {
       alert('Please fill in Phone Number.');
       return;
     }
 
-    if (!isCustomerIdComplete(editingCustomer)) {
-      alert('Please fill Branch Code, Center Code, Contract No and Item Code for the Customer ID.');
-      return;
-    }
-    const updatedCustomerId = buildCustomerId(editingCustomer);
+    const cleanNic = editingCustomer.nic.trim().toUpperCase();
     if (
       customers.some(
-        (c) => c.id !== editingCustomer.id && (c.customer_id || '').toUpperCase() === updatedCustomerId
+        (c) => c.id !== editingCustomer.id && normalizeNic(c.nic) === normalizeNic(cleanNic)
       )
     ) {
-      alert(`Customer ID "${updatedCustomerId}" already exists. Please use a different Contract No or Item Code.`);
+      alert(`Another customer with NIC "${cleanNic}" already exists.`);
       return;
     }
 
@@ -1150,11 +963,10 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       name: fullName,
       first_name: editingCustomer.first_name || '',
       last_name: editingCustomer.last_name || '',
-      customer_id: updatedCustomerId,
-      branch_code: normalizeIdPart(editingCustomer.branch_code),
-      center_code: normalizeIdPart(editingCustomer.center_code),
-      contract_no: normalizeIdPart(editingCustomer.contract_no),
-      item_code: normalizeIdPart(editingCustomer.item_code),
+      customer_id: cleanNic,
+      nic: cleanNic,
+      branch_code: normalizeIdPart('branch_code', editingCustomer.branch_code || 'MHG'),
+      center_code: normalizeIdPart('center_code', editingCustomer.center_code || 'C001'),
       civil_status: editingCustomer.civil_status || 'Single',
       dob: editingCustomer.dob || '',
       outstanding_balance: Number(editingCustomer.outstanding_balance) || 0,
@@ -1530,7 +1342,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span className="customer-name">{cust.name}</span>
-                              {cust.customer_id && (
+                              {(cust.nic || cust.customer_id) && (
                                 <span style={{
                                   background: 'var(--primary-tint)',
                                   color: 'var(--primary)',
@@ -1541,12 +1353,16 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                                   fontFamily: 'monospace',
                                   border: '1px solid var(--primary-border)',
                                 }}>
-                                  {cust.customer_id}
+                                  🆔 NIC: {cust.nic || cust.customer_id}
                                 </span>
                               )}
                             </div>
                             <div className="customer-meta">
-                              {cust.nic && <span className="nic-pill">NIC: {cust.nic}</span>}
+                              {cust.center_code && (
+                                <span className="nic-pill">
+                                  📍 {cust.branch_code ? `${cust.branch_code}/${cust.center_code}` : cust.center_code}
+                                </span>
+                              )}
                               {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
                               {cust.dob && <span className="nic-pill">DOB: {cust.dob}</span>}
                               <span>
@@ -1733,7 +1549,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span className="customer-name" style={{ fontSize: '0.95rem' }}>{cust.name}</span>
-                          {cust.customer_id && (
+                          {(cust.nic || cust.customer_id) && (
                             <span style={{
                               background: 'var(--primary-tint)',
                               color: 'var(--primary)',
@@ -1744,12 +1560,16 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                               fontFamily: 'monospace',
                               border: '1px solid var(--primary-border)',
                             }}>
-                              {cust.customer_id}
+                              🆔 NIC: {cust.nic || cust.customer_id}
                             </span>
                           )}
                         </div>
                         <div className="customer-meta">
-                          {cust.nic && <span className="nic-pill">NIC: {cust.nic}</span>}
+                          {cust.center_code && (
+                            <span className="nic-pill">
+                              📍 {cust.branch_code ? `${cust.branch_code}/${cust.center_code}` : cust.center_code}
+                            </span>
+                          )}
                           {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
                           <span>{cust.city}</span>
                         </div>
@@ -1889,12 +1709,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       >
         <form onSubmit={handleAddCustomer}>
           <div className="form-grid">
-            {/* Row 1: Customer ID (Branch / Center / Contract / Item) */}
-            <CustomerIdBuilder
-              values={newCustomer}
-              onChange={(key, val) => setNewCustomer((prev) => ({ ...prev, [key]: val }))}
-            />
-
             {/* Existing Customer Auto-Detection Card */}
             {matchedCustomerAlert && (
               <div className="matched-customer-card full-width">
@@ -1919,7 +1733,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                     </span>
                   </div>
                   <div className="matched-customer-desc">
-                    Existing customer recognized. Automatically assigned Contract No <strong>#{matchedCustomerAlert.nextContractNo}</strong> for this purchase item.
+                    Customer profile recognized by NIC or phone number. Details have been automatically populated.
                   </div>
                   <div className="matched-customer-meta">
                     {matchedCustomerAlert.phone && <span>📞 {matchedCustomerAlert.phone}</span>}
@@ -1930,7 +1744,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               </div>
             )}
 
-            {/* Row 2: First Name & Last Name */}
+            {/* Row 1: First Name & Last Name */}
             <div className="form-group">
               <label className="form-label">First Name *</label>
               <input
@@ -1968,28 +1782,22 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               />
             </div>
 
-            {/* Row 3: Date of Birth & NIC */}
+            {/* Row 2: NIC & Phone Number */}
             <div className="form-group">
-              <label className="form-label">Date of Birth</label>
-              <input
-                type="date"
-                className="form-input"
-                value={newCustomer.dob || ''}
-                onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">NIC (National Identity Card)</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>NIC (National Identity Card) *</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600 }}>Primary Customer ID</span>
+              </label>
               <input
                 type="text"
                 className="form-input"
+                required
                 placeholder="e.g. 198512345678 or 851234567V"
                 value={newCustomer.nic || ''}
                 onChange={(e) => {
                   const val = e.target.value;
                   setNewCustomer((prev) => {
-                    const next = { ...prev, nic: val };
+                    const next = { ...prev, nic: val, customer_id: val.trim().toUpperCase() };
                     handleCheckExistingCustomer('nic', val, next);
                     return next;
                   });
@@ -1997,7 +1805,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               />
             </div>
 
-            {/* Row 4: Phone & WhatsApp */}
             <div className="form-group">
               <label className="form-label">Phone Number *</label>
               <input
@@ -2021,6 +1828,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               />
             </div>
 
+            {/* Row 3: WhatsApp Number & Date of Birth */}
             <div className="form-group">
               <label className="form-label">WhatsApp Number</label>
               <input
@@ -2030,6 +1838,55 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={newCustomer.whatsapp || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, whatsapp: e.target.value })}
               />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Date of Birth</label>
+              <input
+                type="date"
+                className="form-input"
+                value={newCustomer.dob || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
+              />
+            </div>
+
+            {/* Row 4: Assigned Center & Customer Category */}
+            <div className="form-group">
+              <label className="form-label">Assigned Center</label>
+              <select
+                className="form-select-full"
+                value={`${newCustomer.branch_code || 'MHG'}/${newCustomer.center_code || 'C001'}`}
+                onChange={(e) => {
+                  const parts = e.target.value.split('/');
+                  setNewCustomer((prev) => ({
+                    ...prev,
+                    branch_code: parts[0] || 'MHG',
+                    center_code: parts[1] || 'C001',
+                  }));
+                }}
+              >
+                {availableCenters.map((cntr) => {
+                  const val = `${cntr.branch_code}/${cntr.center_code}`;
+                  return (
+                    <option key={cntr.id || val} value={val}>
+                      {cntr.branch_code}/{cntr.center_code} — {cntr.name} ({cntr.city})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Customer Category</label>
+              <select
+                className="form-select-full"
+                value={newCustomer.category || 'custom_order'}
+                onChange={(e) => setNewCustomer({ ...newCustomer, category: e.target.value })}
+              >
+                <option value="custom_order">Custom Made Furniture</option>
+                <option value="showroom">Showroom / Ready Stock</option>
+                <option value="wholesale">Commercial / Wholesale</option>
+              </select>
             </div>
 
             {/* Row 5: City & Civil Status */}
@@ -2056,19 +1913,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 <option value="Divorced">Divorced</option>
                 <option value="Widowed">Widowed</option>
                 <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <div className="form-group full-width">
-              <label className="form-label">Customer Category</label>
-              <select
-                className="form-select-full"
-                value={newCustomer.category || 'custom_order'}
-                onChange={(e) => setNewCustomer({ ...newCustomer, category: e.target.value })}
-              >
-                <option value="custom_order">Custom Made Furniture</option>
-                <option value="showroom">Showroom / Ready Stock</option>
-                <option value="wholesale">Commercial / Wholesale</option>
               </select>
             </div>
 
@@ -2159,7 +2003,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{selectedCustomer.name}</h3>
-                  {selectedCustomer.customer_id && (
+                  {(selectedCustomer.nic || selectedCustomer.customer_id) && (
                     <span style={{
                       background: 'var(--primary-tint)',
                       color: 'var(--primary)',
@@ -2170,15 +2014,19 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                       fontFamily: 'monospace',
                       border: '1px solid var(--primary-border)',
                     }}>
-                      {selectedCustomer.customer_id}
+                      🆔 NIC: {selectedCustomer.nic || selectedCustomer.customer_id}
                     </span>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap' }}>
                   {renderCategoryBadge(selectedCustomer.category)}
+                  {selectedCustomer.center_code && (
+                    <span className="nic-pill">
+                      📍 Center: {selectedCustomer.branch_code ? `${selectedCustomer.branch_code}/${selectedCustomer.center_code}` : selectedCustomer.center_code}
+                    </span>
+                  )}
                   {selectedCustomer.civil_status && <span className="nic-pill">Status: {selectedCustomer.civil_status}</span>}
                   {selectedCustomer.dob && <span className="nic-pill">DOB: {selectedCustomer.dob}</span>}
-                  {selectedCustomer.nic && <span className="nic-pill">NIC: {selectedCustomer.nic}</span>}
                 </div>
               </div>
             </div>
@@ -2403,14 +2251,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
         {editingCustomer && (
           <form onSubmit={handleUpdateCustomer}>
             <div className="form-grid">
-              {/* Row 1: Customer ID (Branch / Center / Contract / Item) */}
-              <CustomerIdBuilder
-                values={editingCustomer}
-                legacyId={editingCustomer.legacy_customer_id}
-                onChange={(key, val) => setEditingCustomer((prev) => ({ ...prev, [key]: val }))}
-              />
-
-              {/* Row 2: First Name & Last Name */}
+              {/* Row 1: First Name & Last Name */}
               <div className="form-group">
                 <label className="form-label">First Name *</label>
                 <input
@@ -2448,25 +2289,26 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 />
               </div>
 
-              {/* Row 3: Date of Birth & NIC */}
+              {/* Row 2: NIC & Phone Number */}
               <div className="form-group">
-                <label className="form-label">Date of Birth</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={editingCustomer.dob || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">NIC (National Identity Card)</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>NIC (National Identity Card) *</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600 }}>Primary Customer ID</span>
+                </label>
                 <input
                   type="text"
                   className="form-input"
+                  required
                   placeholder="e.g. 198512345678 or 851234567V"
                   value={editingCustomer.nic || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, nic: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditingCustomer({
+                      ...editingCustomer,
+                      nic: val,
+                      customer_id: val.trim().toUpperCase(),
+                    });
+                  }}
                 />
               </div>
 
@@ -2482,6 +2324,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 />
               </div>
 
+              {/* Row 3: WhatsApp Number & Date of Birth */}
               <div className="form-group">
                 <label className="form-label">WhatsApp Number</label>
                 <input
@@ -2490,6 +2333,67 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   placeholder="077XXXXXXX"
                   value={editingCustomer.whatsapp || ''}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, whatsapp: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Date of Birth</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={editingCustomer.dob || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
+                />
+              </div>
+
+              {/* Row 4: Assigned Center & Customer Category */}
+              <div className="form-group">
+                <label className="form-label">Assigned Center</label>
+                <select
+                  className="form-select-full"
+                  value={`${editingCustomer.branch_code || 'MHG'}/${editingCustomer.center_code || 'C001'}`}
+                  onChange={(e) => {
+                    const parts = e.target.value.split('/');
+                    setEditingCustomer((prev) => ({
+                      ...prev,
+                      branch_code: parts[0] || 'MHG',
+                      center_code: parts[1] || 'C001',
+                    }));
+                  }}
+                >
+                  {availableCenters.map((cntr) => {
+                    const val = `${cntr.branch_code}/${cntr.center_code}`;
+                    return (
+                      <option key={cntr.id || val} value={val}>
+                        {cntr.branch_code}/{cntr.center_code} — {cntr.name} ({cntr.city})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Customer Category</label>
+                <select
+                  className="form-select-full"
+                  value={editingCustomer.category || 'custom_order'}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, category: e.target.value })}
+                >
+                  <option value="custom_order">Custom Made Furniture</option>
+                  <option value="showroom">Showroom / Ready Stock</option>
+                  <option value="wholesale">Commercial / Wholesale</option>
+                </select>
+              </div>
+
+              {/* Row 5: City & Civil Status */}
+              <div className="form-group">
+                <label className="form-label">City / Town</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Maharagama, Kottawa, Negombo"
+                  value={editingCustomer.city || ''}
+                  onChange={(e) => setEditingCustomer({ ...editingCustomer, city: e.target.value })}
                 />
               </div>
 
@@ -2508,17 +2412,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">City / Town</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Maharagama, Kottawa, Negombo"
-                  value={editingCustomer.city || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, city: e.target.value })}
-                />
-              </div>
-
+              {/* Row 6: Delivery Address */}
               <div className="form-group full-width">
                 <label className="form-label">Full Delivery Address</label>
                 <input
@@ -2530,20 +2424,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Customer Category</label>
-                <select
-                  className="form-select-full"
-                  value={editingCustomer.category || 'custom_order'}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, category: e.target.value })}
-                >
-                  <option value="custom_order">Custom Made Furniture</option>
-                  <option value="showroom">Showroom / Ready Stock</option>
-                  <option value="wholesale">Commercial / Wholesale</option>
-                </select>
-              </div>
-
-              <div className="form-group">
+              {/* Row 7: Outstanding Balance */}
+              <div className="form-group full-width">
                 <label className="form-label">Outstanding Balance (LKR)</label>
                 <input
                   type="number"

@@ -39,3 +39,4 @@ export const generateNextItemCode = (category, currentProducts = []) => {
   const nextNum = maxNum + 1;
   return `${prefix}${String(nextNum).padStart(3, '0')}`;
 };
+
