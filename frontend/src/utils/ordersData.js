@@ -204,12 +204,100 @@ export const INITIAL_ORDERS = [
   },
 ];
 
+// Standard NIC mapping for known initial customers if old branch/center format was saved
+const KNOWN_CUSTOMER_NICS = {
+  'Sunil Jayawardena': '197814502391',
+  'Chamari Perera': '198578901234',
+  'Nimal Fernando': '196923405678',
+  'Nimal Karunaratne': '196923405678',
+  'Kasun Madushanka': '199145607890',
+  'Kasun Rathnayake': '199145607890',
+  'Dilshan Fernando': '199412308976',
+  'Priyantha Wickramasinghe': '197234509812',
+  'Dhammika Bandara': '198256789012',
+  'Roshan Dias': '198834567890',
+};
+
 export const loadSavedOrders = () => {
   try {
     const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        let changed = false;
+        const cleaned = parsed.map((o, idx) => {
+          // Check if it's missing core fields
+          const initMatch = INITIAL_ORDERS.find((init) => init.id === o.id || init.invoice_no === o.invoice_no);
+          
+          let item_code = o.item_code || initMatch?.item_code || 'WD-001';
+          let item_name = o.item_name || initMatch?.item_name || o.items_summary || 'Solid Teak Furniture';
+          let passbook_no = o.passbook_no || initMatch?.passbook_no || `PN-${String(idx + 1).padStart(3, '0')}`;
+          let center_code = o.center_code || initMatch?.center_code || 'C001';
+          let contract_no = o.contract_no || initMatch?.contract_no || buildContractNumber(passbook_no, center_code, item_code);
+          
+          // Customer NIC cleanup (if it has slashes or is missing)
+          let customer_nic = o.customer_nic;
+          if (!customer_nic || customer_nic.includes('/')) {
+            customer_nic = KNOWN_CUSTOMER_NICS[o.customer_name] || initMatch?.customer_nic || '198512345678';
+          }
+          
+          let unit_price = Number(o.unit_price) || Number(o.gross_amount) || initMatch?.unit_price || 45000;
+          let quantity = Number(o.quantity) || 1;
+          let gross_amount = Number(o.gross_amount) || unit_price * quantity;
+          let advance_paid = typeof o.advance_paid !== 'undefined' ? Number(o.advance_paid) : (initMatch?.advance_paid || 0);
+          let balance_due = typeof o.balance_due !== 'undefined' ? Number(o.balance_due) : Math.max(0, gross_amount - advance_paid);
+
+          let payment_type = o.payment_type || (balance_due > 0 ? 'installment' : 'cash');
+          if (balance_due > 0 && payment_type === 'cash') {
+            payment_type = 'installment';
+          }
+          
+          let loan_terms = Number(o.loan_terms) || initMatch?.loan_terms || 12;
+          let loan_frequency = o.loan_frequency || initMatch?.loan_frequency || 'monthly';
+          let installment_value = Number(o.installment_value);
+          if ((!installment_value || installment_value <= 0) && payment_type === 'installment' && balance_due > 0) {
+            installment_value = Math.ceil(balance_due / loan_terms);
+          }
+
+          if (
+            !o.item_code ||
+            !o.item_name ||
+            !o.contract_no ||
+            o.customer_nic?.includes('/') ||
+            !o.unit_price ||
+            (payment_type === 'installment' && !o.installment_value)
+          ) {
+            changed = true;
+          }
+
+          return {
+            ...o,
+            item_code,
+            item_name,
+            passbook_no,
+            center_code,
+            contract_no,
+            customer_nic,
+            unit_price,
+            quantity,
+            gross_amount,
+            advance_paid,
+            balance_due,
+            payment_type,
+            loan_terms,
+            loan_frequency,
+            installment_value: installment_value || 0,
+            status: balance_due <= 0 ? 'Fully Paid' : 'Active Loan',
+          };
+        });
+
+        if (changed) {
+          try {
+            localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(cleaned));
+          } catch {}
+        }
+        return cleaned;
+      }
     }
   } catch (e) {
     console.warn('Error loading orders from localStorage:', e);
