@@ -56,7 +56,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   // Main Page Filters & View Controls
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'paid'
-  const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'table'
+  const [viewMode, setViewMode] = useState('table'); // Default to professional Table View
 
   // Modals
   const [isAddOrderModalOpen, setIsAddOrderModalOpen] = useState(false);
@@ -577,6 +577,15 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const activeLoansCount = orders.filter((o) => Number(o.balance_due) > 0).length;
   const settledCount = orders.filter((o) => Number(o.balance_due) <= 0).length;
 
+  // Cumulative totals for the table view
+  const filteredTotalValue = useMemo(() => {
+    return filteredOrders.reduce((acc, o) => acc + (Number(o.gross_amount) || 0), 0);
+  }, [filteredOrders]);
+
+  const filteredTotalBalance = useMemo(() => {
+    return filteredOrders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
+  }, [filteredOrders]);
+
   return (
     <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* =========================================================
@@ -944,93 +953,305 @@ export default function OrdersPage({ headerCenter = 'all' }) {
           })}
         </div>
       ) : (
-        /* TABLE VIEW (Alternative dense view) */
-        <div className="table-responsive" style={{ background: '#fff', borderRadius: '12px', border: '1px solid var(--ash-200)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-          <table className="custom-table" style={{ margin: 0 }}>
-            <thead>
-              <tr>
-                <th>Contract Code (pn/center/item)</th>
-                <th>Client Name & NIC</th>
-                <th>Furniture Item</th>
-                <th>Order Value</th>
-                <th>Payment Plan</th>
-                <th>Balance Due</th>
-                <th style={{ textAlign: 'center' }}>Status</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.map((order) => {
-                const isPaid = Number(order.balance_due) <= 0;
-                return (
-                  <tr key={order.id}>
-                    <td>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--primary)', fontSize: '0.84rem' }}>
-                        {order.contract_no}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 800 }}>{order.customer_name}</div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--ash-600)' }}>🆔 {order.customer_nic}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{order.item_name}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontFamily: 'monospace' }}>{order.item_code}</div>
-                    </td>
-                    <td style={{ fontWeight: 800 }}>{formatLKR(order.gross_amount)}</td>
-                    <td style={{ fontSize: '0.78rem' }}>
-                      {order.payment_type === 'installment'
-                        ? `${formatLKR(order.installment_value)} / ${order.loan_frequency}`
-                        : 'Full Cash'}
-                    </td>
-                    <td style={{ fontWeight: 800, color: isPaid ? '#16A34A' : '#DC2626' }}>
-                      {formatLKR(order.balance_due)}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '9999px',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                          color: isPaid ? '#15803D' : '#B45309',
-                        }}
-                      >
-                        {isPaid ? 'Fully Paid' : 'Active Loan'}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '4px 8px', fontSize: '0.74rem' }}
-                          onClick={() => {
-                            setActiveSelectedOrder(order);
-                            setIsViewDetailsModalOpen(true);
+        /* PROFESSIONAL ENTERPRISE TABLE VIEW */
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: '12px',
+            border: '1px solid var(--ash-200)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+            overflow: 'hidden',
+          }}
+        >
+          <div className="table-responsive" style={{ margin: 0 }}>
+            <table className="custom-table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '1px solid var(--ash-200)' }}>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    Contract Code & Date
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    Client Profile & NIC
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    Furniture Item
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    Order Value
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    Repayment Plan
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                    Balance Due
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase', textAlign: 'center' }}>
+                    Status
+                  </th>
+                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase', textAlign: 'right' }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order, idx) => {
+                  const isPaid = Number(order.balance_due) <= 0;
+                  return (
+                    <tr
+                      key={order.id}
+                      style={{
+                        borderBottom: '1px solid var(--ash-100)',
+                        background: idx % 2 === 0 ? '#fff' : 'var(--ash-50)',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : 'var(--ash-50)')}
+                    >
+                      {/* 1. Contract Code & Date */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        <span
+                          style={{
+                            fontFamily: 'monospace',
+                            fontWeight: 800,
+                            color: 'var(--primary)',
+                            fontSize: '0.82rem',
+                            background: '#EFF6FF',
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            border: '1px solid #BFDBFE',
+                            display: 'inline-block',
                           }}
                         >
-                          View
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ padding: '4px 8px', fontSize: '0.74rem' }}
-                          onClick={() => {
-                            setActiveSelectedOrder(order);
-                            setIsPrintModalOpen(true);
+                          📜 {order.contract_no}
+                        </span>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '4px' }}>
+                          📅 {formatDate(order.date)} • {order.invoice_no}
+                        </div>
+                      </td>
+
+                      {/* 2. Client Profile & NIC */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--ash-900)' }}>
+                          {order.customer_name}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontSize: '0.76rem' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                            🆔 {order.customer_nic || order.customer_id}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                          📞 {order.customer_phone} • 📍 {order.branch_code}/{order.center_code}
+                        </div>
+                      </td>
+
+                      {/* 3. Furniture Item */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--ash-900)' }}>
+                          🛋️ {order.item_name}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                          <span
+                            style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.7rem',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: '#F1F5F9',
+                              color: 'var(--ash-700)',
+                              border: '1px solid var(--ash-200)',
+                            }}
+                          >
+                            {order.item_code}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
+                            Qty: {order.quantity || 1}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* 4. Order Value & Advance */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        <div style={{ fontWeight: 900, fontSize: '0.92rem', color: 'var(--ash-900)' }}>
+                          {formatLKR(order.gross_amount)}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 600, marginTop: '2px' }}>
+                          Adv: {formatLKR(order.advance_paid)}
+                        </div>
+                      </td>
+
+                      {/* 5. Repayment Plan */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        {order.payment_type === 'installment' ? (
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#A16207' }}>
+                              {formatLKR(order.installment_value)} / {order.loan_frequency}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                              {order.loan_terms} installments ({order.loan_frequency})
+                            </div>
+                          </div>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              background: '#F1F5F9',
+                              color: 'var(--ash-700)',
+                            }}
+                          >
+                            Full Cash Sale
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 6. Balance Due */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                        <div
+                          style={{
+                            fontWeight: 900,
+                            fontSize: '0.96rem',
+                            color: isPaid ? '#16A34A' : '#DC2626',
                           }}
                         >
-                          Print
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          {formatLKR(order.balance_due)}
+                        </div>
+                        {isPaid && (
+                          <div style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 700, marginTop: '2px' }}>
+                            ✓ Fully Settled
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 7. Status */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'center' }}>
+                        <span
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: '9999px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            background: isPaid ? '#DCFCE7' : '#FEF3C7',
+                            color: isPaid ? '#15803D' : '#B45309',
+                            border: isPaid ? '1px solid #86EFAC' : '1px solid #FDE68A',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: '50%',
+                              background: isPaid ? '#16A34A' : '#D97706',
+                            }}
+                          />
+                          {isPaid ? 'Fully Paid' : 'Active Loan'}
+                        </span>
+                      </td>
+
+                      {/* 8. Actions */}
+                      <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            title="View Contract Details"
+                            onClick={() => {
+                              setActiveSelectedOrder(order);
+                              setIsViewDetailsModalOpen(true);
+                            }}
+                          >
+                            <Eye size={13} /> View
+                          </button>
+
+                          {Number(order.balance_due) > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              title="Record Installment Payment"
+                              onClick={() => {
+                                setActiveSelectedOrder(order);
+                                setPaymentAmount(order.installment_value || '');
+                                setIsPaymentModalOpen(true);
+                              }}
+                            >
+                              <CreditCard size={13} /> Pay
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            title="Print Agreement / Receipt"
+                            onClick={() => {
+                              setActiveSelectedOrder(order);
+                              setIsPrintModalOpen(true);
+                            }}
+                          >
+                            <Printer size={13} /> Print
+                          </button>
+
+                          <button
+                            type="button"
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: 'var(--ash-400)',
+                              cursor: 'pointer',
+                              padding: '5px',
+                              borderRadius: '4px',
+                            }}
+                            title="Cancel Order"
+                            onClick={() => handleDeleteOrder(order.id, order.contract_no)}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#DC2626')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ash-400)')}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table Summary Footer */}
+          <div
+            style={{
+              padding: '12px 18px',
+              background: '#F8FAFC',
+              borderTop: '1px solid var(--ash-200)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px',
+              fontSize: '0.8rem',
+              color: 'var(--ash-600)',
+            }}
+          >
+            <div>
+              Showing <strong>{filteredOrders.length}</strong> of <strong>{orders.length}</strong> total orders
+            </div>
+
+            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <div>
+                Total Turnover: <strong style={{ color: 'var(--ash-900)', fontSize: '0.88rem' }}>{formatLKR(filteredTotalValue)}</strong>
+              </div>
+              <div>
+                Outstanding Balance: <strong style={{ color: '#DC2626', fontSize: '0.88rem' }}>{formatLKR(filteredTotalBalance)}</strong>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
