@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Armchair,
-  Boxes,
-  Layers,
   Search,
-  Filter,
   X,
   Plus,
   Download,
@@ -20,22 +17,19 @@ import {
   ChevronDown,
   DollarSign,
   Ruler,
-  Tag,
   Package,
   PackagePlus,
   PackageMinus,
   List,
   LayoutGrid,
-  Store,
-  Sparkles,
   Zap,
   Upload,
   Image as ImageIcon,
-  Link as LinkIcon,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest, uploadImageToSupabaseStorage } from '../services/api';
+import { generateNextItemCode, getCategoryPrefix } from '../utils/productUtils';
 
 // Helper to compress and convert image File to optimized Base64 Data URL (~50-80 KB for fast database storage)
 const compressImageFile = (file, maxDim = 900, quality = 0.8) => {
@@ -79,11 +73,11 @@ const compressImageFile = (file, maxDim = 900, quality = 0.8) => {
   });
 };
 
-// Realistic initial product records across the 3 allowed categories (Wood, Melamine, Electrical Items)
+// Realistic initial product records across the 3 allowed categories (Wood -> WD, Melamine -> MEL, Electrical Items -> ELC)
 const INITIAL_PRODUCTS = [
   {
     id: 'prod-1',
-    item_code: 'FURN-101',
+    item_code: 'WD-001',
     name: 'Royal Teak 6-Seater Dining Table',
     category: 'wood',
     wood_type: 'Teak',
@@ -99,7 +93,7 @@ const INITIAL_PRODUCTS = [
   },
   {
     id: 'prod-2',
-    item_code: 'FURN-102',
+    item_code: 'WD-002',
     name: 'Mahogany 3-Door Wardrobe (Almirah)',
     category: 'wood',
     wood_type: 'Mahogany',
@@ -115,7 +109,7 @@ const INITIAL_PRODUCTS = [
   },
   {
     id: 'prod-3',
-    item_code: 'FURN-103',
+    item_code: 'MEL-001',
     name: 'Modern Melamine Modular Kitchen Pantry Unit',
     category: 'melamine',
     wood_type: 'Melamine Board',
@@ -131,7 +125,7 @@ const INITIAL_PRODUCTS = [
   },
   {
     id: 'prod-4',
-    item_code: 'FURN-104',
+    item_code: 'MEL-002',
     name: 'Executive Melamine Office Desk (L-Shape)',
     category: 'melamine',
     wood_type: 'Melamine Board',
@@ -147,7 +141,7 @@ const INITIAL_PRODUCTS = [
   },
   {
     id: 'prod-5',
-    item_code: 'FURN-105',
+    item_code: 'ELC-001',
     name: 'Smart LED Mirror Vanity & Concealed Wiring',
     category: 'electrical_item',
     wood_type: 'Electrical & Metal Fittings',
@@ -163,7 +157,7 @@ const INITIAL_PRODUCTS = [
   },
   {
     id: 'prod-6',
-    item_code: 'FURN-106',
+    item_code: 'WD-003',
     name: 'Teak Veranda Easy Lounge Armchair',
     category: 'wood',
     wood_type: 'Teak',
@@ -180,14 +174,23 @@ const INITIAL_PRODUCTS = [
 ];
 
 export default function ProductsPage({ initialStockFilter = 'all' }) {
-  // Products state with local storage persistence and legacy category normalization
+  // Products state with local storage persistence and legacy category/code normalization
   const [products, setProducts] = useState(() => {
     try {
       const saved = localStorage.getItem('dnd_products_list');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Normalize legacy categories ('living_room', 'bedroom', 'dining', etc.) to the 3 allowed categories
+          // Normalize legacy categories and legacy FURN codes to WD-, MEL-, ELC-
+          const legacyCodeMap = {
+            'FURN-101': 'WD-001',
+            'FURN-102': 'WD-002',
+            'FURN-103': 'MEL-001',
+            'FURN-104': 'MEL-002',
+            'FURN-105': 'ELC-001',
+            'FURN-106': 'WD-003',
+          };
+
           return parsed.map((p) => {
             let cat = p.category;
             if (cat === 'living_room' || cat === 'bedroom' || cat === 'dining' || cat === 'custom') {
@@ -198,6 +201,16 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
               cat = 'electrical_item';
             } else if (cat !== 'wood' && cat !== 'melamine' && cat !== 'electrical_item') {
               cat = 'wood';
+            }
+
+            let code = p.item_code;
+            if (code && legacyCodeMap[code]) {
+              code = legacyCodeMap[code];
+            } else if (code && code.startsWith('FURN-')) {
+              const numDigits = code.replace(/\D/g, '');
+              const numVal = parseInt(numDigits, 10) || 1;
+              const pref = getCategoryPrefix(cat);
+              code = `${pref}${String(numVal % 1000).padStart(3, '0')}`;
             }
 
             let wood = p.wood_type;
@@ -214,6 +227,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
 
             return {
               ...p,
+              item_code: code || p.item_code,
               category: cat,
               wood_type: wood || p.wood_type,
             };
@@ -464,15 +478,29 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     stockFilter !== 'all' ||
     sortBy !== 'recent';
 
-  // Open Add Product Modal with auto-generated Item Code
+  // Open Add Product Modal with auto-generated Item Code based on Category
   const handleOpenAddModal = () => {
-    const nextCodeNum = 100 + products.length + 1;
+    const defaultCat = categoryFilter !== 'all' ? categoryFilter : 'wood';
+    const nextCode = generateNextItemCode(defaultCat, products);
+    const defaultWood =
+      defaultCat === 'melamine'
+        ? 'Melamine Board'
+        : defaultCat === 'electrical_item'
+        ? 'Electrical & Metal Fittings'
+        : 'Teak';
+    const defaultFinish =
+      defaultCat === 'electrical_item'
+        ? 'Touch-Sensor 3-Tone LED'
+        : defaultCat === 'melamine'
+        ? 'Melamine Scratch-Resistant Walnut'
+        : 'Natural Matte Lacquer';
+
     setNewProduct({
-      item_code: `FURN-${nextCodeNum}`,
+      item_code: nextCode,
       name: '',
-      category: 'wood',
-      wood_type: 'Teak',
-      finish: 'Natural Matte Lacquer',
+      category: defaultCat,
+      wood_type: defaultWood,
+      finish: defaultFinish,
       dimensions: '',
       cost_price: '',
       selling_price: '',
@@ -492,8 +520,9 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       return;
     }
 
-    const nextCodeNum = 100 + products.length + 1;
-    const assignedCode = newProduct.item_code?.trim() || `FURN-${nextCodeNum}`;
+    const assignedCode =
+      newProduct.item_code?.trim() ||
+      generateNextItemCode(newProduct.category, products);
 
     setIsSubmitting(true);
 
@@ -1020,7 +1049,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             <input
               type="text"
               className="filter-search-input"
-              placeholder="Search by Code (FURN-101), Name, Wood (Teak), Size..."
+              placeholder="Search by Code (WD-001, MEL-001, ELC-001), Name, Material..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -1298,8 +1327,6 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                   </tr>
                 ) : (
                   filteredProducts.map((prod) => {
-                    const qty = Number(prod.stock_quantity) || 0;
-
                     return (
                       <tr key={prod.id}>
                         {/* Product Info */}
@@ -1598,15 +1625,46 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           <div className="form-grid">
             {/* Item Code & Category */}
             <div className="form-group">
-              <label className="form-label">Item Code / SKU *</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label className="form-label" style={{ margin: 0 }}>Item Code / SKU *</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextCode = generateNextItemCode(newProduct.category, products);
+                    setNewProduct((prev) => ({ ...prev, item_code: nextCode }));
+                  }}
+                  title="Generate next sequential item code for this category"
+                  style={{
+                    fontSize: '0.72rem',
+                    color: 'var(--primary)',
+                    background: 'rgba(30, 77, 140, 0.08)',
+                    border: '1px solid rgba(30, 77, 140, 0.25)',
+                    borderRadius: '4px',
+                    padding: '2px 8px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚡ Auto Code
+                </button>
+              </div>
               <input
                 type="text"
                 className="form-input"
                 required
-                placeholder="e.g. FURN-107"
+                placeholder={
+                  newProduct.category === 'wood'
+                    ? 'e.g. WD-001'
+                    : newProduct.category === 'melamine'
+                    ? 'e.g. MEL-001'
+                    : 'e.g. ELC-001'
+                }
                 value={newProduct.item_code}
                 onChange={(e) => setNewProduct({ ...newProduct, item_code: e.target.value })}
               />
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                Code Prefix: <strong>WD-</strong> (Wood), <strong>MEL-</strong> (Melamine), <strong>ELC-</strong> (Electrical)
+              </span>
             </div>
 
             <div className="form-group">
@@ -1614,11 +1672,37 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
               <select
                 className="form-select-full"
                 value={newProduct.category}
-                onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                onChange={(e) => {
+                  const newCat = e.target.value;
+                  const autoCode = generateNextItemCode(newCat, products);
+                  let defaultWood = newProduct.wood_type;
+                  let defaultFinish = newProduct.finish;
+                  if (newCat === 'wood') {
+                    if (defaultWood === 'Melamine Board' || defaultWood === 'Electrical & Metal Fittings') {
+                      defaultWood = 'Teak';
+                    }
+                    if (defaultFinish === 'Touch-Sensor 3-Tone LED' || defaultFinish?.includes('Melamine')) {
+                      defaultFinish = 'Natural Matte Lacquer';
+                    }
+                  } else if (newCat === 'melamine') {
+                    defaultWood = 'Melamine Board';
+                    defaultFinish = 'Melamine Scratch-Resistant Walnut';
+                  } else if (newCat === 'electrical_item') {
+                    defaultWood = 'Electrical & Metal Fittings';
+                    defaultFinish = 'Touch-Sensor 3-Tone LED';
+                  }
+                  setNewProduct({
+                    ...newProduct,
+                    category: newCat,
+                    item_code: autoCode,
+                    wood_type: defaultWood,
+                    finish: defaultFinish,
+                  });
+                }}
               >
-                <option value="wood">Wood</option>
-                <option value="melamine">Melamine</option>
-                <option value="electrical_item">Electrical Items</option>
+                <option value="wood">Wood (WD)</option>
+                <option value="melamine">Melamine (MEL)</option>
+                <option value="electrical_item">Electrical Items (ELC)</option>
               </select>
             </div>
 
@@ -1878,14 +1962,49 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           <form onSubmit={handleUpdateProduct}>
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label">Item Code / SKU</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label className="form-label" style={{ margin: 0 }}>Item Code / SKU *</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextCode = generateNextItemCode(
+                        editingProduct.category,
+                        products.filter((p) => p.id !== editingProduct.id)
+                      );
+                      setEditingProduct((prev) => ({ ...prev, item_code: nextCode }));
+                    }}
+                    title="Generate next sequential item code for this category"
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--primary)',
+                      background: 'rgba(30, 77, 140, 0.08)',
+                      border: '1px solid rgba(30, 77, 140, 0.25)',
+                      borderRadius: '4px',
+                      padding: '2px 8px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⚡ Auto Code
+                  </button>
+                </div>
                 <input
                   type="text"
                   className="form-input"
                   required
+                  placeholder={
+                    editingProduct.category === 'wood'
+                      ? 'e.g. WD-001'
+                      : editingProduct.category === 'melamine'
+                      ? 'e.g. MEL-001'
+                      : 'e.g. ELC-001'
+                  }
                   value={editingProduct.item_code || ''}
                   onChange={(e) => setEditingProduct({ ...editingProduct, item_code: e.target.value })}
                 />
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                  Code Prefix: <strong>WD-</strong> (Wood), <strong>MEL-</strong> (Melamine), <strong>ELC-</strong> (Electrical)
+                </span>
               </div>
 
               <div className="form-group">
@@ -1893,11 +2012,14 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 <select
                   className="form-select-full"
                   value={editingProduct.category || 'wood'}
-                  onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
+                  onChange={(e) => {
+                    const newCat = e.target.value;
+                    setEditingProduct({ ...editingProduct, category: newCat });
+                  }}
                 >
-                  <option value="wood">Wood</option>
-                  <option value="melamine">Melamine</option>
-                  <option value="electrical_item">Electrical Items</option>
+                  <option value="wood">Wood (WD)</option>
+                  <option value="melamine">Melamine (MEL)</option>
+                  <option value="electrical_item">Electrical Items (ELC)</option>
                 </select>
               </div>
 
