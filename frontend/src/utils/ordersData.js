@@ -277,3 +277,4 @@ export const generateInstallmentSchedule = (startDate, frequency, terms, install
   }
   return schedule;
 };
+
