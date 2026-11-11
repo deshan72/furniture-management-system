@@ -174,3 +174,4 @@ export const saveCustomersToStorage = (customersList) => {
     console.warn('Failed saving customers to localStorage:', e);
   }
 };
+
