@@ -758,6 +758,377 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     document.body.removeChild(link);
   };
 
+  // Export filtered orders to Printable PDF Manifest / Download PDF
+  const handleExportPDF = () => {
+    if (!filteredOrders.length) {
+      alert('No orders to export.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Popup blocker prevented opening the print window. Please allow popups for this site.');
+      return;
+    }
+
+    const totalTurnover = filteredOrders.reduce((sum, o) => sum + (Number(o.gross_amount) || 0), 0);
+    const totalUnits = filteredOrders.reduce((sum, o) => sum + (Number(o.quantity) || 1), 0);
+
+    const rowsHtml = filteredOrders
+      .map((o, idx) => {
+        const status = getOrderStatus(o);
+        const statusColor =
+          status === 'Delivered'
+            ? '#16A34A'
+            : status === 'Ready for Delivery'
+            ? '#D97706'
+            : status === 'Confirmed'
+            ? '#2563EB'
+            : '#4F46E5';
+
+        return `
+          <tr style="background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};">
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: center; font-size: 10px;">${idx + 1}</td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; font-family: monospace; font-weight: 700; color: #2563EB; font-size: 10.5px;">
+              ${o.invoice_no}<br>
+              <span style="color: #64748B; font-size: 9.5px; font-weight: normal;">Ref: ${o.contract_no}</span>
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; font-size: 10.5px; white-space: nowrap;">
+              ${formatDate(o.date)}
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; font-size: 10.5px;">
+              <strong style="color: #0F172A;">${o.customer_name}</strong>
+              <div style="color: #64748B; font-size: 9.5px; font-family: monospace;">
+                NIC: ${o.customer_nic || 'N/A'} • ${o.customer_phone || ''}
+              </div>
+              <div style="color: #D97706; font-size: 9px; font-weight: 700;">
+                Center: ${o.branch_code}/${o.center_code}
+              </div>
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; font-size: 10.5px;">
+              <strong style="color: #0F172A;">🛋️ ${o.item_name}</strong>
+              <div style="color: #64748B; font-size: 9.5px;">
+                Code: ${o.item_code} • Qty: <strong>${o.quantity || 1}</strong>
+              </div>
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; font-size: 10px; max-width: 180px;">
+              ${o.customer_address ? `📍 ${o.customer_address}` : 'Showroom Pickup'}
+              ${o.notes ? `<div style="color: #D97706; font-style: italic; font-size: 9px; margin-top: 2px;">"${o.notes}"</div>` : ''}
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: 800; font-size: 11px; color: #0F172A; white-space: nowrap;">
+              Rs. ${(Number(o.gross_amount) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: center;">
+              <span style="display: inline-block; padding: 3px 8px; border-radius: 9999px; font-size: 9.5px; font-weight: 800; background: ${statusColor}18; color: ${statusColor}; border: 1px solid ${statusColor}33; white-space: nowrap;">
+                ${status}
+              </span>
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>D N S Home Solutions - Orders & Invoices Manifest</title>
+          <style>
+            @page { size: A4 landscape; margin: 12mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0F172A; margin: 0; padding: 20px; font-size: 11px; }
+            .header-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border-bottom: 2.5px solid #1E4D8C; padding-bottom: 12px; }
+            .brand-title { font-size: 22px; font-weight: 900; color: #1E4D8C; margin: 0; letter-spacing: -0.5px; }
+            .brand-sub { font-size: 10.5px; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-top: 2px; }
+            .report-title { font-size: 15px; font-weight: 800; color: #0F172A; margin-top: 6px; }
+            .meta-text { font-size: 10.5px; color: #64748B; text-align: right; line-height: 1.5; }
+            .summary-cards { display: flex; gap: 12px; margin-bottom: 16px; }
+            .summary-card { border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 14px; background: #F8FAFC; flex: 1; }
+            .summary-label { font-size: 9.5px; color: #64748B; text-transform: uppercase; font-weight: 800; letter-spacing: 0.04em; }
+            .summary-val { font-size: 17px; font-weight: 900; color: #0F172A; margin-top: 3px; }
+            table.data-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10.5px; }
+            table.data-table th { background: #F1F5F9; color: #1E293B; padding: 9px 10px; text-align: left; font-weight: 800; border-bottom: 2px solid #CBD5E1; font-size: 10px; text-transform: uppercase; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 35px; padding-top: 14px; border-top: 1px dashed #CBD5E1; }
+            .sig-box { width: 28%; text-align: center; }
+            .sig-line { border-bottom: 1px solid #475569; height: 35px; margin-bottom: 6px; }
+            .sig-label { font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; }
+            .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #E2E8F0; font-size: 9.5px; color: #94A3B8; display: flex; justify-content: space-between; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <table class="header-table">
+            <tr>
+              <td>
+                <img src="${window.location.origin}/ds-logo.png" alt="D N S Home Solutions" style="height:52px;width:52px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;border-radius:6px;border:1px solid #CBD5E1;padding:2px;background:#fff;" />
+                <div class="brand-title">D N S HOME SOLUTIONS</div>
+                <div class="brand-sub">Furniture Workshop & Showroom Ledger</div>
+                <div class="report-title">Orders & Invoices Manifest Report</div>
+              </td>
+              <td class="meta-text">
+                <div><strong>Generated Date:</strong> ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
+                <div><strong>Center Scope:</strong> ${headerCenter && headerCenter !== 'all' ? headerCenter : 'All Island Centers'}</div>
+                <div><strong>Records:</strong> ${filteredOrders.length} Order(s)</div>
+              </td>
+            </tr>
+          </table>
+
+          <div class="summary-cards">
+            <div class="summary-card">
+              <div class="summary-label">Total Filtered Orders</div>
+              <div class="summary-val">${filteredOrders.length}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">In Production</div>
+              <div class="summary-val" style="color: #2563EB;">${filteredOrders.filter((o) => getOrderStatus(o) === 'In Production').length}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Ready for Delivery</div>
+              <div class="summary-val" style="color: #D97706;">${filteredOrders.filter((o) => getOrderStatus(o) === 'Ready for Delivery').length}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Delivered</div>
+              <div class="summary-val" style="color: #16A34A;">${filteredOrders.filter((o) => getOrderStatus(o) === 'Delivered').length}</div>
+            </div>
+            <div class="summary-card">
+              <div class="summary-label">Total Order Value</div>
+              <div class="summary-val" style="color: #1E4D8C;">Rs. ${totalTurnover.toLocaleString('en-LK', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">#</th>
+                <th>Invoice & Contract</th>
+                <th>Order Date</th>
+                <th>Customer & Center</th>
+                <th>Furniture Item & Specs</th>
+                <th>Delivery Address & Notes</th>
+                <th style="text-align: right;">Total Amount</th>
+                <th style="text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+            <tfoot>
+              <tr style="background: #E2E8F0; font-weight: 900;">
+                <td colspan="6" style="padding: 10px; text-align: right; font-size: 11px;">GRAND TOTAL (${totalUnits} Total Furniture Units):</td>
+                <td style="padding: 10px; text-align: right; font-size: 12px; color: #1E4D8C;">
+                  Rs. ${totalTurnover.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div class="signatures">
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">Prepared By (Sales / Cashier)</div>
+            </div>
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">Verified By (Workshop Supervisor)</div>
+            </div>
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">Approved By (Managing Director)</div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <span>D N S Home Solutions System • Official Order Manifest Document</span>
+            <span>Printed via Furniture Management System Web Application</span>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
+  // Print Single Order Official Invoice / Agreement as PDF
+  const handlePrintSingleInvoicePDF = (order) => {
+    if (!order) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Popup blocker prevented opening the print window. Please allow popups for this site.');
+      return;
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>D N S Home Solutions - Invoice ${order.invoice_no}</title>
+          <style>
+            @page { size: A4 portrait; margin: 15mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0F172A; margin: 0; padding: 20px; font-size: 11.5px; }
+            .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 2.5px solid #1E4D8C; padding-bottom: 14px; }
+            .brand-title { font-size: 24px; font-weight: 900; color: #1E4D8C; margin: 0; letter-spacing: -0.5px; }
+            .brand-sub { font-size: 10.5px; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-top: 2px; }
+            .doc-type { font-size: 14px; font-weight: 800; color: #0F172A; margin-top: 6px; text-transform: uppercase; }
+            .meta-text { font-size: 11px; color: #475569; text-align: right; line-height: 1.6; }
+            .info-grid { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 20px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px; }
+            .info-col { flex: 1; }
+            .info-title { font-size: 10px; font-weight: 800; color: #64748B; text-transform: uppercase; margin-bottom: 6px; }
+            .info-val { font-size: 12px; font-weight: 700; color: #0F172A; }
+            .info-sub { font-size: 10.5px; color: #475569; margin-top: 2px; }
+            table.invoice-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11.5px; }
+            table.invoice-table th { background: #F1F5F9; color: #1E293B; padding: 10px; text-align: left; font-weight: 800; border-bottom: 2px solid #CBD5E1; font-size: 10.5px; text-transform: uppercase; }
+            table.invoice-table td { padding: 10px; border-bottom: 1px solid #E2E8F0; }
+            .totals-table { width: 280px; margin-left: auto; margin-top: 16px; border-collapse: collapse; font-size: 11.5px; }
+            .totals-table td { padding: 6px 8px; }
+            .terms-box { margin-top: 30px; background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 10px 14px; font-size: 9.5px; color: #92400E; line-height: 1.45; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 45px; padding-top: 14px; }
+            .sig-box { width: 38%; text-align: center; }
+            .sig-line { border-bottom: 1px solid #475569; height: 40px; margin-bottom: 6px; }
+            .sig-label { font-size: 10.5px; font-weight: 700; color: #475569; text-transform: uppercase; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <table class="header-table">
+            <tr>
+              <td>
+                <img src="${window.location.origin}/ds-logo.png" alt="D N S Home Solutions" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;border-radius:6px;border:1px solid #CBD5E1;padding:2px;background:#fff;" />
+                <div class="brand-title">D N S HOME SOLUTIONS</div>
+                <div class="brand-sub">Handcrafted Solid Teak & Luxury Woodcraft</div>
+                <div class="doc-type">Sales Invoice & Customer Agreement Bill</div>
+              </td>
+              <td class="meta-text">
+                <div><strong>Invoice No:</strong> <span style="font-family: monospace; font-size: 13px; font-weight: 900; color: #1E4D8C;">${order.invoice_no}</span></div>
+                <div><strong>Contract No:</strong> <span style="font-family: monospace; font-weight: 800; color: #2563EB;">${order.contract_no}</span></div>
+                <div><strong>Date:</strong> ${formatDate(order.date)}</div>
+                <div><strong>Center Hub:</strong> ${order.branch_code}/${order.center_code}</div>
+              </td>
+            </tr>
+          </table>
+
+          <div class="info-grid">
+            <div class="info-col">
+              <div class="info-title">Billed To (Customer Details)</div>
+              <div class="info-val">${order.customer_name}</div>
+              <div class="info-sub"><strong>NIC:</strong> ${order.customer_nic || 'N/A'}</div>
+              <div class="info-sub"><strong>Phone:</strong> ${order.customer_phone || 'N/A'}</div>
+              <div class="info-sub"><strong>Delivery Address:</strong> ${order.customer_address || 'Showroom Direct Collection'}</div>
+            </div>
+            <div class="info-col" style="text-align: right;">
+              <div class="info-title">Order Status & Dispatch</div>
+              <div class="info-val" style="color: #1E4D8C;">${getOrderStatus(order)}</div>
+              <div class="info-sub"><strong>Payment Mode:</strong> ${order.payment_type === 'installment' ? 'Installment Plan' : 'Cash / Settle Sale'}</div>
+              ${order.notes ? `<div class="info-sub" style="color: #D97706; font-style: italic; margin-top: 4px;">"${order.notes}"</div>` : ''}
+            </div>
+          </div>
+
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">#</th>
+                <th>Furniture Description & Specifications</th>
+                <th>Model Code</th>
+                <th style="text-align: center;">Qty</th>
+                <th style="text-align: right;">Unit Price</th>
+                <th style="text-align: right;">Total (Rs.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="text-align: center;">1</td>
+                <td>
+                  <strong>${order.item_name}</strong>
+                  <div style="font-size: 9.5px; color: #64748B;">Category: Furniture Woodcraft • Center: ${order.branch_code}/${order.center_code}</div>
+                </td>
+                <td style="font-family: monospace; font-weight: 700;">${order.item_code}</td>
+                <td style="text-align: center; font-weight: 800;">${order.quantity || 1}</td>
+                <td style="text-align: right;">Rs. ${(Number(order.unit_price) || Number(order.gross_amount)).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+                <td style="text-align: right; font-weight: 800;">Rs. ${((Number(order.unit_price) || Number(order.gross_amount)) * (Number(order.quantity) || 1)).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              ${Number(order.document_charge) > 0 ? `
+                <tr style="background: #F8FAFC;">
+                  <td style="text-align: center;">2</td>
+                  <td colspan="4" style="color: #475569; font-weight: 600;">
+                    Document Charge / Legal Stamp & Customer Registration Fee
+                  </td>
+                  <td style="text-align: right; font-weight: 800;">
+                    Rs. ${Number(order.document_charge).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
+
+          <table class="totals-table">
+            <tr>
+              <td style="color: #64748B;">Gross Total:</td>
+              <td style="text-align: right; font-weight: 800;">Rs. ${(Number(order.gross_amount) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr>
+              <td style="color: #16A34A; font-weight: 700;">Advance Paid:</td>
+              <td style="text-align: right; font-weight: 800; color: #16A34A;">Rs. ${(Number(order.advance_paid) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            <tr style="border-top: 1.5px solid #CBD5E1; font-size: 13px;">
+              <td style="font-weight: 900; color: #0F172A;">Balance Due:</td>
+              <td style="text-align: right; font-weight: 900; color: ${Number(order.balance_due) > 0 ? '#DC2626' : '#16A34A'};">
+                Rs. ${(Number(order.balance_due) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+              </td>
+            </tr>
+            ${order.payment_type === 'installment' ? `
+              <tr style="background: #F1F5F9;">
+                <td style="font-size: 10px; color: #1E4D8C; font-weight: 700;">Repayment Terms:</td>
+                <td style="text-align: right; font-size: 10px; font-weight: 800; color: #1E4D8C;">
+                  Rs. ${(Number(order.installment_value) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })} / ${order.loan_frequency || 'month'}
+                </td>
+              </tr>
+            ` : ''}
+          </table>
+
+          <div class="terms-box">
+            <strong>Terms & Conditions:</strong><br />
+            1. All handcrafted solid timber furniture is covered under D N S standard workshop warranty against natural wood defects.<br />
+            2. Customer agrees that goods delivered remain property of D N S Home Solutions until all installments and balances are settled in full.<br />
+            3. Goods once received and signed for in good condition cannot be returned without prior workshop inspection.
+          </div>
+
+          <div class="signatures">
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">Customer Acceptance Signature</div>
+            </div>
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">D N S Authorized Officer</div>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   // Filtered orders list (Order Specifications focused)
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -856,8 +1227,19 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             className="btn btn-secondary"
             onClick={handleExportCSV}
             style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+            title="Download orders list as CSV (Excel)"
           >
             <Download size={14} /> Export CSV
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleExportPDF}
+            style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+            title="Download or Print filtered orders manifest as PDF"
+          >
+            <Printer size={14} /> Download PDF
           </button>
 
           {/* MAIN PROMINENT "+ Add New Order" BUTTON IN HEADER */}
@@ -3073,10 +3455,10 @@ export default function OrdersPage({ headerCenter = 'all' }) {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => window.print()}
+                onClick={() => handlePrintSingleInvoicePDF(activeSelectedOrder)}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}
               >
-                <Printer size={15} /> Print Agreement
+                <Printer size={15} /> Download / Print PDF
               </button>
             </div>
           </div>

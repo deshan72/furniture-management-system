@@ -345,6 +345,178 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
     alert('Customer personal details updated successfully!');
   };
 
+  // Print Official Customer Statement & Loan Portfolio as PDF
+  const handlePrintStatementPDF = () => {
+    if (!activeCustomer) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Popup blocker prevented opening the print window. Please allow popups.');
+      return;
+    }
+
+    const contractsHtml = customerOrders
+      .map(
+        (o) => `
+        <tr style="border-bottom: 1px solid #E2E8F0;">
+          <td style="padding: 8px 10px; font-family: monospace; font-weight: 700; color: #1E4D8C;">${o.contract_no}</td>
+          <td style="padding: 8px 10px;">${o.item_name} (${o.item_code})</td>
+          <td style="padding: 8px 10px; text-align: right;">Rs. ${(Number(o.gross_amount) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+          <td style="padding: 8px 10px; text-align: right; color: #16A34A; font-weight: 700;">Rs. ${(Number(o.advance_paid) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+          <td style="padding: 8px 10px; text-align: right; color: ${Number(o.balance_due) > 0 ? '#DC2626' : '#16A34A'}; font-weight: 800;">
+            Rs. ${(Number(o.balance_due) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+          </td>
+          <td style="padding: 8px 10px; text-align: center;">
+            <span style="font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: ${Number(o.balance_due) <= 0 ? '#DCFCE7' : '#FEF3C7'}; color: ${Number(o.balance_due) <= 0 ? '#15803D' : '#B45309'};">
+              ${Number(o.balance_due) <= 0 ? 'Settled' : 'Active Loan'}
+            </span>
+          </td>
+        </tr>
+      `
+      )
+      .join('');
+
+    const paymentsHtml = customerPayments
+      .map(
+        (p) => `
+        <tr style="border-bottom: 1px solid #E2E8F0;">
+          <td style="padding: 7px 10px; font-family: monospace; font-weight: 700; color: #2563EB;">${p.receipt_no}</td>
+          <td style="padding: 7px 10px;">${formatDate(p.date)}</td>
+          <td style="padding: 7px 10px; font-family: monospace;">${p.contract_no}</td>
+          <td style="padding: 7px 10px;">${p.payment_type} (${p.payment_method})</td>
+          <td style="padding: 7px 10px; text-align: right; font-weight: 800; color: #16A34A;">+Rs. ${(Number(p.amount) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}</td>
+          <td style="padding: 7px 10px; text-align: right; font-weight: 700; color: ${Number(p.new_balance) <= 0 ? '#16A34A' : '#DC2626'};">
+            Rs. ${(Number(p.new_balance) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+          </td>
+        </tr>
+      `
+      )
+      .join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>D N S Home Solutions - Customer Statement - ${activeCustomer.name}</title>
+          <style>
+            @page { size: A4 portrait; margin: 14mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0F172A; margin: 0; padding: 20px; font-size: 11px; }
+            .header-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border-bottom: 2.5px solid #1E4D8C; padding-bottom: 12px; }
+            .brand-title { font-size: 22px; font-weight: 900; color: #1E4D8C; margin: 0; letter-spacing: -0.5px; }
+            .brand-sub { font-size: 10.5px; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-top: 2px; }
+            .doc-type { font-size: 14px; font-weight: 800; color: #0F172A; margin-top: 6px; }
+            .meta-text { font-size: 10.5px; color: #475569; text-align: right; line-height: 1.6; }
+            .info-card { background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+            .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #1E4D8C; margin: 16px 0 6px; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px; }
+            table.data-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10.5px; }
+            table.data-table th { background: #F1F5F9; color: #1E293B; padding: 8px 10px; text-align: left; font-weight: 800; border-bottom: 2px solid #CBD5E1; font-size: 10px; text-transform: uppercase; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 14px; border-top: 1px dashed #CBD5E1; }
+            .sig-box { width: 35%; text-align: center; }
+            .sig-line { border-bottom: 1px solid #475569; height: 35px; margin-bottom: 6px; }
+            .sig-label { font-size: 10px; font-weight: 700; color: #475569; text-transform: uppercase; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <table class="header-table">
+            <tr>
+              <td>
+                <img src="${window.location.origin}/ds-logo.png" alt="D N S Home Solutions" style="height:52px;width:52px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;border-radius:6px;border:1px solid #CBD5E1;padding:2px;background:#fff;" />
+                <div class="brand-title">D N S HOME SOLUTIONS</div>
+                <div class="brand-sub">Furniture Workshop & Showroom Ledger</div>
+                <div class="doc-type">Official Customer Statement & Loan Portfolio</div>
+              </td>
+              <td class="meta-text">
+                <div><strong>Statement Date:</strong> ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                <div><strong>Center Hub:</strong> ${activeCustomer.branch_code}/${activeCustomer.center_code}</div>
+                <div><strong>Customer ID:</strong> ${activeCustomer.customer_id || activeCustomer.id}</div>
+              </td>
+            </tr>
+          </table>
+
+          <div class="info-card">
+            <div>
+              <div style="font-size: 9.5px; font-weight: 800; color: #64748B; text-transform: uppercase;">Client Profile</div>
+              <div style="font-size: 13px; font-weight: 800; color: #0F172A; margin: 3px 0 2px;">${activeCustomer.name}</div>
+              <div><strong>NIC / ID:</strong> ${activeCustomer.nic || 'N/A'}</div>
+              <div><strong>Phone:</strong> ${activeCustomer.phone} ${activeCustomer.whatsapp ? `• WA: ${activeCustomer.whatsapp}` : ''}</div>
+              <div><strong>Delivery Address:</strong> ${activeCustomer.address || 'Showroom Pickup'}</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 9.5px; font-weight: 800; color: #64748B; text-transform: uppercase;">Portfolio Summary</div>
+              <div style="font-size: 11px; margin-top: 3px;">Total Invoiced: <strong>Rs. ${clientFinancials.totalGross.toLocaleString('en-LK', { minimumFractionDigits: 2 })}</strong></div>
+              <div style="font-size: 11px; color: #16A34A;">Total Advances Paid: <strong>Rs. ${clientFinancials.totalAdvance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}</strong></div>
+              <div style="font-size: 13px; font-weight: 900; color: ${clientFinancials.totalBalance > 0 ? '#DC2626' : '#16A34A'}; margin-top: 4px;">
+                Balance Due: Rs. ${clientFinancials.totalBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+              </div>
+              <div style="font-size: 9.5px; color: #64748B; margin-top: 2px;">
+                Status: <strong>${clientFinancials.totalBalance <= 0 ? 'Zero Debt (Fully Settled)' : `${clientFinancials.activeLoans} Active Loan(s)`}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-title">Active Furniture Contracts (${customerOrders.length})</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Contract Code</th>
+                <th>Item Description</th>
+                <th style="text-align: right;">Gross Value</th>
+                <th style="text-align: right;">Advance Paid</th>
+                <th style="text-align: right;">Balance Due</th>
+                <th style="text-align: center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${contractsHtml || '<tr><td colspan="6" style="text-align: center; padding: 12px; color: #64748B;">No contracts on record</td></tr>'}
+            </tbody>
+          </table>
+
+          ${customerPayments.length > 0 ? `
+            <div class="section-title">Payment Receipts History (${customerPayments.length})</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Receipt No</th>
+                  <th>Date</th>
+                  <th>Contract</th>
+                  <th>Payment Type</th>
+                  <th style="text-align: right;">Amount Paid</th>
+                  <th style="text-align: right;">Remaining Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${paymentsHtml}
+              </tbody>
+            </table>
+          ` : ''}
+
+          <div class="signatures">
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">Customer Signature</div>
+            </div>
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">Authorized Manager (D N S Home Solutions)</div>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   return (
     <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* =========================================================
@@ -1282,8 +1454,8 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
               <button type="button" className="btn btn-secondary" onClick={() => setIsStatementModalOpen(false)}>
                 Close
               </button>
-              <button type="button" className="btn btn-primary" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
-                <Printer size={15} /> Print Statement
+              <button type="button" className="btn btn-primary" onClick={handlePrintStatementPDF} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
+                <Printer size={15} /> Download / Print PDF Statement
               </button>
             </div>
           </div>
