@@ -66,11 +66,9 @@ export default function Sidebar({
       items: [
         { id: 'customers', label: 'Customer Directory', icon: Users },
         {
-          id: 'outstanding',
-          label: 'Outstanding Balances',
-          icon: CircleDollarSign,
-          badge: badges.outstanding,
-          badgeType: 'warning',
+          id: 'customer-overview',
+          label: 'Customer Overview',
+          icon: UserCheck,
         },
       ],
     },

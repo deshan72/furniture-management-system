@@ -5,6 +5,7 @@ import Header from './components/Header';
 import DashboardPage from './pages/DashboardPage';
 import ProductsPage from './pages/ProductsPage';
 import CustomersPage from './pages/CustomersPage';
+import CustomerOverviewPage from './pages/CustomerOverviewPage';
 import CentersPage from './pages/CentersPage';
 import OrdersPage from './pages/OrdersPage';
 import CashHandlingPage from './pages/CashHandlingPage';
@@ -198,10 +199,11 @@ export default function App() {
           title: 'Customer Directory',
           subtitle: 'Client contacts, delivery addresses, and full order history',
         };
+      case 'customer-overview':
       case 'outstanding':
         return {
-          title: 'Outstanding Balances',
-          subtitle: 'Track pending customer credit, delivery balances, and due dates',
+          title: 'Customer Overview & Portfolio',
+          subtitle: 'Detailed customer personal information, active loans, and installment repayment progress',
         };
       // Centers
       case 'centers':
@@ -497,10 +499,10 @@ export default function App() {
                   selectedCenter={selectedCenter}
                 />
               )}
-              {activeTab === 'outstanding' && (
-                <CustomersPage
-                  initialDebtFilter="debt"
+              {(activeTab === 'customer-overview' || activeTab === 'outstanding') && (
+                <CustomerOverviewPage
                   selectedCenter={selectedCenter}
+                  onNavigate={setActiveTab}
                 />
               )}
 
