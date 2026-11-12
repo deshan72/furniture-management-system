@@ -50,22 +50,24 @@ export default function Header({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '6px 14px',
+              padding: '5px 11px',
               borderRadius: '20px',
-              background: currentUser.role === 'admin' ? 'rgba(147, 51, 234, 0.14)' : 'rgba(37, 99, 235, 0.14)',
-              border: `1.5px solid ${currentUser.role === 'admin' ? 'rgba(147, 51, 234, 0.35)' : 'rgba(37, 99, 235, 0.35)'}`,
-              color: currentUser.role === 'admin' ? '#9333EA' : '#2563EB',
-              fontSize: '0.8rem',
+              background: currentUser.role === 'admin' ? 'rgba(234, 179, 8, 0.18)' : 'rgba(59, 130, 246, 0.22)',
+              border: `1.5px solid ${currentUser.role === 'admin' ? 'rgba(234, 179, 8, 0.45)' : 'rgba(59, 130, 246, 0.45)'}`,
+              color: currentUser.role === 'admin' ? '#FEF08A' : '#BFDBFE',
+              fontSize: '0.78rem',
               fontWeight: 700,
               cursor: 'pointer',
               transition: 'all 0.2s ease',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
             }}
             onClick={() => onSwitchRole(currentUser.role === 'admin' ? 'executive' : 'admin')}
             title={`Active Role: ${currentUser.role === 'admin' ? 'Administrator (Full Access)' : 'Executive Staff (Operational)'}. Click to switch role.`}
           >
             {currentUser.role === 'admin' ? <Crown size={14} /> : <Briefcase size={14} />}
             <span>{currentUser.role === 'admin' ? '👑 Admin View' : '💼 Executive View'}</span>
-            <span style={{ fontSize: '0.7rem', opacity: 0.65, marginLeft: '2px' }}>⇄</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.7, marginLeft: '2px' }}>⇄</span>
           </button>
         )}
 
@@ -154,27 +156,16 @@ export default function Header({
         </div>
 
         {/* ==========================================
-            4. LOG OUT ACTION
+            4. LOG OUT ACTION (LOCKED IN LINE)
             ========================================== */}
         {onLogout && (
           <button
             type="button"
-            className="btn btn-secondary"
+            className="header-logout-btn"
             onClick={() => {
               if (window.confirm('Are you sure you want to log out of D N S Home Solutions?')) {
                 onLogout();
               }
-            }}
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              color: '#DC2626',
-              borderColor: '#FECACA',
-              background: '#FFF5F5',
             }}
             title="Log out of system and return to login screen"
           >
