@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS customers (
     city VARCHAR(100),
     address TEXT,
     category VARCHAR(50) DEFAULT 'custom_order', -- 'custom_order', 'showroom', 'wholesale'
+    photo TEXT,                                  -- Base64 or URL of customer profile photo
+    image_url TEXT,                              -- Image asset reference
     outstanding_balance NUMERIC(12, 2) DEFAULT 0.00, -- Amount customer owes
     total_spent NUMERIC(12, 2) DEFAULT 0.00,
     total_orders INT DEFAULT 1,

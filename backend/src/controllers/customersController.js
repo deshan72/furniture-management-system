@@ -79,6 +79,8 @@ export const createCustomer = async (req, res, next) => {
       total_spent,
       total_orders,
       notes,
+      image_url,
+      photo,
     } = req.body;
 
     const fullName = name || `${first_name || ''} ${last_name || ''}`.trim() || 'Valued Customer';
@@ -106,6 +108,8 @@ export const createCustomer = async (req, res, next) => {
     if (dob) insertPayload.dob = dob;
     if (city) insertPayload.city = city;
     if (category) insertPayload.category = category;
+    if (image_url) insertPayload.image_url = image_url;
+    if (photo) insertPayload.photo = photo;
 
     const { data, error } = await supabase
       .from('customers')

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   Search,
@@ -25,12 +25,55 @@ import {
   FileSpreadsheet,
   Printer,
   ChevronDown,
+  Camera,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
 import { INITIAL_CUSTOMERS } from '../utils/customersData';
+
+// Helper to compress and convert customer photo to optimized Base64 Data URL (~30-60 KB)
+const compressImageFile = (file, maxDim = 600, quality = 0.8) => {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      reject(new Error('Please select a valid image file (JPG, PNG, or WebP).'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('Failed to load image for compression.'));
+    };
+    reader.onerror = () => reject(new Error('Failed to read file from disk.'));
+  });
+};
 
 // Normalizes and formats center codes into 'C001' style (C followed by 3 digits)
 const formatCenterCode = (val) => {
@@ -171,6 +214,10 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [matchedCustomerAlert, setMatchedCustomerAlert] = useState(null);
 
+  // File Input Refs for Photo Uploads
+  const addPhotoInputRef = useRef(null);
+  const editPhotoInputRef = useRef(null);
+
   // Form State for Add Customer (NIC is the primary identifier)
   const [newCustomer, setNewCustomer] = useState({
     customer_id: '',
@@ -178,6 +225,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     center_code: 'C001',
     contract_no: '1',
     item_code: '',
+    photo: '',
+    image_url: '',
     first_name: '',
     last_name: '',
     name: '',
@@ -192,6 +241,31 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     outstanding_balance: '',
     notes: '',
   });
+
+  // Handlers for Customer Photo selection and automatic compression
+  const handleAddPhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImageFile(file);
+        setNewCustomer((prev) => ({ ...prev, photo: compressed, image_url: compressed }));
+      } catch (err) {
+        alert(err.message || 'Error processing customer photo.');
+      }
+    }
+  };
+
+  const handleEditPhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const compressed = await compressImageFile(file);
+        setEditingCustomer((prev) => ({ ...prev, photo: compressed, image_url: compressed }));
+      } catch (err) {
+        alert(err.message || 'Error processing customer photo.');
+      }
+    }
+  };
 
   // Save to localStorage whenever customers change
   useEffect(() => {
@@ -366,6 +440,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       center_code: selectedCenter && selectedCenter.includes('/') ? selectedCenter.split('/')[1] : 'C001',
       contract_no: '1',
       item_code: '',
+      photo: '',
+      image_url: '',
       first_name: '',
       last_name: '',
       name: '',
@@ -418,6 +494,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
       setNewCustomer((prev) => ({
         ...prev,
+        photo: matched.photo || matched.image_url || prev.photo || '',
+        image_url: matched.photo || matched.image_url || prev.image_url || '',
         first_name: prev.first_name || matched.first_name || (matched.name ? matched.name.split(' ')[0] : ''),
         last_name: prev.last_name || matched.last_name || (matched.name ? matched.name.split(' ').slice(1).join(' ') : ''),
         name: prev.name || matched.name,
@@ -486,6 +564,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       center_code: normalizeIdPart('center_code', newCustomer.center_code || 'C001'),
       contract_no: String(totalOrders),
       item_code: '',
+      photo: newCustomer.photo || newCustomer.image_url || '',
+      image_url: newCustomer.photo || newCustomer.image_url || '',
       first_name: newCustomer.first_name || '',
       last_name: newCustomer.last_name || '',
       name: fullName,
@@ -523,6 +603,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       center_code: '',
       contract_no: '1',
       item_code: '',
+      photo: '',
+      image_url: '',
       first_name: '',
       last_name: '',
       name: '',
@@ -771,6 +853,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     const cleanNic = customer.nic ? String(customer.nic).trim().toUpperCase() : (customer.customer_id || '');
     setEditingCustomer({
       ...customer,
+      photo: customer.photo || customer.image_url || '',
+      image_url: customer.photo || customer.image_url || '',
       customer_id: cleanNic,
       nic: cleanNic,
       first_name: firstName,
@@ -814,6 +898,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     const { legacy_customer_id: _legacyId, ...editingData } = editingCustomer;
     const updated = {
       ...editingData,
+      photo: editingCustomer.photo || editingCustomer.image_url || '',
+      image_url: editingCustomer.photo || editingCustomer.image_url || '',
       name: fullName,
       first_name: editingCustomer.first_name || '',
       last_name: editingCustomer.last_name || '',
@@ -1195,7 +1281,23 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                       {/* Customer Info */}
                       <td>
                         <div className="table-user-cell">
-                          <div className="user-avatar">{initials}</div>
+                          {cust.photo || cust.image_url ? (
+                            <img
+                              src={cust.photo || cust.image_url}
+                              alt={cust.name}
+                              className="user-avatar"
+                              style={{
+                                width: '38px',
+                                height: '38px',
+                                borderRadius: '50%',
+                                objectFit: 'cover',
+                                border: '1.5px solid #BFDBFE',
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : (
+                            <div className="user-avatar">{initials}</div>
+                          )}
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span className="customer-name">{cust.name}</span>
@@ -1398,7 +1500,23 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 <div key={cust.id} className="customer-card-item">
                   <div className="customer-card-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div className="user-avatar">{initials}</div>
+                      {cust.photo || cust.image_url ? (
+                        <img
+                          src={cust.photo || cust.image_url}
+                          alt={cust.name}
+                          className="user-avatar"
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            border: '1.5px solid #BFDBFE',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <div className="user-avatar">{initials}</div>
+                      )}
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span className="customer-name" style={{ fontSize: '0.95rem' }}>{cust.name}</span>
@@ -1600,6 +1718,96 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 </div>
               </div>
             )}
+
+            {/* Customer Profile Photo Upload */}
+            <div
+              className="form-group full-width"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                padding: '12px 16px',
+                background: '#F8FAFC',
+                borderRadius: '12px',
+                border: '1.5px dashed #CBD5E1',
+                marginBottom: '4px',
+              }}
+            >
+              {/* Photo Preview Circle */}
+              <div
+                style={{
+                  width: '68px',
+                  height: '68px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  background: '#EFF6FF',
+                  border: '2px solid #BFDBFE',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                onClick={() => addPhotoInputRef.current?.click()}
+                title="Click to select or change customer photo"
+              >
+                {newCustomer.photo ? (
+                  <img
+                    src={newCustomer.photo}
+                    alt="Customer Preview"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', color: '#1E4D8C' }}>
+                    <Camera size={22} style={{ margin: '0 auto', display: 'block' }} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, marginTop: '2px', display: 'block' }}>Photo</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Actions & Help Text */}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.86rem', color: '#0F172A' }}>
+                  <ImageIcon size={15} color="#2563EB" /> Customer Profile Photo
+                </div>
+                <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                  Upload client face photo (JPG, PNG, WebP). Optimized & stored in system database.
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px', borderRadius: '6px' }}
+                    onClick={() => addPhotoInputRef.current?.click()}
+                  >
+                    <Upload size={13} /> {newCustomer.photo ? 'Change Photo' : 'Upload Customer Photo'}
+                  </button>
+
+                  {newCustomer.photo && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{ padding: '5px 10px', fontSize: '0.76rem', gap: '4px', borderRadius: '6px' }}
+                      onClick={() => setNewCustomer((prev) => ({ ...prev, photo: '', image_url: '' }))}
+                      title="Remove uploaded photo"
+                    >
+                      <Trash2 size={13} /> Remove
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  type="file"
+                  ref={addPhotoInputRef}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleAddPhotoChange}
+                />
+              </div>
+            </div>
 
             {/* Row 1: First Name & Last Name */}
             <div className="form-group">
@@ -1846,17 +2054,33 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 marginBottom: '18px',
               }}
             >
-              <div
-                className="user-avatar"
-                style={{ width: '56px', height: '56px', fontSize: '1.25rem', borderRadius: '14px' }}
-              >
-                {(selectedCustomer.name || 'C')
-                  .split(' ')
-                  .map((n) => n[0])
-                  .slice(0, 2)
-                  .join('')
-                  .toUpperCase()}
-              </div>
+              {selectedCustomer.photo || selectedCustomer.image_url ? (
+                <img
+                  src={selectedCustomer.photo || selectedCustomer.image_url}
+                  alt={selectedCustomer.name}
+                  style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '16px',
+                    objectFit: 'cover',
+                    border: '2px solid var(--primary-border)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    flexShrink: 0,
+                  }}
+                />
+              ) : (
+                <div
+                  className="user-avatar"
+                  style={{ width: '60px', height: '60px', fontSize: '1.25rem', borderRadius: '16px', flexShrink: 0 }}
+                >
+                  {(selectedCustomer.name || 'C')
+                    .split(' ')
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
+                </div>
+              )}
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>{selectedCustomer.name}</h3>
@@ -2108,7 +2332,97 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
         {editingCustomer && (
           <form onSubmit={handleUpdateCustomer}>
             <div className="form-grid">
-              {/* Row 1: First Name & Last Name */}
+              {/* Customer Profile Photo Upload */}
+            <div
+              className="form-group full-width"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                padding: '12px 16px',
+                background: '#F8FAFC',
+                borderRadius: '12px',
+                border: '1.5px dashed #CBD5E1',
+                marginBottom: '4px',
+              }}
+            >
+              {/* Photo Preview Circle */}
+              <div
+                style={{
+                  width: '68px',
+                  height: '68px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  background: '#EFF6FF',
+                  border: '2px solid #BFDBFE',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                onClick={() => editPhotoInputRef.current?.click()}
+                title="Click to select or change customer photo"
+              >
+                {editingCustomer.photo ? (
+                  <img
+                    src={editingCustomer.photo}
+                    alt="Customer Preview"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', color: '#1E4D8C' }}>
+                    <Camera size={22} style={{ margin: '0 auto', display: 'block' }} />
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, marginTop: '2px', display: 'block' }}>Photo</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Actions & Help Text */}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.86rem', color: '#0F172A' }}>
+                  <ImageIcon size={15} color="#2563EB" /> Customer Profile Photo
+                </div>
+                <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                  Upload client face photo (JPG, PNG, WebP). Optimized & stored in system database.
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px', borderRadius: '6px' }}
+                    onClick={() => editPhotoInputRef.current?.click()}
+                  >
+                    <Upload size={13} /> {editingCustomer.photo ? 'Change Photo' : 'Upload Customer Photo'}
+                  </button>
+
+                  {editingCustomer.photo && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{ padding: '5px 10px', fontSize: '0.76rem', gap: '4px', borderRadius: '6px' }}
+                      onClick={() => setEditingCustomer((prev) => ({ ...prev, photo: '', image_url: '' }))}
+                      title="Remove uploaded photo"
+                    >
+                      <Trash2 size={13} /> Remove
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  type="file"
+                  ref={editPhotoInputRef}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleEditPhotoChange}
+                />
+              </div>
+            </div>
+
+            {/* Row 1: First Name & Last Name */}
               <div className="form-group">
                 <label className="form-label">First Name *</label>
                 <input
