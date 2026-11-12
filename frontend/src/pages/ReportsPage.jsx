@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   BarChart3,
   AlertTriangle,
@@ -21,6 +21,8 @@ import {
 import StatCard from '../components/StatCard';
 import { formatLKR, formatDate } from '../utils/formatters';
 import { formatCenterCode } from '../utils/centersData';
+import { INITIAL_CUSTOMERS } from '../utils/customersData';
+import { INITIAL_PRODUCTS } from '../utils/productUtils';
 import {
   REPORT_TYPES,
   loadAllOrders,
@@ -37,6 +39,13 @@ export default function ReportsPage({
   // Active Report Type State
   const [activeReport, setActiveReport] = useState(initialReportType);
 
+  // Sync active report if initialReportType changes (e.g. from sidebar clicks)
+  useEffect(() => {
+    if (initialReportType) {
+      setActiveReport(initialReportType);
+    }
+  }, [initialReportType]);
+
   // Filter States
   const [datePreset, setDatePreset] = useState('all'); // 'today', 'week', 'month', 'quarter', 'ytd', 'all', 'custom'
   const [startDate, setStartDate] = useState('');
@@ -44,31 +53,62 @@ export default function ReportsPage({
   const [centerFilter, setCenterFilter] = useState(selectedCenter || 'all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Sourced Data from LocalStorage
-  const [orders] = useState(() => loadAllOrders());
-  const [expenses] = useState(() => loadAllExpenses());
+  // Sync center filter if selectedCenter prop changes
+  useEffect(() => {
+    if (selectedCenter) {
+      setCenterFilter(selectedCenter);
+    }
+  }, [selectedCenter]);
 
-  const [customers] = useState(() => {
+  // Sourced Data from LocalStorage
+  const [orders, setOrders] = useState(() => loadAllOrders());
+  const [expenses, setExpenses] = useState(() => loadAllExpenses());
+
+  const [customers, setCustomers] = useState(() => {
     try {
       const saved = localStorage.getItem('dnd_customers_list');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [];
+    return INITIAL_CUSTOMERS;
   });
 
-  const [products] = useState(() => {
+  const [products, setProducts] = useState(() => {
     try {
       const saved = localStorage.getItem('dnd_products_list');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return [];
+    return INITIAL_PRODUCTS;
   });
+
+  // Sync with live storage updates when orders or expenses are added
+  useEffect(() => {
+    const handleStorage = () => {
+      setOrders(loadAllOrders());
+      setExpenses(loadAllExpenses());
+      try {
+        const savedC = localStorage.getItem('dnd_customers_list');
+        if (savedC) {
+          const parsedC = JSON.parse(savedC);
+          if (Array.isArray(parsedC) && parsedC.length > 0) setCustomers(parsedC);
+        }
+      } catch {}
+      try {
+        const savedP = localStorage.getItem('dnd_products_list');
+        if (savedP) {
+          const parsedP = JSON.parse(savedP);
+          if (Array.isArray(parsedP) && parsedP.length > 0) setProducts(parsedP);
+        }
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // Calculate Date Boundaries based on Presets
   const dateRangeBounds = useMemo(() => {
@@ -173,12 +213,17 @@ export default function ReportsPage({
       if (!isCenterMatch(o.branch_code, o.center_code)) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
+        const inv = String(o.invoice_no || o.contract_no || o.id || '').toLowerCase();
+        const cName = String(o.customer_name || '').toLowerCase();
+        const cId = String(o.customer_id || o.customer_nic || '').toLowerCase();
+        const items = String(o.items_summary || o.item_name || '').toLowerCase();
+        const pMethod = String(o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment') || '').toLowerCase();
         const match =
-          o.invoice_no.toLowerCase().includes(q) ||
-          o.customer_name.toLowerCase().includes(q) ||
-          o.customer_id.toLowerCase().includes(q) ||
-          o.items_summary.toLowerCase().includes(q) ||
-          o.payment_method.toLowerCase().includes(q);
+          inv.includes(q) ||
+          cName.includes(q) ||
+          cId.includes(q) ||
+          items.includes(q) ||
+          pMethod.includes(q);
         if (!match) return false;
       }
       return true;
@@ -188,17 +233,18 @@ export default function ReportsPage({
   // Report 2: Outstanding Balances Dataset
   const filteredOutstandingData = useMemo(() => {
     return customers.filter((c) => {
-      const parts = String(c.customer_id || '').split('/');
+      const parts = String(c.customer_id || c.nic || '').split('/');
       const bCode = c.branch_code || (parts.length === 4 ? parts[0] : '');
       const cCode = c.center_code || (parts.length === 4 ? parts[1] : '');
       if (!isCenterMatch(bCode, cCode)) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const match =
-          c.name.toLowerCase().includes(q) ||
-          (c.customer_id && c.customer_id.toLowerCase().includes(q)) ||
-          (c.phone && c.phone.includes(q)) ||
-          (c.city && c.city.toLowerCase().includes(q));
+          (c.name && String(c.name).toLowerCase().includes(q)) ||
+          (c.customer_id && String(c.customer_id).toLowerCase().includes(q)) ||
+          (c.nic && String(c.nic).toLowerCase().includes(q)) ||
+          (c.phone && String(c.phone).includes(q)) ||
+          (c.city && String(c.city).toLowerCase().includes(q));
         if (!match) return false;
       }
       return true;
@@ -211,10 +257,10 @@ export default function ReportsPage({
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const match =
-          p.item_code.toLowerCase().includes(q) ||
-          p.name.toLowerCase().includes(q) ||
-          (p.wood_type && p.wood_type.toLowerCase().includes(q)) ||
-          (p.category && p.category.toLowerCase().includes(q));
+          (p.item_code && String(p.item_code).toLowerCase().includes(q)) ||
+          (p.name && String(p.name).toLowerCase().includes(q)) ||
+          (p.wood_type && String(p.wood_type).toLowerCase().includes(q)) ||
+          (p.category && String(p.category).toLowerCase().includes(q));
         if (!match) return false;
       }
       return true;
@@ -228,18 +274,21 @@ export default function ReportsPage({
     // Add cash orders
     orders.forEach((o) => {
       if (isDateInRange(o.date) && isCenterMatch(o.branch_code, o.center_code)) {
-        if (o.payment_method === 'Cash' || o.advance_paid > 0) {
-          const cashAmt = o.payment_method === 'Cash' ? o.advance_paid : 0;
+        const pMethod = o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment');
+        const advPaid = Number(o.advance_paid) || 0;
+        const gross = Number(o.gross_amount) || 0;
+        if (pMethod === 'Cash' || advPaid > 0) {
+          const cashAmt = pMethod === 'Cash' ? (gross > 0 ? gross : advPaid) : advPaid;
           if (cashAmt > 0) {
             combined.push({
               id: `cf-${o.id}`,
-              date: o.date,
-              ref_no: o.invoice_no,
-              particulars: `Order Payment (${o.customer_name}) - ${o.items_summary}`,
+              date: o.date || new Date().toISOString().slice(0, 10),
+              ref_no: o.invoice_no || o.contract_no || o.id,
+              particulars: `Order Payment (${o.customer_name || 'Client'}) - ${o.items_summary || o.item_name || 'Furniture Order'}`,
               type: 'inflow',
               category: 'Sales Advance / Full Cash',
-              branch_code: o.branch_code,
-              center_code: o.center_code,
+              branch_code: o.branch_code || 'MHG',
+              center_code: o.center_code || 'C001',
               inflow: cashAmt,
               outflow: 0,
               handled_by: 'Cashier Desk',
@@ -252,18 +301,18 @@ export default function ReportsPage({
     // Add cash expenses
     expenses.forEach((e) => {
       if (isDateInRange(e.date) && isCenterMatch(e.branch_code, e.center_code)) {
-        if (e.payment_method === 'Cash') {
+        if (e.payment_method === 'Cash' || !e.payment_method) {
           combined.push({
             id: `cf-${e.id}`,
-            date: e.date,
-            ref_no: e.voucher_no,
-            particulars: `${e.category}: ${e.payee} - ${e.notes}`,
+            date: e.date || new Date().toISOString().slice(0, 10),
+            ref_no: e.voucher_no || e.id,
+            particulars: `${e.category || 'Expense'}: ${e.payee || 'Supplier'} - ${e.notes || ''}`,
             type: 'outflow',
-            category: e.category,
-            branch_code: e.branch_code,
-            center_code: e.center_code,
+            category: e.category || 'Operating Expense',
+            branch_code: e.branch_code || 'MHG',
+            center_code: e.center_code || 'C001',
             inflow: 0,
-            outflow: e.amount,
+            outflow: Number(e.amount) || 0,
             handled_by: 'Workshop Office',
           });
         }
@@ -277,9 +326,9 @@ export default function ReportsPage({
       const q = searchQuery.toLowerCase();
       return combined.filter(
         (c) =>
-          c.ref_no.toLowerCase().includes(q) ||
-          c.particulars.toLowerCase().includes(q) ||
-          c.category.toLowerCase().includes(q)
+          (c.ref_no && String(c.ref_no).toLowerCase().includes(q)) ||
+          (c.particulars && String(c.particulars).toLowerCase().includes(q)) ||
+          (c.category && String(c.category).toLowerCase().includes(q))
       );
     }
     return combined;
@@ -293,10 +342,10 @@ export default function ReportsPage({
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const match =
-          e.voucher_no.toLowerCase().includes(q) ||
-          e.category.toLowerCase().includes(q) ||
-          e.payee.toLowerCase().includes(q) ||
-          e.notes.toLowerCase().includes(q);
+          (e.voucher_no && String(e.voucher_no).toLowerCase().includes(q)) ||
+          (e.category && String(e.category).toLowerCase().includes(q)) ||
+          (e.payee && String(e.payee).toLowerCase().includes(q)) ||
+          (e.notes && String(e.notes).toLowerCase().includes(q));
         if (!match) return false;
       }
       return true;
@@ -307,12 +356,21 @@ export default function ReportsPage({
   const filteredProfitData = useMemo(() => {
     return filteredSalesData.map((o) => {
       // Find approximate matching product to calculate cost of production
-      const matchedProd = products.find((p) =>
-        o.items_summary.toLowerCase().includes(p.name.toLowerCase().slice(0, 10))
-      );
-      const estimatedCost = matchedProd ? Number(matchedProd.cost_price) || 0 : Math.round(o.gross_amount * 0.65);
-      const grossProfit = o.gross_amount - estimatedCost;
-      const marginPct = o.gross_amount > 0 ? Math.round((grossProfit / o.gross_amount) * 100) : 0;
+      const summary = String(o.items_summary || o.item_name || '').toLowerCase();
+      const matchedProd = products.find((p) => {
+        if (!p) return false;
+        if (o.item_id && p.id === o.item_id) return true;
+        if (o.item_code && p.item_code && p.item_code === o.item_code) return true;
+        const pName = String(p.name || '').toLowerCase();
+        if (pName && summary && (summary.includes(pName.slice(0, 10)) || pName.includes(summary.slice(0, 10)))) return true;
+        return false;
+      });
+      const grossAmt = Number(o.gross_amount) || 0;
+      const estimatedCost = matchedProd && Number(matchedProd.cost_price) > 0
+        ? Number(matchedProd.cost_price) * (Number(o.quantity) || 1)
+        : Math.round(grossAmt * 0.65);
+      const grossProfit = grossAmt - estimatedCost;
+      const marginPct = grossAmt > 0 ? Math.round((grossProfit / grossAmt) * 100) : 0;
 
       return {
         ...o,
@@ -349,26 +407,26 @@ export default function ReportsPage({
         'Status',
       ];
       const rows = filteredSalesData.map((o) => [
-        o.invoice_no,
+        o.invoice_no || o.contract_no || o.id,
         o.date,
-        o.customer_id,
-        o.customer_name,
-        o.customer_phone,
-        `${o.branch_code}/${o.center_code}`,
-        o.items_summary,
-        o.gross_amount,
-        o.advance_paid,
-        o.balance_due,
-        o.payment_method,
-        o.status,
+        o.customer_id || o.customer_nic || 'N/A',
+        o.customer_name || 'Client',
+        o.customer_phone || '-',
+        `${o.branch_code || 'MHG'}/${o.center_code || 'C001'}`,
+        o.items_summary || o.item_name || 'Solid Wood Furniture',
+        Number(o.gross_amount) || 0,
+        Number(o.advance_paid) || 0,
+        Number(o.balance_due) || 0,
+        o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment Loan'),
+        o.status || 'Active Loan',
       ]);
-      const totalGross = filteredSalesData.reduce((s, o) => s + o.gross_amount, 0);
-      const totalAdv = filteredSalesData.reduce((s, o) => s + o.advance_paid, 0);
-      const totalBal = filteredSalesData.reduce((s, o) => s + o.balance_due, 0);
+      const totalGross = filteredSalesData.reduce((s, o) => s + (Number(o.gross_amount) || 0), 0);
+      const totalAdv = filteredSalesData.reduce((s, o) => s + (Number(o.advance_paid) || 0), 0);
+      const totalBal = filteredSalesData.reduce((s, o) => s + (Number(o.balance_due) || 0), 0);
       const summaryRow = ['TOTALS', '', '', '', '', '', `${filteredSalesData.length} Invoices`, totalGross, totalAdv, totalBal, '', ''];
 
       exportReportToCSV({
-        filename: `DS_Furniture_Sales_Report_${Date.now()}`,
+        filename: `DNS_Home_Solutions_Sales_Report_${Date.now()}`,
         reportTitle: 'Sales Turnover & Revenue Audit Report',
         headers,
         rows,
@@ -543,24 +601,24 @@ export default function ReportsPage({
         'Payment Method',
       ];
       const rows = filteredProfitData.map((p) => [
-        p.invoice_no,
+        p.invoice_no || p.contract_no || p.id,
         p.date,
-        p.customer_name,
-        p.items_summary,
-        p.gross_amount,
-        p.cogs,
-        p.gross_profit,
-        `${p.margin_pct}%`,
-        p.payment_method,
+        p.customer_name || 'Client',
+        p.items_summary || p.item_name || 'Solid Wood Furniture',
+        Number(p.gross_amount) || 0,
+        Number(p.cogs) || 0,
+        Number(p.gross_profit) || 0,
+        `${p.margin_pct || 0}%`,
+        p.payment_method || (p.payment_type === 'cash' ? 'Cash' : 'Installment Loan'),
       ]);
-      const totalRev = filteredProfitData.reduce((s, p) => s + p.gross_amount, 0);
-      const totalCOGS = filteredProfitData.reduce((s, p) => s + p.cogs, 0);
+      const totalRev = filteredProfitData.reduce((s, p) => s + (Number(p.gross_amount) || 0), 0);
+      const totalCOGS = filteredProfitData.reduce((s, p) => s + (Number(p.cogs) || 0), 0);
       const totalProfit = totalRev - totalCOGS;
       const overallMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
       const summaryRow = ['TOTALS', '', '', '', totalRev, totalCOGS, totalProfit, `${overallMargin}%`, ''];
 
       exportReportToCSV({
-        filename: `DS_Furniture_Profit_Margins_${Date.now()}`,
+        filename: `DNS_Home_Solutions_Profit_Margins_${Date.now()}`,
         reportTitle: 'Gross Profit Margins & Cost Analysis Report',
         headers,
         rows,
@@ -599,15 +657,15 @@ export default function ReportsPage({
           { label: 'Status', align: 'center' },
         ],
         tableRows: filteredSalesData.map((o) => [
-          `<span style="font-family: monospace; font-weight: 700; color: #1E4D8C;">${o.invoice_no}</span>`,
+          `<span style="font-family: monospace; font-weight: 700; color: #1E4D8C;">${o.invoice_no || o.contract_no || o.id}</span>`,
           formatDate(o.date),
-          `<strong>${o.customer_name}</strong><br><span style="color: #64748B; font-size: 9px;">${o.customer_id}</span>`,
-          `${o.branch_code}/${o.center_code}`,
-          o.items_summary,
-          formatLKR(o.gross_amount),
-          formatLKR(o.advance_paid),
-          formatLKR(o.balance_due),
-          `<span style="font-weight: 700; color: ${o.balance_due > 0 ? '#D97706' : '#10B981'};">${o.status}</span>`,
+          `<strong>${o.customer_name || 'Client'}</strong><br><span style="color: #64748B; font-size: 9px;">${o.customer_id || o.customer_nic || ''}</span>`,
+          `${o.branch_code || 'MHG'}/${o.center_code || 'C001'}`,
+          o.items_summary || o.item_name || 'Solid Wood Furniture',
+          formatLKR(Number(o.gross_amount) || 0),
+          formatLKR(Number(o.advance_paid) || 0),
+          formatLKR(Number(o.balance_due) || 0),
+          `<span style="font-weight: 700; color: ${(Number(o.balance_due) || 0) > 0 ? '#D97706' : '#10B981'};">${o.status || 'Active'}</span>`,
         ]),
         summaryCells: [
           'TOTALS',
@@ -834,14 +892,14 @@ export default function ReportsPage({
           { label: 'Margin %', align: 'center' },
         ],
         tableRows: filteredProfitData.map((p) => [
-          `<span style="font-family: monospace; font-weight: 700;">${p.invoice_no}</span>`,
+          `<span style="font-family: monospace; font-weight: 700;">${p.invoice_no || p.contract_no || p.id}</span>`,
           formatDate(p.date),
-          p.customer_name,
-          p.items_summary,
-          formatLKR(p.gross_amount),
-          formatLKR(p.cogs),
-          `<strong style="color: #10B981;">${formatLKR(p.gross_profit)}</strong>`,
-          `<strong>${p.margin_pct}%</strong>`,
+          p.customer_name || 'Client',
+          p.items_summary || p.item_name || 'Solid Wood Furniture',
+          formatLKR(Number(p.gross_amount) || 0),
+          formatLKR(Number(p.cogs) || 0),
+          `<strong style="color: #10B981;">${formatLKR(Number(p.gross_profit) || 0)}</strong>`,
+          `<strong>${p.margin_pct || 0}%</strong>`,
         ]),
         summaryCells: [
           'TOTALS',
@@ -1172,36 +1230,36 @@ export default function ReportsPage({
               filteredSalesData.map((o) => (
                 <tr key={o.id}>
                   <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
-                    {o.invoice_no}
+                    {o.invoice_no || o.contract_no || o.id}
                   </td>
                   <td>{formatDate(o.date)}</td>
                   <td>
-                    <strong>{o.customer_name}</strong>
+                    <strong>{o.customer_name || 'Client'}</strong>
                     <br />
-                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{o.customer_id}</span>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{o.customer_id || o.customer_nic || ''}</span>
                   </td>
                   <td>
                     <span className="badge-showroom" style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.72rem' }}>
-                      {o.branch_code}/{o.center_code}
+                      {o.branch_code || 'MHG'}/{o.center_code || 'C001'}
                     </span>
                   </td>
-                  <td>{o.items_summary}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLKR(o.gross_amount)}</td>
+                  <td>{o.items_summary || o.item_name || 'Solid Wood Furniture'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLKR(Number(o.gross_amount) || 0)}</td>
                   <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: 600 }}>
-                    {formatLKR(o.advance_paid)}
+                    {formatLKR(Number(o.advance_paid) || 0)}
                   </td>
                   <td
                     style={{
                       textAlign: 'right',
                       fontWeight: 700,
-                      color: o.balance_due > 0 ? 'var(--warning)' : 'var(--text-muted)',
+                      color: (Number(o.balance_due) || 0) > 0 ? 'var(--warning)' : 'var(--text-muted)',
                     }}
                   >
-                    {formatLKR(o.balance_due)}
+                    {formatLKR(Number(o.balance_due) || 0)}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                      💳 {o.payment_method}
+                      💳 {o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment')}
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -1211,11 +1269,11 @@ export default function ReportsPage({
                         fontWeight: 700,
                         padding: '3px 8px',
                         borderRadius: '6px',
-                        background: o.balance_due === 0 ? 'var(--success-tint)' : 'var(--warning-tint)',
-                        color: o.balance_due === 0 ? 'var(--success)' : 'var(--warning)',
+                        background: (Number(o.balance_due) || 0) === 0 ? 'var(--success-tint)' : 'var(--warning-tint)',
+                        color: (Number(o.balance_due) || 0) === 0 ? 'var(--success)' : 'var(--warning)',
                       }}
                     >
-                      {o.status}
+                      {o.status || 'Active'}
                     </span>
                   </td>
                 </tr>
@@ -1619,17 +1677,17 @@ export default function ReportsPage({
               filteredProfitData.map((p) => (
                 <tr key={p.id}>
                   <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
-                    {p.invoice_no}
+                    {p.invoice_no || p.contract_no || p.id}
                   </td>
                   <td>{formatDate(p.date)}</td>
-                  <td>{p.customer_name}</td>
-                  <td>{p.items_summary}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLKR(p.gross_amount)}</td>
+                  <td>{p.customer_name || 'Client'}</td>
+                  <td>{p.items_summary || p.item_name || 'Solid Wood Furniture'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatLKR(Number(p.gross_amount) || 0)}</td>
                   <td style={{ textAlign: 'right', color: 'var(--warning)', fontWeight: 600 }}>
-                    {formatLKR(p.cogs)}
+                    {formatLKR(Number(p.cogs) || 0)}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
-                    {formatLKR(p.gross_profit)}
+                    {formatLKR(Number(p.gross_profit) || 0)}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <span
@@ -1638,14 +1696,16 @@ export default function ReportsPage({
                         fontWeight: 700,
                         padding: '3px 8px',
                         borderRadius: '6px',
-                        background: p.margin_pct >= 30 ? 'var(--success-tint)' : 'var(--warning-tint)',
-                        color: p.margin_pct >= 30 ? 'var(--success)' : 'var(--warning)',
+                        background: (Number(p.margin_pct) || 0) >= 30 ? 'var(--success-tint)' : 'var(--warning-tint)',
+                        color: (Number(p.margin_pct) || 0) >= 30 ? 'var(--success)' : 'var(--warning)',
                       }}
                     >
-                      {p.margin_pct}%
+                      {p.margin_pct || 0}%
                     </span>
                   </td>
-                  <td style={{ textAlign: 'center', fontSize: '0.75rem' }}>{p.payment_method}</td>
+                  <td style={{ textAlign: 'center', fontSize: '0.75rem' }}>
+                    {p.payment_method || (p.payment_type === 'cash' ? 'Cash' : 'Installment')}
+                  </td>
                 </tr>
               ))
             )}

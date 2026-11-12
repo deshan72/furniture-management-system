@@ -14,6 +14,7 @@ import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import BackupPage from './pages/BackupPage';
 import ReportsPage from './pages/ReportsPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import { loadSavedCenters } from './utils/centersData';
 import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 
@@ -458,7 +459,7 @@ export default function App() {
           {!isPageAllowed ? (
             renderAccessRestricted()
           ) : (
-            <>
+            <ErrorBoundary key={activeTab}>
               {/* Main */}
               {activeTab === 'dashboard' && (
                 <DashboardPage
@@ -555,7 +556,7 @@ export default function App() {
                 />
               )}
               {activeTab === 'backup' && <BackupPage />}
-            </>
+            </ErrorBoundary>
           )}
         </main>
       </div>

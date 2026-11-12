@@ -283,7 +283,26 @@ export const loadAllOrders = () => {
     const saved = localStorage.getItem(ORDERS_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((o, idx) => ({
+          ...o,
+          id: o.id || `ORD-${idx + 1000}`,
+          invoice_no: o.invoice_no || o.contract_no || `DS-INV-${idx + 1000}`,
+          customer_name: o.customer_name || 'Client',
+          customer_id: o.customer_id || o.customer_nic || 'N/A',
+          customer_phone: o.customer_phone || '-',
+          branch_code: o.branch_code || 'MHG',
+          center_code: o.center_code || 'C001',
+          items_summary: o.items_summary || o.item_name || 'Solid Wood Furniture',
+          item_name: o.item_name || o.items_summary || 'Solid Wood Furniture',
+          gross_amount: Number(o.gross_amount) || (Number(o.unit_price) * (Number(o.quantity) || 1)) || 0,
+          advance_paid: Number(o.advance_paid) || 0,
+          balance_due: typeof o.balance_due !== 'undefined' ? Number(o.balance_due) : Math.max(0, (Number(o.gross_amount) || 0) - (Number(o.advance_paid) || 0)),
+          payment_method: o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment Loan'),
+          status: o.status || ((Number(o.balance_due) || 0) > 0 ? 'Active Loan' : 'Fully Paid'),
+          date: o.date || new Date().toISOString().slice(0, 10),
+        }));
+      }
     }
   } catch (e) {
     console.error('Error loading orders:', e);
@@ -301,7 +320,21 @@ export const loadAllExpenses = () => {
     const saved = localStorage.getItem(EXPENSES_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((e, idx) => ({
+          ...e,
+          id: e.id || `EXP-${idx + 100}`,
+          voucher_no: e.voucher_no || `PV-${idx + 890}`,
+          date: e.date || new Date().toISOString().slice(0, 10),
+          category: e.category || 'Operating Expense',
+          payee: e.payee || 'Supplier',
+          branch_code: e.branch_code || 'MHG',
+          center_code: e.center_code || 'C001',
+          amount: Number(e.amount) || 0,
+          payment_method: e.payment_method || 'Cash',
+          notes: e.notes || '',
+        }));
+      }
     }
   } catch (e) {
     console.error('Error loading expenses:', e);
