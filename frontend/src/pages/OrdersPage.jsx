@@ -86,6 +86,8 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   // ADD NEW ORDER FORM STATE
   // ==========================================
   const [formCustomerId, setFormCustomerId] = useState('');
+  const [clientSearchText, setClientSearchText] = useState('');
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [formCenterCode, setFormCenterCode] = useState('C001');
   const [formBranchCode, setFormBranchCode] = useState('MHG');
   const [formDeliveryAddress, setFormDeliveryAddress] = useState('');
@@ -149,6 +151,66 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const formSelectedCustomer = useMemo(() => {
     return activeCustomers.find((c) => c.id === formCustomerId || (c.nic && c.nic === formCustomerId)) || null;
   }, [activeCustomers, formCustomerId]);
+
+  // Suggestions for Customer search (search by Name, NIC, Phone, City, Customer ID)
+  const customerSuggestions = useMemo(() => {
+    const q = clientSearchText.toLowerCase().trim();
+    if (!q || (formSelectedCustomer && `${formSelectedCustomer.name} — NIC: ${formSelectedCustomer.nic || formSelectedCustomer.customer_id}`.toLowerCase() === q)) {
+      return activeCustomers;
+    }
+    return activeCustomers.filter(
+      (c) =>
+        c.name?.toLowerCase().includes(q) ||
+        c.first_name?.toLowerCase().includes(q) ||
+        c.last_name?.toLowerCase().includes(q) ||
+        c.nic?.toLowerCase().includes(q) ||
+        c.customer_id?.toLowerCase().includes(q) ||
+        c.phone?.includes(q) ||
+        c.city?.toLowerCase().includes(q)
+    );
+  }, [activeCustomers, clientSearchText, formSelectedCustomer]);
+
+  // Select customer handler
+  const handleSelectCustomer = (cust) => {
+    if (cust) {
+      setFormCustomerId(cust.id);
+      setClientSearchText(`${cust.name} — NIC: ${cust.nic || cust.customer_id}`);
+      if (cust.center_code) setFormCenterCode(formatCenterCode(cust.center_code));
+      if (cust.branch_code) setFormBranchCode(cust.branch_code);
+      if (cust.address) setFormDeliveryAddress(cust.address);
+    } else {
+      setFormCustomerId('');
+      setClientSearchText('');
+    }
+    setIsClientDropdownOpen(false);
+  };
+
+  // Type in client search input
+  const handleClientSearchChange = (val) => {
+    setClientSearchText(val);
+    setIsClientDropdownOpen(true);
+    setIsCodeDropdownOpen(false);
+    setIsNameDropdownOpen(false);
+
+    const clean = val.trim().toLowerCase();
+    if (!clean) {
+      setFormCustomerId('');
+      return;
+    }
+    const exact = activeCustomers.find(
+      (c) =>
+        (c.nic && c.nic.toLowerCase() === clean) ||
+        (c.customer_id && c.customer_id.toLowerCase() === clean) ||
+        (c.phone && c.phone.replace(/\D/g, '') === clean.replace(/\D/g, '') && clean.length >= 9) ||
+        (c.name && c.name.toLowerCase() === clean)
+    );
+    if (exact) {
+      setFormCustomerId(exact.id);
+      if (exact.center_code) setFormCenterCode(formatCenterCode(exact.center_code));
+      if (exact.branch_code) setFormBranchCode(exact.branch_code);
+      if (exact.address) setFormDeliveryAddress(exact.address);
+    }
+  };
 
   // Form: Currently selected product (prioritizes direct selection or exact code match)
   const formSelectedProduct = useMemo(() => {
@@ -308,11 +370,13 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     const firstCust = activeCustomers[0] || null;
     if (firstCust) {
       setFormCustomerId(firstCust.id);
+      setClientSearchText(`${firstCust.name} — NIC: ${firstCust.nic || firstCust.customer_id}`);
       setFormCenterCode(formatCenterCode(firstCust.center_code || 'C001'));
       setFormBranchCode(firstCust.branch_code || 'MHG');
       setFormDeliveryAddress(firstCust.address || '');
     } else {
       setFormCustomerId('');
+      setClientSearchText('');
     }
 
     const firstProd = products[0] || null;
@@ -346,6 +410,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setFormPaymentMethod('Cash');
     setFormNotes('');
     setShowQuickRegister(false);
+    setIsClientDropdownOpen(false);
     setIsCodeDropdownOpen(false);
     setIsNameDropdownOpen(false);
     setIsAddOrderModalOpen(true);
@@ -433,10 +498,12 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     saveCustomersToStorage(updated);
 
     setFormCustomerId(newCust.id);
+    setClientSearchText(`${newCust.name} — NIC: ${newCust.nic}`);
     setFormCenterCode(newCust.center_code);
     setFormBranchCode(newCust.branch_code);
     setFormDeliveryAddress(newCust.address);
     setShowQuickRegister(false);
+    setIsClientDropdownOpen(false);
   };
 
   // Submit and Place Order
@@ -1375,28 +1442,65 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* STEP 1: SELECT ACTIVE CLIENT */}
-          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
+          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)', position: 'relative' }}>
+            {/* Click-outside backdrop when client suggestions are open */}
+            {isClientDropdownOpen && (
+              <div
+                onClick={() => setIsClientDropdownOpen(false)}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 55,
+                  background: 'transparent',
+                }}
+              />
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <label className="form-label" style={{ fontWeight: 800, margin: 0, fontSize: '0.86rem' }}>
                 1. Select Active Customer *
               </label>
-              <button
-                type="button"
-                onClick={() => setShowQuickRegister(!showQuickRegister)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--primary)',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                }}
-              >
-                <UserPlus size={13} /> {showQuickRegister ? 'Cancel' : '+ Quick Register Client'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {formSelectedCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectCustomer(null)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--primary)',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <RotateCcw size={12} /> Clear / Change Client
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowQuickRegister(!showQuickRegister)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <UserPlus size={13} /> {showQuickRegister ? 'Cancel' : '+ Quick Register Client'}
+                </button>
+              </div>
             </div>
 
             {/* Quick Register inline drawer */}
@@ -1466,19 +1570,143 @@ export default function OrdersPage({ headerCenter = 'all' }) {
               </div>
             )}
 
-            <select
-              className="form-select-full"
-              value={formCustomerId}
-              onChange={(e) => handleFormSelectCustomer(e.target.value)}
-              style={{ fontWeight: 600, fontSize: '0.88rem' }}
-            >
-              <option value="">-- Choose Registered Active Client ({activeCustomers.length}) --</option>
-              {activeCustomers.map((cust) => (
-                <option key={cust.id} value={cust.id}>
-                  {cust.name} — NIC: {cust.nic || cust.customer_id} (📞 {cust.phone})
-                </option>
-              ))}
-            </select>
+            {/* Client Search Input with Live Suggestions */}
+            <div style={{ position: 'relative', zIndex: 58 }}>
+              <Search
+                size={16}
+                style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)', pointerEvents: 'none' }}
+              />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search active client by Name, NIC, or Phone number..."
+                value={clientSearchText}
+                onFocus={() => {
+                  setIsClientDropdownOpen(true);
+                  setIsCodeDropdownOpen(false);
+                  setIsNameDropdownOpen(false);
+                }}
+                onChange={(e) => handleClientSearchChange(e.target.value)}
+                style={{
+                  paddingLeft: '36px',
+                  paddingRight: clientSearchText ? '30px' : '12px',
+                  fontWeight: 600,
+                  fontSize: '0.88rem',
+                }}
+              />
+              {clientSearchText && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectCustomer(null)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '9px',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--ash-400)',
+                  }}
+                  title="Clear Customer"
+                >
+                  <X size={14} />
+                </button>
+              )}
+
+              {/* Live Customer Suggestions Popover */}
+              {isClientDropdownOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '4px',
+                    background: '#fff',
+                    borderRadius: '8px',
+                    border: '1px solid var(--primary-border)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
+                    maxHeight: '230px',
+                    overflowY: 'auto',
+                    zIndex: 65,
+                  }}
+                >
+                  {customerSuggestions.length === 0 ? (
+                    <div style={{ padding: '14px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--ash-500)' }}>
+                      No client found matching "{clientSearchText}".
+                      <div style={{ marginTop: '6px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          style={{ padding: '4px 10px', fontSize: '0.74rem' }}
+                          onClick={() => {
+                            setIsClientDropdownOpen(false);
+                            setShowQuickRegister(true);
+                            setQuickClient((prev) => ({ ...prev, first_name: clientSearchText }));
+                          }}
+                        >
+                          + Quick Register This Client
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    customerSuggestions.map((cust) => {
+                      const isChosen = formCustomerId === cust.id;
+                      return (
+                        <div
+                          key={cust.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectCustomer(cust);
+                          }}
+                          onClick={() => handleSelectCustomer(cust)}
+                          style={{
+                            padding: '10px 14px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            borderBottom: '1px solid var(--ash-100)',
+                            cursor: 'pointer',
+                            background: isChosen ? 'var(--primary-tint)' : '#fff',
+                            transition: 'background 0.1s ease',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : '#fff')
+                          }
+                        >
+                          <div>
+                            <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--ash-900)' }}>
+                              {cust.name}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.74rem', color: 'var(--ash-600)' }}>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                                🆔 {cust.nic || cust.customer_id}
+                              </span>
+                              <span>•</span>
+                              <span>📞 {cust.phone}</span>
+                              {cust.city && <span>• 📍 {cust.city}</span>}
+                            </div>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: 'var(--ash-600)',
+                              background: '#F1F5F9',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {cust.branch_code || 'MHG'}/{cust.center_code || 'C001'}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
 
             {formSelectedCustomer && (
               <div
