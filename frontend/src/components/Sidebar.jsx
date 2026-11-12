@@ -2,16 +2,12 @@ import React from 'react';
 import {
   LayoutDashboard,
   CreditCard,
-  RotateCcw,
   Armchair,
-  Layers,
   Boxes,
   AlertTriangle,
   Users,
   CircleDollarSign,
   ShoppingCart,
-  WalletCards,
-  Calculator,
   Lock,
   BarChart3,
   TrendingUp,
@@ -23,8 +19,8 @@ import {
   ClipboardList,
   Building2,
   PlusCircle,
-  UserCheck,
   UserPlus,
+  UserCheck,
 } from 'lucide-react';
 import { hasPageAccess, ROLES_METADATA } from '../utils/rolesData';
 
@@ -49,14 +45,12 @@ export default function Sidebar({
       items: [
         { id: 'orders', label: 'Orders & Invoices', icon: ClipboardList },
         { id: 'payments', label: 'Payments & Advances', icon: CreditCard },
-        { id: 'returns', label: 'Returns & Repairs', icon: RotateCcw },
       ],
     },
     {
       title: 'Inventory',
       items: [
         { id: 'products', label: 'Products Catalog', icon: Armchair },
-        { id: 'categories', label: 'Categories', icon: Layers },
         { id: 'stock', label: 'Stock Management', icon: Boxes },
         {
           id: 'low-stock',
@@ -86,14 +80,6 @@ export default function Sidebar({
         { id: 'centers', label: 'Center Directory', icon: Building2 },
         { id: 'create-center', label: 'Create Center', icon: PlusCircle },
         { id: 'add-client-to-center', label: 'Add Client to Center', icon: UserPlus },
-      ],
-    },
-    {
-      title: 'Finance & Cash',
-      items: [
-        { id: 'cashbook', label: 'Daily Cash Book', icon: WalletCards },
-        { id: 'expenses', label: 'Expenses Tracker', icon: Calculator },
-        { id: 'day-close', label: 'Day-End Closing', icon: Lock },
       ],
     },
     {
