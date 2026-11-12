@@ -64,6 +64,8 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const [isViewDetailsModalOpen, setIsViewDetailsModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isOrderSuccessModalOpen, setIsOrderSuccessModalOpen] = useState(false);
+  const [placedSuccessOrder, setPlacedSuccessOrder] = useState(null);
 
   // Selected Order for viewing details, printing, or paying
   const [activeSelectedOrder, setActiveSelectedOrder] = useState(null);
@@ -589,14 +591,14 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setCustomers(updatedCustomers);
     saveCustomersToStorage(updatedCustomers);
 
+    setPlacedSuccessOrder(newOrder);
+    setActiveSelectedOrder(newOrder);
     setIsAddOrderModalOpen(false);
 
     if (andPrint) {
-      setActiveSelectedOrder(newOrder);
       setIsPrintModalOpen(true);
     } else {
-      setActiveSelectedOrder(newOrder);
-      setIsViewDetailsModalOpen(true);
+      setIsOrderSuccessModalOpen(true);
     }
   };
 
@@ -2379,6 +2381,216 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* =========================================================
+          4.5 POPUP MODAL: ORDER PLACED SUCCESSFULLY CONFIRMATION
+          ========================================================= */}
+      <Modal
+        isOpen={isOrderSuccessModalOpen}
+        onClose={() => setIsOrderSuccessModalOpen(false)}
+        title="🎉 Order Placed Successfully!"
+      >
+        {placedSuccessOrder && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Success Header Banner */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                border: '1px solid #A7F3D0',
+                borderRadius: '12px',
+                padding: '16px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+              }}
+            >
+              <div
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: '#10B981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  flexShrink: 0,
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+                }}
+              >
+                <CheckCircle size={26} strokeWidth={2.8} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#065F46' }}>
+                  Order & Contract Created Successfully!
+                </h3>
+                <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#047857' }}>
+                  The furniture order has been registered into the active contracts ledger.
+                </p>
+              </div>
+            </div>
+
+            {/* Prominent Contract Code Box */}
+            <div
+              style={{
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  OFFICIAL CONTRACT CODE
+                </span>
+                <div style={{ fontFamily: 'monospace', fontSize: '1.25rem', fontWeight: 900, color: '#1D4ED8', marginTop: '2px' }}>
+                  📜 {placedSuccessOrder.contract_no}
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#1E40AF' }}>
+                <div>Invoice: <strong>{placedSuccessOrder.invoice_no}</strong></div>
+                <div>Date: <strong>{formatDate(placedSuccessOrder.date)}</strong></div>
+              </div>
+            </div>
+
+            {/* 2-Column Summary Cards: Client & Item */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+              {/* Customer Box */}
+              <div style={{ background: '#F8FAFC', border: '1px solid var(--ash-200)', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 800 }}>
+                  👤 Client Details
+                </span>
+                <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ash-900)', marginTop: '4px' }}>
+                  {placedSuccessOrder.customer_name}
+                </div>
+                <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px', color: 'var(--ash-700)' }}>
+                  <div>
+                    NIC: <strong style={{ color: 'var(--primary)', fontFamily: 'monospace' }}>{placedSuccessOrder.customer_nic || placedSuccessOrder.customer_id}</strong>
+                  </div>
+                  <div>Phone: <strong>{placedSuccessOrder.customer_phone}</strong></div>
+                  <div>Center: <strong>{placedSuccessOrder.branch_code}/{placedSuccessOrder.center_code}</strong></div>
+                  {placedSuccessOrder.customer_address && (
+                    <div style={{ fontSize: '0.76rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                      📍 {placedSuccessOrder.customer_address}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Item Box */}
+              <div style={{ background: '#F8FAFC', border: '1px solid var(--ash-200)', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 800 }}>
+                  🛋️ Furniture Item
+                </span>
+                <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ash-900)', marginTop: '4px' }}>
+                  {placedSuccessOrder.item_name}
+                </div>
+                <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px', color: 'var(--ash-700)' }}>
+                  <div>
+                    Item Code: <strong style={{ fontFamily: 'monospace', color: 'var(--primary)' }}>{placedSuccessOrder.item_code}</strong>
+                  </div>
+                  <div>Quantity: <strong>{placedSuccessOrder.quantity} Unit(s)</strong></div>
+                  <div>Unit Price: <strong>{formatLKR(placedSuccessOrder.unit_price)}</strong></div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--ash-500)', textTransform: 'capitalize' }}>
+                    Category: {placedSuccessOrder.category?.replace('_', ' ')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial & Repayment Breakdown Card */}
+            <div
+              style={{
+                background: '#FEFCE8',
+                border: '1px solid #FEF08A',
+                borderRadius: '10px',
+                padding: '14px 16px',
+              }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 800, textTransform: 'uppercase' }}>Total Order Value</span>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--ash-900)', marginTop: '2px' }}>
+                    {formatLKR(placedSuccessOrder.gross_amount)}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 800, textTransform: 'uppercase' }}>Advance Paid</span>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#16A34A', marginTop: '2px' }}>
+                    {formatLKR(placedSuccessOrder.advance_paid)}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 800, textTransform: 'uppercase' }}>Remaining Balance</span>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: Number(placedSuccessOrder.balance_due) > 0 ? '#DC2626' : '#16A34A', marginTop: '2px' }}>
+                    {formatLKR(placedSuccessOrder.balance_due)}
+                  </div>
+                </div>
+
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 800, textTransform: 'uppercase' }}>Payment Plan</span>
+                  <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#A16207', marginTop: '2px' }}>
+                    {placedSuccessOrder.payment_type === 'installment'
+                      ? `${formatLKR(placedSuccessOrder.installment_value)} / ${placedSuccessOrder.loan_frequency}`
+                      : 'Full Cash Sale'}
+                  </div>
+                  {placedSuccessOrder.payment_type === 'installment' && (
+                    <span style={{ fontSize: '0.72rem', color: '#854D0E' }}>
+                      ({placedSuccessOrder.loan_terms} terms)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setIsOrderSuccessModalOpen(false);
+                  setIsPrintModalOpen(true);
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <Printer size={15} /> Print Agreement / Bill
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setIsOrderSuccessModalOpen(false);
+                    setIsViewDetailsModalOpen(true);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  <Eye size={15} /> View Full Contract
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setIsOrderSuccessModalOpen(false)}
+                  style={{ padding: '8px 22px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <CheckCircle size={15} /> Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* =========================================================
