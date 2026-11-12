@@ -10,32 +10,11 @@ export const REPORT_TYPES = [
     badge: 'Sales',
   },
   {
-    id: 'outstanding_credit',
-    label: 'Outstanding Balances',
-    subtitle: 'Customer credit ledger, pending debt recovery, and risk assessment',
-    iconName: 'AlertTriangle',
-    badge: 'Credit',
-  },
-  {
     id: 'inventory_valuation',
     label: 'Stock Valuation',
     subtitle: 'Finished furniture inventory, cost valuation, and reorder levels',
     iconName: 'Package',
     badge: 'Stock',
-  },
-  {
-    id: 'cash_flow',
-    label: 'Cash Flow & Drawer',
-    subtitle: 'Day-to-day cash drawer receipts, cash outflows, and end balance',
-    iconName: 'Banknote',
-    badge: 'Cash',
-  },
-  {
-    id: 'expenses_procurement',
-    label: 'Expenses & Workshop',
-    subtitle: 'Raw timber logs, carpenter wages, hardware, rent, and overheads',
-    iconName: 'Hammer',
-    badge: 'Expenses',
   },
   {
     id: 'profit_margin',

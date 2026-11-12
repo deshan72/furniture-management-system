@@ -251,7 +251,7 @@ export default function App() {
       case 'reports-sales':
         return {
           title: 'Reports & Analytics Hub',
-          subtitle: 'Audit sales turnover, customer credit ledger, stock valuation, and cash flow with CSV & PDF export',
+          subtitle: 'Audit sales turnover, finished stock inventory valuation, and profit margins with CSV & PDF export',
         };
       case 'reports-profit':
         return {
