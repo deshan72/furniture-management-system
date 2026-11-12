@@ -34,6 +34,7 @@ import {
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
+import { apiRequest } from '../services/api';
 
 export default function OrdersPage({ headerCenter = 'all' }) {
   // Orders, customers, products and centers data
@@ -90,6 +91,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const [formDeliveryAddress, setFormDeliveryAddress] = useState('');
 
   const [formProductId, setFormProductId] = useState('');
+  const [selectedProductObj, setSelectedProductObj] = useState(null);
   const [formQuantity, setFormQuantity] = useState(1);
   const [formUnitPrice, setFormUnitPrice] = useState(0);
 
@@ -99,7 +101,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const [isCodeDropdownOpen, setIsCodeDropdownOpen] = useState(false);
   const [isNameDropdownOpen, setIsNameDropdownOpen] = useState(false);
 
-  const [formPassbookNo, setFormPassbookNo] = useState('');
+  const [formPassbookNo, setFormPassbookNo] = useState('PN');
   const [formPaymentType, setFormPaymentType] = useState('installment'); // 'installment' | 'cash'
   const [formDownPayment, setFormDownPayment] = useState(0);
   const [formLoanFrequency, setFormLoanFrequency] = useState('monthly'); // 'monthly' | 'weekly'
@@ -108,15 +110,34 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   const [formPaymentMethod, setFormPaymentMethod] = useState('Cash');
   const [formNotes, setFormNotes] = useState('');
 
-  // Sync external changes from localStorage
+  // Sync external changes from localStorage and fetch latest products from backend/Supabase
   useEffect(() => {
+    let isMounted = true;
+    apiRequest('/products')
+      .then((res) => {
+        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
+          setProducts(res.data);
+          try {
+            localStorage.setItem('dnd_products_list', JSON.stringify(res.data));
+          } catch {
+            // ignore storage errors
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback to localStorage products already loaded
+      });
+
     const handleStorage = (e) => {
       if (!e || e.key === 'dnd_orders_list_v2') setOrders(loadSavedOrders());
       if (!e || e.key === 'dnd_customers_list') setCustomers(loadSavedCustomers());
       if (!e || e.key === 'dnd_products_list') setProducts(loadSavedProducts());
     };
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   // Filter for active registered clients only
@@ -129,10 +150,27 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     return activeCustomers.find((c) => c.id === formCustomerId || (c.nic && c.nic === formCustomerId)) || null;
   }, [activeCustomers, formCustomerId]);
 
-  // Form: Currently selected product
+  // Form: Currently selected product (prioritizes direct selection or exact code match)
   const formSelectedProduct = useMemo(() => {
-    return products.find((p) => p.id === formProductId || p.item_code === formProductId) || null;
-  }, [products, formProductId]);
+    if (selectedProductObj) {
+      return selectedProductObj;
+    }
+    if (formProductId) {
+      const found = products.find(
+        (p) =>
+          (p.id && String(p.id) === String(formProductId)) ||
+          (p.item_code && p.item_code.toLowerCase() === String(formProductId).toLowerCase())
+      );
+      if (found) return found;
+    }
+    if (codeSearchText.trim()) {
+      const byCode = products.find(
+        (p) => p.item_code && p.item_code.trim().toLowerCase() === codeSearchText.trim().toLowerCase()
+      );
+      if (byCode) return byCode;
+    }
+    return null;
+  }, [selectedProductObj, products, formProductId, codeSearchText]);
 
   // Form: Auto-calculated Gross Order Total
   const formGrossTotal = useMemo(() => {
@@ -152,42 +190,53 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     return Math.ceil(formLoanBalance / t);
   }, [formPaymentType, formLoanBalance, formLoanTerms]);
 
-  // Form: Real-time Contract Code (pn / center code / item code)
+  // Form: Real-time Contract Code (PN / center code / item code)
   const formContractCode = useMemo(() => {
-    const pn = formPassbookNo || 'PN-001';
-    const center = formCenterCode || 'C001';
-    const item = formSelectedProduct ? formSelectedProduct.item_code : 'WD-001';
+    const pn = (formPassbookNo || 'PN').trim().toUpperCase();
+    const center = (formCenterCode || 'C001').trim().toUpperCase();
+    const item = (
+      codeSearchText.trim() ||
+      formSelectedProduct?.item_code ||
+      'WD-001'
+    ).trim().toUpperCase();
     return buildContractNumber(pn, center, item);
-  }, [formPassbookNo, formCenterCode, formSelectedProduct]);
+  }, [formPassbookNo, formCenterCode, formSelectedProduct, codeSearchText]);
 
-  // Suggestions for Code search (suggests matching items by item_code)
+  // Suggestions for Code search (shows all products when empty or matching already-selected code so switching items is easy)
   const codeSuggestions = useMemo(() => {
-    if (!codeSearchText.trim()) return products;
     const q = codeSearchText.toLowerCase().trim();
+    if (!q || (formSelectedProduct?.item_code && formSelectedProduct.item_code.toLowerCase().trim() === q)) {
+      return products;
+    }
     return products.filter(
       (p) => p.item_code?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q)
     );
-  }, [products, codeSearchText]);
+  }, [products, codeSearchText, formSelectedProduct]);
 
-  // Suggestions for Name search (suggests matching items by product name)
+  // Suggestions for Name search (shows all products when empty or matching already-selected name so switching items is easy)
   const nameSuggestions = useMemo(() => {
-    if (!nameSearchText.trim()) return products;
     const q = nameSearchText.toLowerCase().trim();
+    if (!q || (formSelectedProduct?.name && formSelectedProduct.name.toLowerCase().trim() === q)) {
+      return products;
+    }
     return products.filter(
       (p) => p.name?.toLowerCase().includes(q) || p.item_code?.toLowerCase().includes(q)
     );
-  }, [products, nameSearchText]);
+  }, [products, nameSearchText, formSelectedProduct]);
 
   // Select a product from suggestions or direct selection
   const handleSelectProduct = (prod) => {
     if (prod) {
-      setFormProductId(prod.id);
-      setFormUnitPrice(prod.selling_price || 0);
+      setSelectedProductObj(prod);
+      setFormProductId(prod.id || prod.item_code || '');
+      const price = Number(prod.selling_price) || 0;
+      setFormUnitPrice(price);
       setCodeSearchText(prod.item_code || '');
       setNameSearchText(prod.name || '');
-      const total = (Number(formQuantity) || 1) * (prod.selling_price || 0);
+      const total = (Number(formQuantity) || 1) * price;
       setFormDownPayment(Math.round(total * 0.2));
     } else {
+      setSelectedProductObj(null);
       setFormProductId('');
       setFormUnitPrice(0);
       setCodeSearchText('');
@@ -198,10 +247,63 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setIsNameDropdownOpen(false);
   };
 
+  // Handle typing in Product Code field (auto-selects matching item & updates Contract Code live)
+  const handleCodeSearchChange = (val) => {
+    setCodeSearchText(val);
+    setIsCodeDropdownOpen(true);
+    setIsNameDropdownOpen(false);
+
+    const clean = val.trim().toLowerCase();
+    if (!clean) {
+      setSelectedProductObj(null);
+      setFormProductId('');
+      return;
+    }
+
+    const exactMatch = products.find(
+      (p) => p.item_code && p.item_code.trim().toLowerCase() === clean
+    );
+    if (exactMatch) {
+      setSelectedProductObj(exactMatch);
+      setFormProductId(exactMatch.id || exactMatch.item_code || '');
+      const price = Number(exactMatch.selling_price) || 0;
+      setFormUnitPrice(price);
+      setNameSearchText(exactMatch.name || '');
+      const total = (Number(formQuantity) || 1) * price;
+      setFormDownPayment(Math.round(total * 0.2));
+    }
+  };
+
+  // Handle typing in Product Name field (auto-selects matching item & updates Contract Code live)
+  const handleNameSearchChange = (val) => {
+    setNameSearchText(val);
+    setIsNameDropdownOpen(true);
+    setIsCodeDropdownOpen(false);
+
+    const clean = val.trim().toLowerCase();
+    if (!clean) {
+      setSelectedProductObj(null);
+      setFormProductId('');
+      return;
+    }
+
+    const exactMatch = products.find(
+      (p) => p.name && p.name.trim().toLowerCase() === clean
+    );
+    if (exactMatch) {
+      setSelectedProductObj(exactMatch);
+      setFormProductId(exactMatch.id || exactMatch.item_code || '');
+      const price = Number(exactMatch.selling_price) || 0;
+      setFormUnitPrice(price);
+      setCodeSearchText(exactMatch.item_code || '');
+      const total = (Number(formQuantity) || 1) * price;
+      setFormDownPayment(Math.round(total * 0.2));
+    }
+  };
+
   // Open "Add New Order" Modal & Initialize Defaults
   const handleOpenAddOrderModal = () => {
-    const nextPn = generateNextPassbookNo(orders);
-    setFormPassbookNo(nextPn);
+    setFormPassbookNo('PN');
 
     const firstCust = activeCustomers[0] || null;
     if (firstCust) {
@@ -215,13 +317,16 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
     const firstProd = products[0] || null;
     if (firstProd) {
-      setFormProductId(firstProd.id);
+      setSelectedProductObj(firstProd);
+      setFormProductId(firstProd.id || firstProd.item_code || '');
       setCodeSearchText(firstProd.item_code || '');
       setNameSearchText(firstProd.name || '');
-      setFormUnitPrice(firstProd.selling_price || 0);
+      const price = Number(firstProd.selling_price) || 0;
+      setFormUnitPrice(price);
       setFormQuantity(1);
-      setFormDownPayment(Math.round((firstProd.selling_price || 0) * 0.2));
+      setFormDownPayment(Math.round(price * 0.2));
     } else {
+      setSelectedProductObj(null);
       setFormProductId('');
       setCodeSearchText('');
       setNameSearchText('');
@@ -345,11 +450,16 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       return;
     }
 
-    const finalPassbook = (formPassbookNo || 'PN-001').trim().toUpperCase();
+    const finalPassbook = (formPassbookNo || 'PN').trim().toUpperCase();
+    const finalItemCode = (
+      codeSearchText.trim() ||
+      formSelectedProduct?.item_code ||
+      'WD-001'
+    ).trim().toUpperCase();
     const finalContract = buildContractNumber(
       finalPassbook,
       formCenterCode || formSelectedCustomer.center_code || 'C001',
-      formSelectedProduct.item_code
+      finalItemCode
     );
 
     const isInstallment = formPaymentType === 'installment';
@@ -1461,11 +1571,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       setIsCodeDropdownOpen(true);
                       setIsNameDropdownOpen(false);
                     }}
-                    onChange={(e) => {
-                      setCodeSearchText(e.target.value);
-                      setIsCodeDropdownOpen(true);
-                      setIsNameDropdownOpen(false);
-                    }}
+                    onChange={(e) => handleCodeSearchChange(e.target.value)}
                     style={{
                       paddingLeft: '32px',
                       paddingRight: codeSearchText ? '28px' : '10px',
@@ -1477,10 +1583,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   {codeSearchText && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setCodeSearchText('');
-                        setIsCodeDropdownOpen(true);
-                      }}
+                      onClick={() => handleCodeSearchChange('')}
                       style={{
                         position: 'absolute',
                         right: '8px',
@@ -1519,11 +1622,17 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                         No furniture items match code "{codeSearchText}"
                       </div>
                     ) : (
-                      codeSuggestions.map((item) => {
-                        const isChosen = formSelectedProduct?.id === item.id;
+                      codeSuggestions.map((item, idx) => {
+                        const isChosen =
+                          (formSelectedProduct?.item_code && formSelectedProduct.item_code === item.item_code) ||
+                          (formSelectedProduct?.id && formSelectedProduct.id === item.id);
                         return (
                           <div
-                            key={item.id}
+                            key={item.id || item.item_code || idx}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectProduct(item);
+                            }}
                             onClick={() => handleSelectProduct(item)}
                             style={{
                               padding: '9px 12px',
@@ -1594,11 +1703,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       setIsNameDropdownOpen(true);
                       setIsCodeDropdownOpen(false);
                     }}
-                    onChange={(e) => {
-                      setNameSearchText(e.target.value);
-                      setIsNameDropdownOpen(true);
-                      setIsCodeDropdownOpen(false);
-                    }}
+                    onChange={(e) => handleNameSearchChange(e.target.value)}
                     style={{
                       paddingLeft: '32px',
                       paddingRight: nameSearchText ? '28px' : '10px',
@@ -1609,10 +1714,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   {nameSearchText && (
                     <button
                       type="button"
-                      onClick={() => {
-                        setNameSearchText('');
-                        setIsNameDropdownOpen(true);
-                      }}
+                      onClick={() => handleNameSearchChange('')}
                       style={{
                         position: 'absolute',
                         right: '8px',
@@ -1651,11 +1753,17 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                         No furniture items match name "{nameSearchText}"
                       </div>
                     ) : (
-                      nameSuggestions.map((item) => {
-                        const isChosen = formSelectedProduct?.id === item.id;
+                      nameSuggestions.map((item, idx) => {
+                        const isChosen =
+                          (formSelectedProduct?.item_code && formSelectedProduct.item_code === item.item_code) ||
+                          (formSelectedProduct?.id && formSelectedProduct.id === item.id);
                         return (
                           <div
-                            key={item.id}
+                            key={item.id || item.item_code || idx}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleSelectProduct(item);
+                            }}
                             onClick={() => handleSelectProduct(item)}
                             style={{
                               padding: '9px 12px',
@@ -1796,11 +1904,11 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.74rem', color: '#1E40AF', fontWeight: 600 }}>Passbook:</span>
+              <span style={{ fontSize: '0.74rem', color: '#1E40AF', fontWeight: 600 }}>Branch:</span>
               <input
                 type="text"
                 value={formPassbookNo}
-                onChange={(e) => setFormPassbookNo(e.target.value)}
+                onChange={(e) => setFormPassbookNo(e.target.value.toUpperCase())}
                 style={{
                   width: '85px',
                   padding: '3px 8px',

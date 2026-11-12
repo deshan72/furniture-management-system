@@ -7,8 +7,8 @@ export const INITIAL_ORDERS = [
   {
     id: 'ORD-1001',
     invoice_no: 'DS-INV-1081',
-    contract_no: 'PN-001/C001/WD-001',
-    passbook_no: 'PN-001',
+    contract_no: 'PN/C001/WD-001',
+    passbook_no: 'PN',
     date: '2026-10-12',
     customer_id: '197814502391',
     customer_name: 'Sunil Jayawardena',
@@ -317,24 +317,14 @@ export const saveOrdersToStorage = (ordersList) => {
   }
 };
 
-// Generates next Passbook Number (PN-001, PN-002, etc.)
-export const generateNextPassbookNo = (existingOrders = []) => {
-  const nums = existingOrders
-    .map((o) => {
-      const contract = o.contract_no || '';
-      const match = contract.match(/^PN-?(\d+)/i) || (o.passbook_no && String(o.passbook_no).match(/(\d+)/));
-      return match ? parseInt(match[1], 10) : 0;
-    })
-    .filter((n) => !isNaN(n) && n > 0);
-
-  const max = nums.length > 0 ? Math.max(...nums) : 0;
-  const next = Math.max(max + 1, existingOrders.length + 1);
-  return `PN-${String(next).padStart(3, '0')}`;
+// Default Contract Branch Prefix (PN)
+export const generateNextPassbookNo = () => {
+  return 'PN';
 };
 
-// Generates Contract Number in format (pn / center code / item code)
+// Generates Contract Number in format (PN / center code / item code)
 export const buildContractNumber = (passbookNo, centerCode, itemCode) => {
-  const pn = String(passbookNo || 'PN-001').trim().toUpperCase();
+  const pn = String(passbookNo || 'PN').trim().toUpperCase();
   const center = String(centerCode || 'C001').trim().toUpperCase();
   const item = String(itemCode || 'WD-001').trim().toUpperCase();
   return `${pn}/${center}/${item}`;
