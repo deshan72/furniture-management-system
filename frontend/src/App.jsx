@@ -159,12 +159,12 @@ export default function App() {
       case 'orders':
         return {
           title: 'Orders & Invoices',
-          subtitle: 'Manage furniture orders, advances, balances due, and printable bills',
+          subtitle: 'Manage furniture customer orders, workshop specifications, and customer deliveries',
         };
       case 'payments':
         return {
           title: 'Payments & Advances',
-          subtitle: 'Log and track customer advance payments, installments, and balance settlements',
+          subtitle: 'Track customer advances, loan installment plans, and outstanding balance settlements',
         };
       case 'returns':
         return {

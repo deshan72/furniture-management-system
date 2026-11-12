@@ -56,7 +56,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
   // Main Page Filters & View Controls
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'paid'
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all'); // 'all' | 'In Production' | 'Ready for Delivery' | 'Delivered'
   const [viewMode, setViewMode] = useState('table'); // Default to professional Table View
 
   // Modals
@@ -578,6 +578,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       first_due_date: isInstallment ? formFirstDueDate : null,
       installments_paid: isInstallment && finalBalanceDue <= 0 ? finalTerms : finalAdvance > 0 ? 1 : 0,
       payment_method: formPaymentMethod,
+      order_status: 'In Production',
       status: finalBalanceDue <= 0 ? 'Fully Paid' : 'Active Loan',
       notes: formNotes || `Order for ${formSelectedProduct.name}`,
       created_at: new Date().toISOString(),
@@ -685,7 +686,29 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     }
   };
 
-  // Export CSV
+  // Helper to determine order fulfillment status
+  const getOrderStatus = (o) => {
+    if (o.order_status) return o.order_status;
+    if (Number(o.balance_due) <= 0) return 'Delivered';
+    return 'In Production';
+  };
+
+  // Quick Order Status Updater
+  const handleUpdateOrderStatus = (orderId, newStatus) => {
+    const updated = orders.map((o) => {
+      if (o.id === orderId) {
+        return { ...o, order_status: newStatus };
+      }
+      return o;
+    });
+    setOrders(updated);
+    saveOrdersToStorage(updated);
+    if (activeSelectedOrder && activeSelectedOrder.id === orderId) {
+      setActiveSelectedOrder({ ...activeSelectedOrder, order_status: newStatus });
+    }
+  };
+
+  // Export CSV (Focused on Order & Production Details)
   const handleExportCSV = () => {
     if (!filteredOrders.length) {
       alert('No orders to export.');
@@ -693,45 +716,49 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     }
     const headers = [
       'Invoice No',
-      'Contract No',
-      'Date',
+      'Order Date',
+      'Contract Ref',
       'Customer Name',
       'NIC',
       'Phone',
       'Center',
+      'Delivery Address',
+      'Furniture Item',
       'Item Code',
-      'Item Name',
-      'Total Value',
-      'Advance',
-      'Balance Due',
-      'Status',
+      'Quantity',
+      'Unit Price',
+      'Total Amount',
+      'Order Status',
+      'Notes',
     ];
     const rows = filteredOrders.map((o) => [
       `"${o.invoice_no}"`,
-      `"${o.contract_no}"`,
       `"${o.date}"`,
+      `"${o.contract_no}"`,
       `"${o.customer_name}"`,
-      `"${o.customer_nic}"`,
-      `"${o.customer_phone}"`,
+      `"${o.customer_nic || ''}"`,
+      `"${o.customer_phone || ''}"`,
       `"${o.branch_code}/${o.center_code}"`,
-      `"${o.item_code}"`,
+      `"${(o.customer_address || '').replace(/"/g, '""')}"`,
       `"${o.item_name}"`,
+      `"${o.item_code}"`,
+      o.quantity || 1,
+      o.unit_price || o.gross_amount,
       o.gross_amount,
-      o.advance_paid,
-      o.balance_due,
-      `"${o.status}"`,
+      `"${getOrderStatus(o)}"`,
+      `"${(o.notes || '').replace(/"/g, '""')}"`,
     ]);
     const csvContent =
       'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const link = document.createElement('a');
     link.setAttribute('href', encodeURI(csvContent));
-    link.setAttribute('download', `orders_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `orders_manifest_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Filtered orders list
+  // Filtered orders list (Order Specifications focused)
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       // Search
@@ -743,14 +770,16 @@ export default function OrdersPage({ headerCenter = 'all' }) {
         const matchNic = (order.customer_nic || order.customer_id)?.toLowerCase().includes(q);
         const matchItem = (order.item_name || order.items_summary)?.toLowerCase().includes(q);
         const matchCode = order.item_code?.toLowerCase().includes(q);
-        if (!matchInvoice && !matchContract && !matchCust && !matchNic && !matchItem && !matchCode) {
+        const matchPhone = order.customer_phone?.includes(q);
+        if (!matchInvoice && !matchContract && !matchCust && !matchNic && !matchItem && !matchCode && !matchPhone) {
           return false;
         }
       }
 
-      // Status
-      if (statusFilter === 'active' && Number(order.balance_due) <= 0) return false;
-      if (statusFilter === 'paid' && Number(order.balance_due) > 0) return false;
+      // Order Status Filter
+      if (orderStatusFilter !== 'all') {
+        if (getOrderStatus(order) !== orderStatusFilter) return false;
+      }
 
       // Header Center filter
       if (headerCenter && headerCenter !== 'all') {
@@ -762,18 +791,20 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
       return true;
     });
-  }, [orders, searchQuery, statusFilter, headerCenter]);
+  }, [orders, searchQuery, orderStatusFilter, headerCenter]);
 
-  const activeLoansCount = orders.filter((o) => Number(o.balance_due) > 0).length;
-  const settledCount = orders.filter((o) => Number(o.balance_due) <= 0).length;
+  // Order Fulfillment Counts
+  const inProductionCount = orders.filter((o) => getOrderStatus(o) === 'In Production').length;
+  const readyCount = orders.filter((o) => getOrderStatus(o) === 'Ready for Delivery').length;
+  const deliveredCount = orders.filter((o) => getOrderStatus(o) === 'Delivered').length;
 
-  // Cumulative totals for the table view
+  // Cumulative totals for the order table view
   const filteredTotalValue = useMemo(() => {
     return filteredOrders.reduce((acc, o) => acc + (Number(o.gross_amount) || 0), 0);
   }, [filteredOrders]);
 
-  const filteredTotalBalance = useMemo(() => {
-    return filteredOrders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
+  const filteredTotalUnits = useMemo(() => {
+    return filteredOrders.reduce((acc, o) => acc + (Number(o.quantity) || 1), 0);
   }, [filteredOrders]);
 
   return (
@@ -802,14 +833,19 @@ export default function OrdersPage({ headerCenter = 'all' }) {
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)' }}>
             <span>Total Orders: <strong style={{ color: 'var(--ash-900)' }}>{orders.length}</strong></span>
             <span>•</span>
+            <span style={{ color: '#2563EB', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563EB' }}></span>
+              In Production: <strong>{inProductionCount}</strong>
+            </span>
+            <span>•</span>
             <span style={{ color: '#D97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#D97706' }}></span>
-              Active Loans: <strong>{activeLoansCount}</strong>
+              Ready for Delivery: <strong>{readyCount}</strong>
             </span>
             <span>•</span>
             <span style={{ color: '#16A34A', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16A34A' }}></span>
-              Fully Settled: <strong>{settledCount}</strong>
+              Delivered: <strong>{deliveredCount}</strong>
             </span>
           </div>
         </div>
@@ -883,27 +919,35 @@ export default function OrdersPage({ headerCenter = 'all' }) {
         <div style={{ display: 'flex', gap: '6px' }}>
           <button
             type="button"
-            className={`btn ${statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn ${orderStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setStatusFilter('all')}
+            onClick={() => setOrderStatusFilter('all')}
           >
             All Orders ({orders.length})
           </button>
           <button
             type="button"
-            className={`btn ${statusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn ${orderStatusFilter === 'In Production' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setStatusFilter('active')}
+            onClick={() => setOrderStatusFilter('In Production')}
           >
-            Active Loans ({activeLoansCount})
+            In Production ({inProductionCount})
           </button>
           <button
             type="button"
-            className={`btn ${statusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`btn ${orderStatusFilter === 'Ready for Delivery' ? 'btn-primary' : 'btn-secondary'}`}
             style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setStatusFilter('paid')}
+            onClick={() => setOrderStatusFilter('Ready for Delivery')}
           >
-            Fully Settled ({settledCount})
+            Ready for Delivery ({readyCount})
+          </button>
+          <button
+            type="button"
+            className={`btn ${orderStatusFilter === 'Delivered' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+            onClick={() => setOrderStatusFilter('Delivered')}
+          >
+            Delivered ({deliveredCount})
           </button>
         </div>
 
@@ -974,10 +1018,10 @@ export default function OrdersPage({ headerCenter = 'all' }) {
           </p>
         </div>
       ) : viewMode === 'cards' ? (
-        /* CLIENT-FRIENDLY MODERN CARDS GRID */
+        /* CLIENT-FRIENDLY MODERN CARDS GRID (ORDER DETAILS ONLY) */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
           {filteredOrders.map((order) => {
-            const isPaid = Number(order.balance_due) <= 0;
+            const currentOrderStatus = getOrderStatus(order);
 
             return (
               <div
@@ -996,41 +1040,66 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                 }}
               >
                 <div>
-                  {/* Top Bar: Contract Number Badge & Date */}
+                  {/* Top Bar: Invoice Number Badge & Order Fulfillment Status */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span
                       style={{
                         fontFamily: 'monospace',
                         fontWeight: 800,
-                        fontSize: '0.76rem',
-                        color: 'var(--primary)',
-                        background: 'var(--primary-tint)',
+                        fontSize: '0.78rem',
+                        color: '#2563EB',
+                        background: '#EFF6FF',
                         padding: '3px 8px',
                         borderRadius: '5px',
-                        border: '1px solid var(--primary-border)',
+                        border: '1px solid #BFDBFE',
                       }}
                     >
-                      📜 {order.contract_no}
+                      📄 {order.invoice_no}
                     </span>
-                    <span
+
+                    {/* Interactive Order Status Dropdown */}
+                    <select
+                      value={currentOrderStatus}
+                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
                       style={{
-                        padding: '2px 8px',
+                        padding: '3px 8px',
                         borderRadius: '9999px',
-                        fontSize: '0.7rem',
+                        fontSize: '0.72rem',
                         fontWeight: 800,
-                        background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                        color: isPaid ? '#15803D' : '#B45309',
+                        cursor: 'pointer',
+                        border: '1px solid',
+                        background:
+                          currentOrderStatus === 'Delivered'
+                            ? '#DCFCE7'
+                            : currentOrderStatus === 'Ready for Delivery'
+                            ? '#FEF3C7'
+                            : '#EFF6FF',
+                        color:
+                          currentOrderStatus === 'Delivered'
+                            ? '#15803D'
+                            : currentOrderStatus === 'Ready for Delivery'
+                            ? '#B45309'
+                            : '#1D4ED8',
+                        borderColor:
+                          currentOrderStatus === 'Delivered'
+                            ? '#86EFAC'
+                            : currentOrderStatus === 'Ready for Delivery'
+                            ? '#FDE68A'
+                            : '#BFDBFE',
                       }}
                     >
-                      {isPaid ? 'Fully Paid' : 'Active Loan'}
-                    </span>
+                      <option value="In Production">⚙️ In Production</option>
+                      <option value="Ready for Delivery">📦 Ready for Delivery</option>
+                      <option value="Delivered">🚚 Delivered</option>
+                      <option value="Confirmed">✓ Confirmed</option>
+                    </select>
                   </div>
 
                   {/* Client Info */}
                   <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--ash-900)' }}>
                     {order.customer_name}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px', fontSize: '0.78rem', color: 'var(--ash-600)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', fontSize: '0.78rem', color: 'var(--ash-600)' }}>
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
                       🆔 {order.customer_nic || order.customer_id}
                     </span>
@@ -1038,66 +1107,50 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                     <span>📞 {order.customer_phone}</span>
                   </div>
                   <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '2px' }}>
-                    📍 Center: {order.branch_code}/{order.center_code} • Date: {formatDate(order.date)}
+                    📍 Center: {order.branch_code}/{order.center_code} • Ordered: {formatDate(order.date)}
                   </div>
 
                   {/* Furniture Item Box */}
                   <div
                     style={{
                       background: 'var(--ash-50)',
-                      padding: '8px 10px',
+                      padding: '10px 12px',
                       borderRadius: '8px',
                       marginTop: '10px',
                       border: '1px solid var(--ash-200)',
                     }}
                   >
-                    <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--ash-800)' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--ash-900)' }}>
                       🛋️ {order.item_name}
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--ash-600)', marginTop: '3px' }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Code: {order.item_code}</span>
-                      <span>Qty: {order.quantity || 1}</span>
+                      <span>Qty: <strong>{order.quantity || 1} Unit(s)</strong></span>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                      Unit Price: {formatLKR(order.unit_price)}
                     </div>
                   </div>
 
-                  {/* Financial Breakdown */}
-                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--ash-500)' }}>Order Value:</span>
-                      <strong style={{ color: 'var(--ash-900)' }}>{formatLKR(order.gross_amount)}</strong>
+                  {/* Delivery Location & Notes */}
+                  <div style={{ marginTop: '10px', background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', fontSize: '0.76rem', color: 'var(--ash-700)', border: '1px solid #E2E8F0' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
+                      <MapPin size={13} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary)' }} />
+                      <span style={{ fontWeight: 600 }}>{order.customer_address || 'Showroom Pickup / Maharagama'}</span>
                     </div>
-                    {Number(order.document_charge) > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
-                        <span style={{ color: 'var(--ash-400)' }}>Doc Fee:</span>
-                        <span style={{ color: 'var(--ash-700)', fontWeight: 600 }}>{formatLKR(order.document_charge)}</span>
+                    {order.notes && (
+                      <div style={{ marginTop: '4px', color: 'var(--ash-500)', fontStyle: 'italic', fontSize: '0.72rem' }}>
+                        Note: "{order.notes}"
                       </div>
                     )}
+                  </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--ash-500)' }}>
-                        {order.payment_type === 'installment' ? 'Installment Plan:' : 'Payment Type:'}
-                      </span>
-                      <span style={{ fontWeight: 700, color: 'var(--ash-800)' }}>
-                        {order.payment_type === 'installment'
-                          ? `${formatLKR(order.installment_value)} / ${order.loan_frequency}`
-                          : 'Full Cash'}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        borderTop: '1px dashed var(--ash-200)',
-                        paddingTop: '6px',
-                        marginTop: '2px',
-                      }}
-                    >
-                      <span style={{ fontWeight: 700, color: 'var(--ash-700)' }}>Remaining Balance:</span>
-                      <strong style={{ color: isPaid ? '#16A34A' : '#DC2626', fontSize: '0.92rem' }}>
-                        {formatLKR(order.balance_due)}
-                      </strong>
-                    </div>
+                  {/* Order Total */}
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--ash-200)', paddingTop: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--ash-600)', fontWeight: 700 }}>Total Order Value:</span>
+                    <strong style={{ fontSize: '1.05rem', color: 'var(--ash-900)', fontWeight: 900 }}>
+                      {formatLKR(order.gross_amount)}
+                    </strong>
                   </div>
                 </div>
 
@@ -1106,7 +1159,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                     onClick={() => {
                       setActiveSelectedOrder(order);
                       setIsViewDetailsModalOpen(true);
@@ -1116,31 +1169,16 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   </button>
 
                   <div style={{ display: 'flex', gap: '6px' }}>
-                    {Number(order.balance_due) > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        onClick={() => {
-                          setActiveSelectedOrder(order);
-                          setPaymentAmount(order.installment_value || '');
-                          setIsPaymentModalOpen(true);
-                        }}
-                      >
-                        <CreditCard size={13} /> Pay
-                      </button>
-                    )}
-
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                       onClick={() => {
                         setActiveSelectedOrder(order);
                         setIsPrintModalOpen(true);
                       }}
                     >
-                      <Printer size={13} /> Print
+                      <Printer size={13} /> Print Invoice
                     </button>
                   </div>
                 </div>
@@ -1149,7 +1187,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
           })}
         </div>
       ) : (
-        /* PROFESSIONAL ENTERPRISE TABLE VIEW (FITTED 100% TO PAGE) */
+        /* PROFESSIONAL ENTERPRISE TABLE VIEW (ORDER DETAILS ONLY) */
         <div
           style={{
             background: '#fff',
@@ -1164,35 +1202,32 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             <table className="custom-table" style={{ margin: 0, width: '100%', minWidth: '1060px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
                 <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '1px solid var(--ash-200)' }}>
-                  <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Contract & Date
+                  <th style={{ width: '16%', minWidth: '150px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Order & Invoice
                   </th>
                   <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Client Profile & NIC
+                    Customer Details
                   </th>
-                  <th style={{ width: '16%', minWidth: '155px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Furniture Item
+                  <th style={{ width: '22%', minWidth: '200px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Furniture Item & Specs
+                  </th>
+                  <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Delivery Address & Notes
                   </th>
                   <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Order Value
+                    Total Amount
                   </th>
-                  <th style={{ width: '13%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Repayment Plan
+                  <th style={{ width: '13%', minWidth: '135px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    Order Status
                   </th>
-                  <th style={{ width: '11%', minWidth: '115px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    Balance Due
-                  </th>
-                  <th style={{ width: '7%', minWidth: '95px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                    Status
-                  </th>
-                  <th style={{ width: '8%', minWidth: '135px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '11%', minWidth: '110px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredOrders.map((order, idx) => {
-                  const isPaid = Number(order.balance_due) <= 0;
+                  const currentOrderStatus = getOrderStatus(order);
                   return (
                     <tr
                       key={order.id}
@@ -1204,30 +1239,30 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : 'var(--ash-50)')}
                     >
-                      {/* 1. Contract Code & Date */}
+                      {/* 1. Order Invoice & Date */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                         <span
                           style={{
                             fontFamily: 'monospace',
                             fontWeight: 800,
-                            color: 'var(--primary)',
-                            fontSize: '0.78rem',
+                            color: '#2563EB',
+                            fontSize: '0.8rem',
                             background: '#EFF6FF',
-                            padding: '2px 6px',
+                            padding: '3px 7px',
                             borderRadius: '4px',
                             border: '1px solid #BFDBFE',
                             display: 'inline-block',
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          📜 {order.contract_no}
+                          📄 {order.invoice_no}
                         </span>
                         <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '2px', whiteSpace: 'nowrap' }}>
-                          📅 {formatDate(order.date)} • {order.invoice_no}
+                          📅 {formatDate(order.date)} • Ref: {order.contract_no}
                         </div>
                       </td>
 
-                      {/* 2. Client Profile & NIC */}
+                      {/* 2. Customer Details */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-900)', whiteSpace: 'nowrap', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.customer_name}>
                           {order.customer_name}
@@ -1242,23 +1277,23 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                         </div>
                       </td>
 
-                      {/* 3. Furniture Item */}
-                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                      {/* 3. Furniture Item & Specifications */}
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle' }}>
                         <div
                           style={{
-                            fontWeight: 700,
-                            fontSize: '0.82rem',
+                            fontWeight: 800,
+                            fontSize: '0.84rem',
                             color: 'var(--ash-900)',
-                            whiteSpace: 'nowrap',
-                            maxWidth: '160px',
+                            maxWidth: '210px',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                           title={order.item_name}
                         >
                           🛋️ {order.item_name}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontSize: '0.72rem' }}>
                           <span
                             style={{
                               fontFamily: 'monospace',
@@ -1269,117 +1304,89 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                               background: '#F1F5F9',
                               color: 'var(--ash-700)',
                               border: '1px solid var(--ash-200)',
-                              whiteSpace: 'nowrap',
                             }}
                           >
                             {order.item_code}
                           </span>
-                          <span style={{ fontSize: '0.68rem', color: 'var(--ash-500)', whiteSpace: 'nowrap' }}>
-                            Qty: {order.quantity || 1}
+                          <span style={{ color: 'var(--ash-600)', textTransform: 'capitalize' }}>
+                            {order.category?.replace('_', ' ') || 'Furniture'}
+                          </span>
+                          <span style={{ color: 'var(--primary)', fontWeight: 700 }}>
+                            • Qty: {order.quantity || 1}
                           </span>
                         </div>
                       </td>
 
-                      {/* 4. Order Value & Advance */}
+                      {/* 4. Delivery Address & Notes */}
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', fontSize: '0.76rem', color: 'var(--ash-800)', maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={order.customer_address}>
+                          <MapPin size={12} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary)' }} />
+                          <span>{order.customer_address || 'Showroom Pickup'}</span>
+                        </div>
+                        {order.notes && (
+                          <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '2px', fontStyle: 'italic', maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={order.notes}>
+                            💬 {order.notes}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 5. Total Amount */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-900)', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 900, fontSize: '0.9rem', color: 'var(--ash-900)', whiteSpace: 'nowrap' }}>
                           {formatLKR(order.gross_amount)}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 600, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                          Adv: {formatLKR(order.advance_paid)}
+                        <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                          @ {formatLKR(order.unit_price)} each
                         </div>
-                        {Number(order.document_charge) > 0 && (
-                          <div style={{ fontSize: '0.64rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
-                            Doc Fee: {formatLKR(order.document_charge)}
-                          </div>
-                        )}
                       </td>
 
-                      {/* 5. Repayment Plan */}
-                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                        {order.payment_type === 'installment' ? (
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#A16207', whiteSpace: 'nowrap' }}>
-                              {formatLKR(order.installment_value)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>/{order.loan_frequency === 'weekly' ? 'wk' : 'mo'}</span>
-                            </div>
-                            <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
-                              {order.loan_terms} {order.loan_frequency === 'weekly' ? 'weeks' : 'months'}
-                            </div>
-                          </div>
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              background: '#F1F5F9',
-                              color: 'var(--ash-700)',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            Full Cash Sale
-                          </span>
-                        )}
-                      </td>
-
-                      {/* 6. Balance Due */}
-                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                        <div
-                          style={{
-                            fontWeight: 900,
-                            fontSize: '0.9rem',
-                            color: isPaid ? '#16A34A' : '#DC2626',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {formatLKR(order.balance_due)}
-                        </div>
-                        {isPaid && (
-                          <div style={{ fontSize: '0.68rem', color: '#16A34A', fontWeight: 700, marginTop: '1px', whiteSpace: 'nowrap' }}>
-                            ✓ Fully Settled
-                          </div>
-                        )}
-                      </td>
-
-                      {/* 7. Status */}
+                      {/* 6. Order Fulfillment Status (Interactive Dropdown) */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <span
+                        <select
+                          value={currentOrderStatus}
+                          onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
                           style={{
-                            padding: '2px 8px',
+                            padding: '3px 8px',
                             borderRadius: '9999px',
-                            fontSize: '0.7rem',
+                            fontSize: '0.72rem',
                             fontWeight: 800,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                            color: isPaid ? '#15803D' : '#B45309',
-                            border: isPaid ? '1px solid #86EFAC' : '1px solid #FDE68A',
-                            whiteSpace: 'nowrap',
+                            cursor: 'pointer',
+                            border: '1px solid',
+                            background:
+                              currentOrderStatus === 'Delivered'
+                                ? '#DCFCE7'
+                                : currentOrderStatus === 'Ready for Delivery'
+                                ? '#FEF3C7'
+                                : '#EFF6FF',
+                            color:
+                              currentOrderStatus === 'Delivered'
+                                ? '#15803D'
+                                : currentOrderStatus === 'Ready for Delivery'
+                                ? '#B45309'
+                                : '#1D4ED8',
+                            borderColor:
+                              currentOrderStatus === 'Delivered'
+                                ? '#86EFAC'
+                                : currentOrderStatus === 'Ready for Delivery'
+                                ? '#FDE68A'
+                                : '#BFDBFE',
                           }}
                         >
-                          <span
-                            style={{
-                              width: '5px',
-                              height: '5px',
-                              borderRadius: '50%',
-                              background: isPaid ? '#16A34A' : '#D97706',
-                              flexShrink: 0,
-                            }}
-                          />
-                          {isPaid ? 'Fully Paid' : 'Active Loan'}
-                        </span>
+                          <option value="In Production">⚙️ In Production</option>
+                          <option value="Ready for Delivery">📦 Ready for Delivery</option>
+                          <option value="Delivered">🚚 Delivered</option>
+                          <option value="Confirmed">✓ Confirmed</option>
+                        </select>
                       </td>
 
-                      {/* 8. Actions */}
+                      {/* 7. Actions (Order details & Invoice print only, no Pay button) */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center', whiteSpace: 'nowrap' }}>
                           <button
                             type="button"
                             className="btn btn-secondary"
                             style={{ padding: '4px 7px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
-                            title="View Contract Details"
+                            title="View Full Order Specifications"
                             onClick={() => {
                               setActiveSelectedOrder(order);
                               setIsViewDetailsModalOpen(true);
@@ -1388,33 +1395,17 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                             <Eye size={12} /> View
                           </button>
 
-                          {Number(order.balance_due) > 0 && (
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              style={{ padding: '4px 7px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
-                              title="Record Installment Payment"
-                              onClick={() => {
-                                setActiveSelectedOrder(order);
-                                setPaymentAmount(order.installment_value || '');
-                                setIsPaymentModalOpen(true);
-                              }}
-                            >
-                              <CreditCard size={12} /> Pay
-                            </button>
-                          )}
-
                           <button
                             type="button"
                             className="btn btn-secondary"
                             style={{ padding: '4px 6px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap' }}
-                            title="Print Agreement / Receipt"
+                            title="Print Sales & Delivery Invoice"
                             onClick={() => {
                               setActiveSelectedOrder(order);
                               setIsPrintModalOpen(true);
                             }}
                           >
-                            <Printer size={12} /> Print
+                            <Printer size={12} /> Invoice
                           </button>
 
                           <button
@@ -1472,15 +1463,15 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             }}
           >
             <div>
-              Showing <strong>{filteredOrders.length}</strong> of <strong>{orders.length}</strong> total orders
+              Showing <strong>{filteredOrders.length}</strong> of <strong>{orders.length}</strong> customer orders
             </div>
 
             <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
               <div>
-                Total Turnover: <strong style={{ color: 'var(--ash-900)', fontSize: '0.88rem' }}>{formatLKR(filteredTotalValue)}</strong>
+                Total Ordered Units: <strong style={{ color: 'var(--primary)', fontSize: '0.88rem' }}>{filteredTotalUnits} pcs</strong>
               </div>
               <div>
-                Outstanding Balance: <strong style={{ color: '#DC2626', fontSize: '0.88rem' }}>{formatLKR(filteredTotalBalance)}</strong>
+                Total Invoiced Value: <strong style={{ color: 'var(--ash-900)', fontSize: '0.88rem' }}>{formatLKR(filteredTotalValue)}</strong>
               </div>
             </div>
           </div>
@@ -2764,92 +2755,102 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       </Modal>
 
       {/* =========================================================
-          5. MODAL: VIEW ORDER DETAILS (CLEAN DIALOG)
+          5. MODAL: VIEW ORDER DETAILS (ORDER SPECIFICATIONS ONLY)
           ========================================================= */}
       <Modal
         isOpen={isViewDetailsModalOpen}
         onClose={() => setIsViewDetailsModalOpen(false)}
-        title={activeSelectedOrder ? `Contract Details - ${activeSelectedOrder.contract_no}` : 'Order Details'}
+        title={activeSelectedOrder ? `Order Specifications - ${activeSelectedOrder.invoice_no}` : 'Order Details'}
       >
         {activeSelectedOrder && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {/* Header info */}
             <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', padding: '12px 14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 700 }}>OFFICIAL CONTRACT CODE</span>
+                <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 700 }}>OFFICIAL INVOICE NUMBER</span>
                 <div style={{ fontFamily: 'monospace', fontSize: '1.15rem', fontWeight: 900, color: '#1D4ED8' }}>
-                  📜 {activeSelectedOrder.contract_no}
+                  📄 {activeSelectedOrder.invoice_no}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#1E40AF', marginTop: '2px' }}>
-                  Invoice: {activeSelectedOrder.invoice_no} • Date: {formatDate(activeSelectedOrder.date)}
+                  Contract Ref: {activeSelectedOrder.contract_no} • Order Date: {formatDate(activeSelectedOrder.date)}
                 </div>
               </div>
 
-              <span
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '9999px',
-                  fontSize: '0.76rem',
-                  fontWeight: 800,
-                  background: Number(activeSelectedOrder.balance_due) <= 0 ? '#DCFCE7' : '#FEF3C7',
-                  color: Number(activeSelectedOrder.balance_due) <= 0 ? '#15803D' : '#B45309',
-                }}
-              >
-                {Number(activeSelectedOrder.balance_due) <= 0 ? 'Fully Paid' : 'Active Loan'}
-              </span>
+              {/* Status Selector */}
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, display: 'block', marginBottom: '2px' }}>ORDER STATUS</span>
+                <select
+                  value={getOrderStatus(activeSelectedOrder)}
+                  onChange={(e) => handleUpdateOrderStatus(activeSelectedOrder.id, e.target.value)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '9999px',
+                    fontSize: '0.76rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    border: '1px solid #BFDBFE',
+                    background: '#fff',
+                    color: '#1D4ED8',
+                  }}
+                >
+                  <option value="In Production">⚙️ In Production</option>
+                  <option value="Ready for Delivery">📦 Ready for Delivery</option>
+                  <option value="Delivered">🚚 Delivered</option>
+                  <option value="Confirmed">✓ Confirmed</option>
+                </select>
+              </div>
             </div>
 
             {/* 2-Column Info: Customer & Item */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div style={{ background: 'var(--ash-50)', padding: '12px', borderRadius: '8px', border: '1px solid var(--ash-200)', fontSize: '0.82rem' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Client Information</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Client & Delivery Details</span>
                 <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--ash-900)', marginTop: '2px' }}>
                   {activeSelectedOrder.customer_name}
                 </div>
-                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
                     🆔 NIC: {activeSelectedOrder.customer_nic || activeSelectedOrder.customer_id}
                   </span>
-                  <span>📞 {activeSelectedOrder.customer_phone}</span>
-                  <span>📍 {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}</span>
+                  <span>📞 Phone: {activeSelectedOrder.customer_phone}</span>
+                  <span>📍 Center: {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}</span>
+                  <span>🏠 Address: <strong>{activeSelectedOrder.customer_address || 'Showroom Pickup'}</strong></span>
                 </div>
               </div>
 
               <div style={{ background: 'var(--ash-50)', padding: '12px', borderRadius: '8px', border: '1px solid var(--ash-200)', fontSize: '0.82rem' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Furniture Item</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>Furniture Item & Specs</span>
                 <div style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--ash-900)', marginTop: '2px' }}>
                   {activeSelectedOrder.item_name}
                 </div>
-                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Code: {activeSelectedOrder.item_code}</span>
-                  <span>Quantity: {activeSelectedOrder.quantity} Unit(s)</span>
+                <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Item Code: {activeSelectedOrder.item_code}</span>
+                  <span style={{ textTransform: 'capitalize' }}>Category: {activeSelectedOrder.category?.replace('_', ' ') || 'Furniture'}</span>
+                  <span>Quantity: <strong>{activeSelectedOrder.quantity || 1} Unit(s)</strong></span>
                   <span>Unit Price: {formatLKR(activeSelectedOrder.unit_price)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Payment & Terms */}
-            <div style={{ background: '#FEF9C3', border: '1px solid #FEF08A', borderRadius: '8px', padding: '12px 14px' }}>
+            {/* Order Value & Special Notes */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px 14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#854D0E', fontWeight: 700 }}>PAYMENT PLAN</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#A16207' }}>
-                    {activeSelectedOrder.payment_type === 'installment'
-                      ? `${formatLKR(activeSelectedOrder.installment_value)} / ${activeSelectedOrder.loan_frequency}`
-                      : 'Full Cash Sale'}
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 700 }}>TOTAL ORDER VALUE</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--ash-900)' }}>
+                    {formatLKR(activeSelectedOrder.gross_amount)}
                   </div>
-                  {activeSelectedOrder.payment_type === 'installment' && (
-                    <div style={{ fontSize: '0.76rem', color: '#713F12', marginTop: '2px' }}>
-                      {activeSelectedOrder.loan_terms} terms • Advance: {formatLKR(activeSelectedOrder.advance_paid)}
-                      {Number(activeSelectedOrder.document_charge) > 0 && ` • Doc Fee: ${formatLKR(activeSelectedOrder.document_charge)}`}
+                  {Number(activeSelectedOrder.document_charge) > 0 && (
+                    <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '1px' }}>
+                      (Includes Documentation Charge: {formatLKR(activeSelectedOrder.document_charge)})
                     </div>
                   )}
                 </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.72rem', color: '#854D0E', fontWeight: 700 }}>BALANCE DUE</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 900, color: Number(activeSelectedOrder.balance_due) > 0 ? '#DC2626' : '#16A34A' }}>
-                    {formatLKR(activeSelectedOrder.balance_due)}
+                <div style={{ textAlign: 'right', maxWidth: '300px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 700 }}>SPECIAL WORKSHOP / DELIVERY NOTES</div>
+                  <div style={{ fontSize: '0.84rem', color: 'var(--ash-800)', marginTop: '2px', fontStyle: 'italic' }}>
+                    {activeSelectedOrder.notes || 'Standard manufacturing and showroom handling.'}
                   </div>
                 </div>
               </div>
@@ -2867,28 +2868,30 @@ export default function OrdersPage({ headerCenter = 'all' }) {
               </button>
 
               <div style={{ display: 'flex', gap: '8px' }}>
-                {Number(activeSelectedOrder.balance_due) > 0 && (
+                {onNavigate && (
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-secondary"
                     onClick={() => {
                       setIsViewDetailsModalOpen(false);
-                      setPaymentAmount(activeSelectedOrder.installment_value || '');
-                      setIsPaymentModalOpen(true);
+                      onNavigate('payments');
                     }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    title="View Payments & Balances for this client"
                   >
-                    <CreditCard size={14} /> Record Payment
+                    <CreditCard size={14} /> Payments & Advances
                   </button>
                 )}
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-primary"
                   onClick={() => {
                     setIsViewDetailsModalOpen(false);
                     setIsPrintModalOpen(true);
                   }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
                 >
-                  <Printer size={14} /> Print Bill
+                  <Printer size={14} /> Print Invoice
                 </button>
               </div>
             </div>
