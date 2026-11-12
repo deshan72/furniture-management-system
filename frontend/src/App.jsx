@@ -15,21 +15,37 @@ import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import BackupPage from './pages/BackupPage';
 import ReportsPage from './pages/ReportsPage';
+import LoginPage from './pages/LoginPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { loadSavedCenters } from './utils/centersData';
 import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
+import { getAuthenticatedUser, logoutUser } from './utils/authData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Active User / Persona State
-  const [currentUser, setCurrentUser] = useState(() => getActiveUser());
+  // Active Authenticated User State
+  const [currentUser, setCurrentUser] = useState(() => getAuthenticatedUser());
+
+  // Logout handler
+  const handleLogout = () => {
+    logoutUser();
+    setCurrentUser(null);
+  };
 
   // One-click role switch handler
   const handleSwitchRole = (newRole) => {
     setActiveRole(newRole);
-    setCurrentUser(getActiveUser());
+    if (currentUser) {
+      const updated = { ...currentUser, role: newRole };
+      setCurrentUser(updated);
+      try {
+        localStorage.setItem('dns_session_user', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
   // Theme State: 'light' | 'dark'
@@ -287,9 +303,8 @@ export default function App() {
   const pageInfo = getPageInfo();
 
   // Check if current user is allowed to access the activeTab
-  // Crucial: Dashboard and Users & Roles configuration panel are ALWAYS allowed
+  // Crucial: Dashboard is always allowed; administrative pages require admin clearance
   const isPageAllowed =
-    activeTab === 'users' ||
     activeTab === 'dashboard' ||
     hasPageAccess(currentUser, activeTab);
 
@@ -391,8 +406,8 @@ export default function App() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '10px', justifyContent: 'center' }}>
           <button
             type="button"
-            className="btn btn-outline"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+            className="btn btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px', fontWeight: 700 }}
             onClick={() => setActiveTab('dashboard')}
           >
             <ArrowLeft size={16} />
@@ -401,36 +416,29 @@ export default function App() {
 
           <button
             type="button"
-            className="btn btn-primary"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 18px',
-              background: 'linear-gradient(135deg, #7E22CE 0%, #9333EA 100%)',
-              borderColor: '#9333EA',
-              color: '#FFFFFF',
-              fontWeight: 600,
-            }}
-            onClick={() => handleSwitchRole('admin')}
+            className="btn btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
+            onClick={handleLogout}
           >
             <Crown size={16} />
-            <span>Switch to Administrator</span>
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-outline"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 18px' }}
-            onClick={() => setActiveTab('users')}
-          >
-            <Lock size={16} />
-            <span>Open Users & Roles</span>
+            <span>Sign In as Administrator</span>
           </button>
         </div>
       </div>
     );
   };
+
+  // If not authenticated, render professional Login & Sign Up Page
+  if (!currentUser) {
+    return (
+      <LoginPage
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setActiveTab('dashboard');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="app-container">
@@ -441,6 +449,7 @@ export default function App() {
         setIsCollapsed={setIsCollapsed}
         badges={badges}
         currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       <div className={`main-wrapper ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -454,6 +463,7 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           currentUser={currentUser}
           onSwitchRole={handleSwitchRole}
+          onLogout={handleLogout}
         />
 
         <main className="content-area">

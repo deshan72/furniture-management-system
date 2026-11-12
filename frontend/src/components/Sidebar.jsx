@@ -21,6 +21,7 @@ import {
   PlusCircle,
   UserPlus,
   UserCheck,
+  LogOut,
 } from 'lucide-react';
 import { hasPageAccess, ROLES_METADATA } from '../utils/rolesData';
 
@@ -31,6 +32,7 @@ export default function Sidebar({
   setIsCollapsed,
   badges = { lowStock: 2, outstanding: 1 },
   currentUser,
+  onLogout,
 }) {
   // Navigation sections customized for Furniture Management (No POS)
   const navigationGroups = [
@@ -106,6 +108,19 @@ export default function Sidebar({
   // User meta
   const roleMeta = currentUser ? ROLES_METADATA[currentUser.role] : null;
 
+  // Filter navigation groups based on role clearance:
+  // Admin sees all groups and tools; Executive only sees permitted operational modules
+  const visibleGroups = navigationGroups
+    .map((group) => {
+      if (currentUser?.role === 'admin') return group;
+      const allowedItems = group.items.filter((item) => hasPageAccess(currentUser, item.id));
+      return {
+        ...group,
+        items: allowedItems,
+      };
+    })
+    .filter((group) => group.items.length > 0);
+
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       {/* Brand Header */}
@@ -138,7 +153,7 @@ export default function Sidebar({
 
       {/* Categorized Navigation Menu */}
       <nav className="sidebar-nav-container">
-        {navigationGroups.map((group, groupIndex) => (
+        {visibleGroups.map((group, groupIndex) => (
           <div key={groupIndex} className="nav-group">
             <div className="nav-section-title">{group.title}</div>
 
@@ -246,16 +261,36 @@ export default function Sidebar({
           </div>
         </div>
 
-        <button
-          className="logout-icon-btn"
-          title="Switch User Persona / Manage Roles"
-          onClick={(e) => {
-            e.stopPropagation();
-            setActiveTab('users');
-          }}
-        >
-          <UserCheck size={16} />
-        </button>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {currentUser?.role === 'admin' && (
+            <button
+              className="logout-icon-btn"
+              title="Manage System Roles & Clearances"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('users');
+              }}
+            >
+              <UserCheck size={16} />
+            </button>
+          )}
+
+          {onLogout && (
+            <button
+              className="logout-icon-btn"
+              title="Log Out of System"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm('Are you sure you want to log out of D N S Home Solutions?')) {
+                  onLogout();
+                }
+              }}
+              style={{ color: '#EF4444' }}
+            >
+              <LogOut size={16} />
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );

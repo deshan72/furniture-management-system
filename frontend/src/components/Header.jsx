@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Building2, ChevronDown, Sun, Moon, Crown, Briefcase } from 'lucide-react';
+import { Calendar, Building2, ChevronDown, Sun, Moon, Crown, Briefcase, LogOut } from 'lucide-react';
 import { formatCenterCode } from '../utils/centersData';
 
 export default function Header({
@@ -14,6 +14,7 @@ export default function Header({
   quickActionLabel,
   currentUser,
   onSwitchRole,
+  onLogout,
 }) {
   const [todayFormatted] = useState(() =>
     new Date().toLocaleDateString('en-GB', {
@@ -151,6 +152,36 @@ export default function Header({
           <Calendar size={15} className="header-date-icon" />
           <span>{todayFormatted}</span>
         </div>
+
+        {/* ==========================================
+            4. LOG OUT ACTION
+            ========================================== */}
+        {onLogout && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to log out of D N S Home Solutions?')) {
+                onLogout();
+              }
+            }}
+            style={{
+              padding: '6px 12px',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: '#DC2626',
+              borderColor: '#FECACA',
+              background: '#FFF5F5',
+            }}
+            title="Log out of system and return to login screen"
+          >
+            <LogOut size={14} />
+            <span>Log Out</span>
+          </button>
+        )}
 
         {/* Quick Action Button if any */}
         {quickActionLabel && onQuickAction && (
