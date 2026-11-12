@@ -478,6 +478,7 @@ export default function App() {
                   selectedCenter={selectedCenter}
                   centers={centers}
                   onNavigate={setActiveTab}
+                  currentUser={currentUser}
                 />
               )}
 

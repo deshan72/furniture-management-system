@@ -57,6 +57,30 @@ export default class ErrorBoundary extends React.Component {
           <p style={{ color: 'var(--text-muted, #64748b)', maxWidth: '520px', lineHeight: 1.6, margin: 0 }}>
             A temporary display error occurred while rendering this module. You can reload this view or switch back to another tab safely.
           </p>
+          {this.state.error && (
+            <div
+              style={{
+                background: '#FEF2F2',
+                border: '1px solid #FCA5A5',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                maxWidth: '680px',
+                width: '100%',
+                textAlign: 'left',
+                overflowX: 'auto',
+                fontSize: '0.8rem',
+                color: '#991B1B',
+                fontFamily: 'monospace',
+              }}
+            >
+              <strong>Error:</strong> {this.state.error.message || String(this.state.error)}
+              {this.state.error.stack && (
+                <pre style={{ margin: '8px 0 0 0', fontSize: '0.72rem', whiteSpace: 'pre-wrap' }}>
+                  {this.state.error.stack.split('\n').slice(0, 5).join('\n')}
+                </pre>
+              )}
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
             <button
               type="button"
