@@ -318,7 +318,7 @@ export const exportReportToCSV = ({ filename, reportTitle, headers, rows, summar
   let csv = '\uFEFF'; // Excel UTF-8 BOM
 
   // Metadata Header lines
-  csv += `"D&S FURNITURE (PVT) LTD - OFFICIAL MANAGEMENT REPORT"\r\n`;
+  csv += `"D N S HOME SOLUTIONS - OFFICIAL MANAGEMENT REPORT"\r\n`;
   csv += `"Report Name:","${reportTitle}"\r\n`;
   if (metadata.dateRange) csv += `"Reporting Period:","${metadata.dateRange}"\r\n`;
   if (metadata.center) csv += `"Distribution Center:","${metadata.center}"\r\n`;
@@ -437,7 +437,7 @@ export const printReportToPDF = ({
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>D&S Furniture - ${reportTitle}</title>
+        <title>D N S Home Solutions - ${reportTitle}</title>
         <style>
           @page { size: A4 landscape; margin: 12mm; }
           body { font-family: 'Segoe UI', Arial, sans-serif; color: #1E293B; margin: 0; padding: 20px; font-size: 11px; }
@@ -465,9 +465,9 @@ export const printReportToPDF = ({
       <body>
         <div class="header-box">
           <div style="display: flex; align-items: center; gap: 14px;">
-            <img src="${typeof window !== 'undefined' ? window.location.origin : ''}/ds-logo.png" alt="D&S Furniture" style="height: 52px; width: 52px; object-fit: contain; border-radius: 8px; border: 1px solid #CBD5E1; padding: 2px; background: #fff;" />
+            <img src="${typeof window !== 'undefined' ? window.location.origin : ''}/ds-logo.png" alt="D N S Home Solutions" style="height: 52px; width: 52px; object-fit: contain; border-radius: 8px; border: 1px solid #CBD5E1; padding: 2px; background: #fff;" />
             <div>
-              <h1 class="company-title">D&S FURNITURE (PVT) LTD</h1>
+              <h1 class="company-title">D N S HOME SOLUTIONS</h1>
               <div class="company-subtitle">Handcrafted Luxury Woodcraft • Showroom & Workshop Ledger</div>
               <h2 class="doc-title">${reportTitle.toUpperCase()}</h2>
               <p class="doc-sub">${subtitle}</p>

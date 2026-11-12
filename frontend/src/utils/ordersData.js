@@ -356,3 +356,31 @@ export const generateInstallmentSchedule = (startDate, frequency, terms, install
   return schedule;
 };
 
+// Formats a number to Sri Lankan Rupee currency format (e.g. Rs. 65,000.00)
+export const formatLKR = (amount) => {
+  const num = Number(amount) || 0;
+  return new Intl.NumberFormat('en-LK', {
+    style: 'currency',
+    currency: 'LKR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
+// Formats an ISO or date string to a human-readable format (e.g. 12 Nov 2026)
+export const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return dateString;
+    return d.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+

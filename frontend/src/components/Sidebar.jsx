@@ -127,13 +127,13 @@ export default function Sidebar({
       {/* Brand Header */}
       <div className="sidebar-brand-header">
         <div className="brand-identity">
-          <div className="brand-logo-icon" title="D&S Furniture">
-            <img src="/ds-logo.png" alt="D&S Furniture logo" className="brand-logo-img" />
+          <div className="brand-logo-icon" title="D N S Home Solutions">
+            <img src="/ds-logo.png" alt="D N S Home Solutions logo" className="brand-logo-img" />
           </div>
           <div className="brand-text-block">
             <div className="brand-name">
-              <span>D&S</span>
-              <span className="brand-tag">FURNITURE</span>
+              <span>D N S</span>
+              <span className="brand-tag">HOME SOLUTIONS</span>
             </div>
             <div className="brand-status-line">
               <span className="status-dot"></span>
@@ -222,7 +222,7 @@ export default function Sidebar({
         <div className="user-profile-info">
           <div
             className="user-avatar-circle"
-            title={`${currentUser?.name || 'D&S Staff'} (${roleMeta?.shortLabel || 'Admin'})`}
+            title={`${currentUser?.name || 'D N S Staff'} (${roleMeta?.shortLabel || 'Admin'})`}
             style={{
               backgroundColor: '#FFFFFF',
               border: `2px solid ${roleMeta?.color || '#38BDF8'}`,
@@ -237,7 +237,7 @@ export default function Sidebar({
           >
             <img
               src="/ds-logo.png"
-              alt="D&S Logo"
+              alt="D N S Logo"
               style={{
                 width: '100%',
                 height: '100%',
@@ -247,7 +247,7 @@ export default function Sidebar({
             />
           </div>
           <div className="user-details">
-            <span className="user-name">{currentUser?.name || 'D&S Furniture'}</span>
+            <span className="user-name">{currentUser?.name || 'D N S Home Solutions'}</span>
             <span
               className="user-role-badge"
               style={{

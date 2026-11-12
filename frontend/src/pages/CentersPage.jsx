@@ -780,7 +780,7 @@ export default function CentersPage({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>D&S Furniture - Regional Centers Directory Report</title>
+          <title>D N S Home Solutions - Regional Centers Directory Report</title>
           <style>
             @page { size: A4 landscape; margin: 12mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0f172a; margin: 0; padding: 24px; font-size: 11px; }
@@ -795,7 +795,7 @@ export default function CentersPage({
           <table class="header-table">
             <tr>
               <td>
-                <div class="brand-title">D&S FURNITURE</div>
+                <div class="brand-title">D N S HOME SOLUTIONS</div>
                 <div class="report-title">Regional Distribution Centers & Branch Codes Directory</div>
               </td>
               <td style="text-align: right; color: #64748b;">

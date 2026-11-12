@@ -8,6 +8,8 @@ import CustomersPage from './pages/CustomersPage';
 import CentersPage from './pages/CentersPage';
 import OrdersPage from './pages/OrdersPage';
 import CashHandlingPage from './pages/CashHandlingPage';
+import PaymentsPage from './pages/PaymentsPage';
+import ReturnsRepairsPage from './pages/ReturnsRepairsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import BackupPage from './pages/BackupPage';
@@ -273,8 +275,8 @@ export default function App() {
         };
       default:
         return {
-          title: 'D&S Furniture',
-          subtitle: 'Modern Woodcraft Management Portal',
+          title: 'D N S Home Solutions',
+          subtitle: 'Modern Woodcraft & Home Solutions Management Portal',
         };
     }
   };
@@ -470,16 +472,12 @@ export default function App() {
               {activeTab === 'orders' && (
                 <OrdersPage headerCenter={selectedCenter} onNavigate={setActiveTab} />
               )}
-              {activeTab === 'payments' &&
-                renderGenericPlaceholder(
-                  'Payments & Customer Advances',
-                  'Log and inspect customer advance payments, cash receipts, and bank deposit slips.'
-                )}
-              {activeTab === 'returns' &&
-                renderGenericPlaceholder(
-                  'Returns & Repair Handling',
-                  'Record defective furniture returns, wood polish repairs, and replacements.'
-                )}
+              {activeTab === 'payments' && (
+                <PaymentsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
+              )}
+              {activeTab === 'returns' && (
+                <ReturnsRepairsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
+              )}
 
               {/* Inventory */}
               {activeTab === 'products' && <ProductsPage />}

@@ -532,15 +532,15 @@ export const getActiveUser = () => {
       id: 'usr_exec',
       name: 'Executive Staff',
       role: 'executive',
-      email: 'executive@dsfurniture.lk',
+      email: 'executive@dnshomesolutions.lk',
       branch: 'Showroom & Field',
     };
   }
   return {
     id: 'usr_admin',
-    name: 'D&S Administrator',
+    name: 'D N S Administrator',
     role: 'admin',
-    email: 'admin@dsfurniture.lk',
+    email: 'admin@dnshomesolutions.lk',
     branch: 'Owner / Super Admin',
   };
 };
@@ -550,9 +550,9 @@ export const loadSavedUsers = () => {
   return [
     {
       id: 'usr_admin',
-      name: 'D&S Administrator',
+      name: 'D N S Administrator',
       role: 'admin',
-      email: 'admin@dsfurniture.lk',
+      email: 'admin@dnshomesolutions.lk',
       phone: '+94 77 123 4567',
       assignedCenter: 'all',
       status: 'Active',
@@ -561,7 +561,7 @@ export const loadSavedUsers = () => {
       id: 'usr_exec',
       name: 'Executive Staff',
       role: 'executive',
-      email: 'executive@dsfurniture.lk',
+      email: 'executive@dnshomesolutions.lk',
       phone: '+94 77 987 6543',
       assignedCenter: 'all',
       status: 'Active',

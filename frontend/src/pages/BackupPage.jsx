@@ -64,7 +64,7 @@ export default function BackupPage() {
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const backupData = {
-        app: 'D&S Furniture System',
+        app: 'D N S Home Solutions System',
         version: '2.0.0',
         exported_at: new Date().toISOString(),
         centers: loadSavedCenters(),

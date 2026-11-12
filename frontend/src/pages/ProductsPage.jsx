@@ -820,7 +820,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>D&S Furniture - Inventory & Catalog Report</title>
+          <title>D N S Home Solutions - Inventory & Catalog Report</title>
           <style>
             @page { size: A4 landscape; margin: 12mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #22272B; margin: 0; padding: 24px; font-size: 11px; }
@@ -845,7 +845,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           <table class="header-table">
             <tr>
               <td>
-                <img src="${window.location.origin}/ds-logo.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
+                <img src="${window.location.origin}/ds-logo.png" alt="D N S Home Solutions" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D N S HOME SOLUTIONS</div>
                 <div class="brand-sub">Workshop & Showroom Inventory Catalog</div>
                 <div class="report-title">Product Stock & Valuation Report</div>
               </td>
@@ -889,7 +889,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           </table>
 
           <div class="footer">
-            <span>D&S Furniture System • Automated Inventory Report</span>
+            <span>D N S Home Solutions System • Automated Inventory Report</span>
             <span>Page 1 of 1</span>
           </div>
 

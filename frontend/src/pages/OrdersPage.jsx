@@ -2968,7 +2968,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
               {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #0f172a', paddingBottom: '10px' }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900 }}>D&S FURNITURE WORKSHOP</h3>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900 }}>D N S HOME SOLUTIONS</h3>
                   <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
                     Center: {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}
                   </div>

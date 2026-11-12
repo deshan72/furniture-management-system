@@ -669,7 +669,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       <!DOCTYPE html>
       <html>
         <head>
-          <title>D&S Furniture - Customer Directory & Credit Ledger Report</title>
+          <title>D N S Home Solutions - Customer Directory & Credit Ledger Report</title>
           <style>
             @page { size: A4 landscape; margin: 12mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #0f172a; margin: 0; padding: 24px; font-size: 11px; }
@@ -695,7 +695,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           <table class="header-table">
             <tr>
               <td>
-                <img src="${window.location.origin}/ds-logo.png" alt="D&S Furniture" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D&S FURNITURE</div>
+                <img src="${window.location.origin}/ds-logo.png" alt="D N S Home Solutions" style="height:56px;width:56px;object-fit:contain;vertical-align:middle;margin-right:12px;float:left;" /><div class="brand-title">D N S HOME SOLUTIONS</div>
                 <div class="brand-sub">Workshop & Showroom Management</div>
                 <div class="report-title">Customer Directory & Credit Ledger Report</div>
               </td>
@@ -740,7 +740,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           </table>
 
           <div class="footer">
-            <span>D&S Furniture System - Confidential Official Ledger</span>
+            <span>D N S Home Solutions System - Confidential Official Ledger</span>
             <span>Printed via Furniture Management System Web Application</span>
           </div>
 

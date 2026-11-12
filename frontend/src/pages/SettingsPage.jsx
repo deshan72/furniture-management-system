@@ -11,19 +11,19 @@ import {
 const SETTINGS_STORAGE_KEY = 'ds_furniture_store_settings_v2';
 
 const DEFAULT_SETTINGS = {
-  business_name: 'D&S Furniture (Pvt) Ltd',
-  business_name_si: 'D&S Furniture (Showroom & Workshop)',
+  business_name: 'D N S Home Solutions',
+  business_name_si: 'D N S Home Solutions (Showroom & Workshop)',
   tagline: 'Handcrafted Luxury Teak & Mahogany Woodcraft • Showroom & Workshop',
   br_number: 'PV-00289145',
   vat_number: '',
   phone_hotline: '077 123 4567',
   phone_landline: '011 284 5678',
   whatsapp_number: '077 123 4567',
-  email: 'sales@dsfurniture.lk',
+  email: 'sales@dnshomesolutions.lk',
   showroom_address: 'No. 120, High Level Road, Maharagama',
   workshop_address: 'No. 88, Galle Road, Rawathawatta, Moratuwa',
-  invoice_prefix: 'DS-INV-',
-  order_prefix: 'DS-ORD-',
+  invoice_prefix: 'DNS-INV-',
+  order_prefix: 'DNS-ORD-',
   currency_code: 'LKR',
   currency_symbol: 'Rs.',
   low_stock_limit: 2,
@@ -31,7 +31,7 @@ const DEFAULT_SETTINGS = {
   invoice_terms_si: 'Goods once sold are non-refundable. Please report any defects within 3 days of delivery.',
   bank_name: 'Commercial Bank of Ceylon PLC',
   bank_branch: 'Maharagama Branch',
-  account_name: 'D&S Furniture (Pvt) Ltd',
+  account_name: 'D N S Home Solutions',
   account_number: '8004 9128 3401',
 };
 
