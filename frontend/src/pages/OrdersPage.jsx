@@ -107,6 +107,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
   const [formPassbookNo, setFormPassbookNo] = useState('PN');
   const [formPaymentType, setFormPaymentType] = useState('installment'); // 'installment' | 'cash'
+  const [formDocumentCharge, setFormDocumentCharge] = useState(1000); // Documentation fee in LKR
   const [formDownPayment, setFormDownPayment] = useState(0);
   const [formLoanFrequency, setFormLoanFrequency] = useState('monthly'); // 'monthly' | 'weekly'
   const [formLoanTerms, setFormLoanTerms] = useState(12);
@@ -236,10 +237,15 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     return null;
   }, [selectedProductObj, products, formProductId, codeSearchText]);
 
-  // Form: Auto-calculated Gross Order Total
-  const formGrossTotal = useMemo(() => {
+  // Form: Auto-calculated Furniture Item Total (Qty * UnitPrice)
+  const formItemTotal = useMemo(() => {
     return (Number(formQuantity) || 1) * (Number(formUnitPrice) || 0);
   }, [formQuantity, formUnitPrice]);
+
+  // Form: Auto-calculated Gross Order Total (Item Total + Document Charge)
+  const formGrossTotal = useMemo(() => {
+    return formItemTotal + (Number(formDocumentCharge) || 0);
+  }, [formItemTotal, formDocumentCharge]);
 
   // Form: Loan Balance calculation
   const formLoanBalance = useMemo(() => {
@@ -402,6 +408,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     }
 
     setFormPaymentType('installment');
+    setFormDocumentCharge(1000);
     setFormLoanFrequency('monthly');
     setFormLoanTerms(12);
 
@@ -443,9 +450,9 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     }
   };
 
-  // Quick percent preset for down payment
+  // Quick percent preset for down payment (calculated from item value)
   const handleSetDownPaymentPercent = (pct) => {
-    const calculated = Math.round(formGrossTotal * (pct / 100));
+    const calculated = Math.round(formItemTotal * (pct / 100));
     setFormDownPayment(calculated);
   };
 
@@ -532,7 +539,9 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     );
 
     const isInstallment = formPaymentType === 'installment';
-    const finalGross = Number(formGrossTotal);
+    const finalDocCharge = Number(formDocumentCharge) || 0;
+    const finalItemTotal = (Number(formQuantity) || 1) * (Number(formUnitPrice) || 0);
+    const finalGross = finalItemTotal + finalDocCharge;
     const finalAdvance = isInstallment ? Math.min(Number(formDownPayment) || 0, finalGross) : finalGross;
     const finalBalanceDue = Math.max(0, finalGross - finalAdvance);
     const finalTerms = isInstallment ? Number(formLoanTerms) || 1 : 1;
@@ -557,6 +566,8 @@ export default function OrdersPage({ headerCenter = 'all' }) {
       category: formSelectedProduct.category,
       quantity: Number(formQuantity),
       unit_price: Number(formUnitPrice),
+      item_total: finalItemTotal,
+      document_charge: finalDocCharge,
       gross_amount: finalGross,
       advance_paid: finalAdvance,
       balance_due: finalBalanceDue,
@@ -1055,6 +1066,12 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       <span style={{ color: 'var(--ash-500)' }}>Order Value:</span>
                       <strong style={{ color: 'var(--ash-900)' }}>{formatLKR(order.gross_amount)}</strong>
                     </div>
+                    {Number(order.document_charge) > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem' }}>
+                        <span style={{ color: 'var(--ash-400)' }}>Doc Fee:</span>
+                        <span style={{ color: 'var(--ash-700)', fontWeight: 600 }}>{formatLKR(order.document_charge)}</span>
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--ash-500)' }}>
@@ -1132,7 +1149,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
           })}
         </div>
       ) : (
-        /* PROFESSIONAL ENTERPRISE TABLE VIEW */
+        /* PROFESSIONAL ENTERPRISE TABLE VIEW (FITTED 100% TO PAGE) */
         <div
           style={{
             background: '#fff',
@@ -1140,34 +1157,35 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             border: '1px solid var(--ash-200)',
             boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
             overflow: 'hidden',
+            width: '100%',
           }}
         >
-          <div className="table-responsive" style={{ margin: 0 }}>
-            <table className="custom-table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
+          <div className="table-responsive" style={{ margin: 0, width: '100%', overflowX: 'auto' }}>
+            <table className="custom-table" style={{ margin: 0, width: '100%', minWidth: '1060px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
                 <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '1px solid var(--ash-200)' }}>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
-                    Contract Code & Date
+                  <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Contract & Date
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                  <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Client Profile & NIC
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                  <th style={{ width: '16%', minWidth: '155px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Furniture Item
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                  <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Order Value
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                  <th style={{ width: '13%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Repayment Plan
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase' }}>
+                  <th style={{ width: '11%', minWidth: '115px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Balance Due
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase', textAlign: 'center' }}>
+                  <th style={{ width: '7%', minWidth: '95px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
                     Status
                   </th>
-                  <th style={{ padding: '12px 16px', fontSize: '0.74rem', fontWeight: 800, color: '#475569', letterSpacing: '0.4px', textTransform: 'uppercase', textAlign: 'right' }}>
+                  <th style={{ width: '8%', minWidth: '135px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     Actions
                   </th>
                 </tr>
@@ -1187,98 +1205,117 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : 'var(--ash-50)')}
                     >
                       {/* 1. Contract Code & Date */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                         <span
                           style={{
                             fontFamily: 'monospace',
                             fontWeight: 800,
                             color: 'var(--primary)',
-                            fontSize: '0.82rem',
+                            fontSize: '0.78rem',
                             background: '#EFF6FF',
-                            padding: '3px 8px',
-                            borderRadius: '5px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
                             border: '1px solid #BFDBFE',
                             display: 'inline-block',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           📜 {order.contract_no}
                         </span>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '4px' }}>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '2px', whiteSpace: 'nowrap' }}>
                           📅 {formatDate(order.date)} • {order.invoice_no}
                         </div>
                       </td>
 
                       {/* 2. Client Profile & NIC */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                        <div style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--ash-900)' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-900)', whiteSpace: 'nowrap', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.customer_name}>
                           {order.customer_name}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontSize: '0.76rem' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>
                             🆔 {order.customer_nic || order.customer_id}
                           </span>
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
-                          📞 {order.customer_phone} • 📍 {order.branch_code}/{order.center_code}
+                        <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                          📞 {order.customer_phone} • {order.branch_code}/{order.center_code}
                         </div>
                       </td>
 
                       {/* 3. Furniture Item */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--ash-900)' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '0.82rem',
+                            color: 'var(--ash-900)',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '160px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={order.item_name}
+                        >
                           🛋️ {order.item_name}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '1px', whiteSpace: 'nowrap' }}>
                           <span
                             style={{
                               fontFamily: 'monospace',
-                              fontWeight: 800,
-                              fontSize: '0.7rem',
-                              padding: '1px 6px',
-                              borderRadius: '4px',
+                              fontWeight: 700,
+                              fontSize: '0.68rem',
+                              padding: '1px 5px',
+                              borderRadius: '3px',
                               background: '#F1F5F9',
                               color: 'var(--ash-700)',
                               border: '1px solid var(--ash-200)',
+                              whiteSpace: 'nowrap',
                             }}
                           >
                             {order.item_code}
                           </span>
-                          <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--ash-500)', whiteSpace: 'nowrap' }}>
                             Qty: {order.quantity || 1}
                           </span>
                         </div>
                       </td>
 
                       {/* 4. Order Value & Advance */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
-                        <div style={{ fontWeight: 900, fontSize: '0.92rem', color: 'var(--ash-900)' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-900)', whiteSpace: 'nowrap' }}>
                           {formatLKR(order.gross_amount)}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 600, marginTop: '2px' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 600, marginTop: '1px', whiteSpace: 'nowrap' }}>
                           Adv: {formatLKR(order.advance_paid)}
                         </div>
+                        {Number(order.document_charge) > 0 && (
+                          <div style={{ fontSize: '0.64rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                            Doc Fee: {formatLKR(order.document_charge)}
+                          </div>
+                        )}
                       </td>
 
                       {/* 5. Repayment Plan */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                         {order.payment_type === 'installment' ? (
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#A16207' }}>
-                              {formatLKR(order.installment_value)} / {order.loan_frequency}
+                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: '#A16207', whiteSpace: 'nowrap' }}>
+                              {formatLKR(order.installment_value)} <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>/{order.loan_frequency === 'weekly' ? 'wk' : 'mo'}</span>
                             </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
-                              {order.loan_terms} installments ({order.loan_frequency})
+                            <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
+                              {order.loan_terms} {order.loan_frequency === 'weekly' ? 'weeks' : 'months'}
                             </div>
                           </div>
                         ) : (
                           <span
                             style={{
-                              fontSize: '0.72rem',
+                              fontSize: '0.7rem',
                               fontWeight: 700,
-                              padding: '3px 8px',
+                              padding: '2px 6px',
                               borderRadius: '4px',
                               background: '#F1F5F9',
                               color: 'var(--ash-700)',
+                              whiteSpace: 'nowrap',
                             }}
                           >
                             Full Cash Sale
@@ -1287,45 +1324,48 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       </td>
 
                       {/* 6. Balance Due */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                         <div
                           style={{
                             fontWeight: 900,
-                            fontSize: '0.96rem',
+                            fontSize: '0.9rem',
                             color: isPaid ? '#16A34A' : '#DC2626',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {formatLKR(order.balance_due)}
                         </div>
                         {isPaid && (
-                          <div style={{ fontSize: '0.7rem', color: '#16A34A', fontWeight: 700, marginTop: '2px' }}>
+                          <div style={{ fontSize: '0.68rem', color: '#16A34A', fontWeight: 700, marginTop: '1px', whiteSpace: 'nowrap' }}>
                             ✓ Fully Settled
                           </div>
                         )}
                       </td>
 
                       {/* 7. Status */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'center' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <span
                           style={{
-                            padding: '3px 10px',
+                            padding: '2px 8px',
                             borderRadius: '9999px',
-                            fontSize: '0.72rem',
+                            fontSize: '0.7rem',
                             fontWeight: 800,
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '5px',
+                            gap: '4px',
                             background: isPaid ? '#DCFCE7' : '#FEF3C7',
                             color: isPaid ? '#15803D' : '#B45309',
                             border: isPaid ? '1px solid #86EFAC' : '1px solid #FDE68A',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           <span
                             style={{
-                              width: '6px',
-                              height: '6px',
+                              width: '5px',
+                              height: '5px',
                               borderRadius: '50%',
                               background: isPaid ? '#16A34A' : '#D97706',
+                              flexShrink: 0,
                             }}
                           />
                           {isPaid ? 'Fully Paid' : 'Active Loan'}
@@ -1333,26 +1373,26 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       </td>
 
                       {/* 8. Actions */}
-                      <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center', whiteSpace: 'nowrap' }}>
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            style={{ padding: '4px 7px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
                             title="View Contract Details"
                             onClick={() => {
                               setActiveSelectedOrder(order);
                               setIsViewDetailsModalOpen(true);
                             }}
                           >
-                            <Eye size={13} /> View
+                            <Eye size={12} /> View
                           </button>
 
                           {Number(order.balance_due) > 0 && (
                             <button
                               type="button"
                               className="btn btn-primary"
-                              style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              style={{ padding: '4px 7px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
                               title="Record Installment Payment"
                               onClick={() => {
                                 setActiveSelectedOrder(order);
@@ -1360,39 +1400,52 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                                 setIsPaymentModalOpen(true);
                               }}
                             >
-                              <CreditCard size={13} /> Pay
+                              <CreditCard size={12} /> Pay
                             </button>
                           )}
 
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            style={{ padding: '5px 9px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            style={{ padding: '4px 6px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap' }}
                             title="Print Agreement / Receipt"
                             onClick={() => {
                               setActiveSelectedOrder(order);
                               setIsPrintModalOpen(true);
                             }}
                           >
-                            <Printer size={13} /> Print
+                            <Printer size={12} /> Print
                           </button>
 
                           <button
                             type="button"
                             style={{
-                              border: 'none',
-                              background: 'transparent',
+                              border: '1px solid var(--ash-200)',
+                              background: '#fff',
                               color: 'var(--ash-400)',
                               cursor: 'pointer',
-                              padding: '5px',
-                              borderRadius: '4px',
+                              padding: '4px 6px',
+                              borderRadius: '5px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.15s ease',
+                              whiteSpace: 'nowrap',
                             }}
                             title="Cancel Order"
                             onClick={() => handleDeleteOrder(order.id, order.contract_no)}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = '#DC2626')}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ash-400)')}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = '#DC2626';
+                              e.currentTarget.style.borderColor = '#FCA5A5';
+                              e.currentTarget.style.background = '#FEF2F2';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--ash-400)';
+                              e.currentTarget.style.borderColor = 'var(--ash-200)';
+                              e.currentTarget.style.background = '#fff';
+                            }}
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={12} />
                           </button>
                         </div>
                       </td>
@@ -2088,9 +2141,18 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   <span style={{ fontSize: '0.7rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 700 }}>
                     Total Order Value
                   </span>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--ash-900)' }}>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--ash-900)' }}>
                     {formatLKR(formGrossTotal)}
                   </div>
+                  {Number(formDocumentCharge) > 0 ? (
+                    <div style={{ fontSize: '0.68rem', color: '#2563EB', fontWeight: 700, marginTop: '1px' }}>
+                      (Item: {formatLKR(formItemTotal)} + Doc: {formatLKR(formDocumentCharge)})
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '1px' }}>
+                      ({formQuantity} unit{formQuantity > 1 ? 's' : ''} × {formatLKR(formUnitPrice)})
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -2199,12 +2261,54 @@ export default function OrdersPage({ headerCenter = 'all' }) {
             </div>
 
             {formPaymentType === 'installment' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div className="form-grid" style={{ gap: '10px' }}>
-                  {/* Down Payment */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="form-grid" style={{ gap: '12px' }}>
+                  {/* Document Charge Field */}
                   <div className="form-group" style={{ margin: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                      <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700, margin: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                      <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800, margin: 0, color: 'var(--ash-800)' }}>
+                        Document Charge (LKR) *
+                      </label>
+                      <div style={{ display: 'flex', gap: '3px' }}>
+                        {[0, 500, 1000, 1500, 2000].map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setFormDocumentCharge(amt)}
+                            style={{
+                              border: '1px solid var(--ash-300)',
+                              background: formDocumentCharge === amt ? 'var(--primary)' : '#fff',
+                              color: formDocumentCharge === amt ? '#fff' : 'var(--ash-700)',
+                              fontSize: '0.66rem',
+                              padding: '2px 5px',
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                            }}
+                          >
+                            {amt === 0 ? 'Free' : amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      className="form-input"
+                      min="0"
+                      value={formDocumentCharge}
+                      onChange={(e) => setFormDocumentCharge(Math.max(0, Number(e.target.value)))}
+                      placeholder="e.g. 1000"
+                      style={{ fontWeight: 800, color: '#1E40AF', fontSize: '0.92rem' }}
+                    />
+                    <span style={{ fontSize: '0.66rem', color: 'var(--ash-500)', marginTop: '2px', display: 'block' }}>
+                      Documentation, stamp & agreement processing fee
+                    </span>
+                  </div>
+
+                  {/* Down Payment (Advance LKR) */}
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                      <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800, margin: 0, color: 'var(--ash-800)' }}>
                         Down Payment (Advance LKR)
                       </label>
                       <div style={{ display: 'flex', gap: '3px' }}>
@@ -2217,10 +2321,10 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                               border: '1px solid var(--ash-300)',
                               background: '#fff',
                               fontSize: '0.66rem',
-                              padding: '1px 5px',
+                              padding: '2px 5px',
                               borderRadius: '3px',
                               cursor: 'pointer',
-                              fontWeight: 600,
+                              fontWeight: 700,
                             }}
                           >
                             {pct}%
@@ -2233,20 +2337,23 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       className="form-input"
                       value={formDownPayment}
                       onChange={(e) => setFormDownPayment(Math.max(0, Number(e.target.value)))}
-                      style={{ fontWeight: 700 }}
+                      style={{ fontWeight: 800, fontSize: '0.92rem' }}
                     />
+                    <span style={{ fontSize: '0.66rem', color: 'var(--ash-500)', marginTop: '2px', display: 'block' }}>
+                      Initial cash down payment received from client
+                    </span>
                   </div>
 
                   {/* Loan Frequency */}
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800 }}>
                       Loan Frequency *
                     </label>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button
                         type="button"
                         className={`btn ${formLoanFrequency === 'monthly' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ flex: 1, padding: '6px', fontSize: '0.76rem', fontWeight: 700 }}
+                        style={{ flex: 1, padding: '7px', fontSize: '0.78rem', fontWeight: 700 }}
                         onClick={() => handleFormFrequencyChange('monthly')}
                       >
                         Monthly
@@ -2254,7 +2361,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       <button
                         type="button"
                         className={`btn ${formLoanFrequency === 'weekly' ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ flex: 1, padding: '6px', fontSize: '0.76rem', fontWeight: 700 }}
+                        style={{ flex: 1, padding: '7px', fontSize: '0.78rem', fontWeight: 700 }}
                         onClick={() => handleFormFrequencyChange('weekly')}
                       >
                         Weekly
@@ -2264,7 +2371,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
                   {/* Terms */}
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800 }}>
                       Terms ({formLoanFrequency === 'weekly' ? 'Weeks' : 'Months'}) *
                     </label>
                     <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
@@ -2274,7 +2381,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                         min="1"
                         value={formLoanTerms}
                         onChange={(e) => setFormLoanTerms(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                        style={{ fontWeight: 700, width: '75px' }}
+                        style={{ fontWeight: 800, width: '75px', fontSize: '0.92rem' }}
                       />
                       {[6, 12, 16, 24].map((t) => (
                         <button
@@ -2286,7 +2393,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                             background: formLoanTerms === t ? 'var(--primary)' : '#fff',
                             color: formLoanTerms === t ? '#fff' : 'var(--ash-700)',
                             fontSize: '0.7rem',
-                            padding: '5px 7px',
+                            padding: '6px 8px',
                             borderRadius: '4px',
                             cursor: 'pointer',
                             fontWeight: 700,
@@ -2300,7 +2407,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
                   {/* First Due Date */}
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800 }}>
                       First Due Date
                     </label>
                     <input
@@ -2310,42 +2417,100 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       onChange={(e) => setFormFirstDueDate(e.target.value)}
                     />
                   </div>
+
+                  {/* Upfront Cash Payable Today Box */}
+                  <div
+                    style={{
+                      background: '#F0FDF4',
+                      border: '1px solid #BBF7D0',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase' }}>
+                      Upfront Cash To Collect Today:
+                    </div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#15803D', marginTop: '1px' }}>
+                      {formatLKR(Number(formDownPayment || 0) + Number(formDocumentCharge || 0))}
+                    </div>
+                    <div style={{ fontSize: '0.66rem', color: '#166534', marginTop: '1px' }}>
+                      (Advance: {formatLKR(formDownPayment || 0)} + Doc Fee: {formatLKR(formDocumentCharge || 0)})
+                    </div>
+                  </div>
                 </div>
 
-                {/* Auto Installment Banner */}
+                {/* Auto Installment Banner with Full Mathematical Breakdown */}
                 <div
                   style={{
                     background: '#FEF9C3',
                     border: '1px solid #FEF08A',
                     borderRadius: '8px',
-                    padding: '10px 14px',
+                    padding: '12px 14px',
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '10px',
+                    flexDirection: 'column',
+                    gap: '8px',
                   }}
                 >
-                  <div>
-                    <span style={{ fontSize: '0.7rem', color: '#854D0E', fontWeight: 700, textTransform: 'uppercase' }}>
-                      Auto Installment Plan:
-                    </span>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#A16207' }}>
-                      {formatLKR(formCalculatedInstallment)} / {formLoanFrequency === 'weekly' ? 'week' : 'month'}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: '#854D0E', fontWeight: 800, textTransform: 'uppercase' }}>
+                        Auto Installment Plan:
+                      </span>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#A16207' }}>
+                        {formatLKR(formCalculatedInstallment)} / {formLoanFrequency === 'weekly' ? 'week' : 'month'}
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.7rem', color: '#854D0E', fontWeight: 800 }}>REMAINING BALANCE DUE</span>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#DC2626' }}>
+                        {formatLKR(formLoanBalance)}
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '0.7rem', color: '#854D0E', fontWeight: 700 }}>REMAINING BALANCE</span>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#DC2626' }}>
-                      {formatLKR(formLoanBalance)}
-                    </div>
+                  {/* Micro Breakdown of Financials */}
+                  <div
+                    style={{
+                      borderTop: '1px dashed #EAB308',
+                      paddingTop: '6px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      fontSize: '0.74rem',
+                      color: '#713F12',
+                    }}
+                  >
+                    <span>Item: <strong>{formatLKR(formItemTotal)}</strong></span>
+                    <span>+ Doc Fee: <strong>{formatLKR(formDocumentCharge || 0)}</strong></span>
+                    <span>= Contract Value: <strong>{formatLKR(formGrossTotal)}</strong></span>
+                    <span>- Advance Paid: <strong>{formatLKR(formDownPayment || 0)}</strong></span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div style={{ color: '#166534', fontWeight: 700, fontSize: '0.85rem' }}>
-                Full Cash Settlement: {formatLKR(formGrossTotal)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '12px 16px', borderRadius: '8px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase' }}>
+                      Full Cash Settlement:
+                    </span>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#15803D' }}>
+                      {formatLKR(formGrossTotal)}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#166534' }}>
+                    <div>Item Price: <strong>{formatLKR(formItemTotal)}</strong></div>
+                    {Number(formDocumentCharge) > 0 && (
+                      <div style={{ color: '#15803D' }}>Doc Charge: <strong>{formatLKR(formDocumentCharge)}</strong></div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -2520,6 +2685,11 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                   <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--ash-900)', marginTop: '2px' }}>
                     {formatLKR(placedSuccessOrder.gross_amount)}
                   </div>
+                  {Number(placedSuccessOrder.document_charge) > 0 && (
+                    <div style={{ fontSize: '0.68rem', color: '#854D0E', fontWeight: 700, marginTop: '2px' }}>
+                      (Includes {formatLKR(placedSuccessOrder.document_charge)} Doc Fee)
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -2669,8 +2839,9 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                       : 'Full Cash Sale'}
                   </div>
                   {activeSelectedOrder.payment_type === 'installment' && (
-                    <div style={{ fontSize: '0.76rem', color: '#713F12' }}>
+                    <div style={{ fontSize: '0.76rem', color: '#713F12', marginTop: '2px' }}>
                       {activeSelectedOrder.loan_terms} terms • Advance: {formatLKR(activeSelectedOrder.advance_paid)}
+                      {Number(activeSelectedOrder.document_charge) > 0 && ` • Doc Fee: ${formatLKR(activeSelectedOrder.document_charge)}`}
                     </div>
                   )}
                 </div>
@@ -2840,8 +3011,20 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                     </td>
                     <td style={{ padding: '6px', textAlign: 'center' }}>{activeSelectedOrder.quantity}</td>
                     <td style={{ padding: '6px', textAlign: 'right' }}>{formatLKR(activeSelectedOrder.unit_price)}</td>
-                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800 }}>{formatLKR(activeSelectedOrder.gross_amount)}</td>
+                    <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800 }}>
+                      {formatLKR((Number(activeSelectedOrder.unit_price) || 0) * (Number(activeSelectedOrder.quantity) || 1))}
+                    </td>
                   </tr>
+                  {Number(activeSelectedOrder.document_charge) > 0 && (
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#F8FAFC' }}>
+                      <td colSpan={3} style={{ padding: '6px', color: '#475569', fontWeight: 600 }}>
+                        📄 Document Charge / Stamp & Agreement Fee
+                      </td>
+                      <td style={{ padding: '6px', textAlign: 'right', fontWeight: 800 }}>
+                        {formatLKR(activeSelectedOrder.document_charge)}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
 
@@ -2852,6 +3035,12 @@ export default function OrdersPage({ headerCenter = 'all' }) {
                     <span>Gross Amount:</span>
                     <strong>{formatLKR(activeSelectedOrder.gross_amount)}</strong>
                   </div>
+                  {Number(activeSelectedOrder.document_charge) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: '#64748b' }}>
+                      <span>(Includes Doc Charge:</span>
+                      <span>{formatLKR(activeSelectedOrder.document_charge)})</span>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>Advance Received:</span>
                     <strong>{formatLKR(activeSelectedOrder.advance_paid)}</strong>
