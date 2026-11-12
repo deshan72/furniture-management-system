@@ -108,6 +108,7 @@ const getCustomerContractStats = (customersList, customer) => {
 };
 
 export default function CustomersPage({ initialDebtFilter = 'all', selectedCenter = 'all' }) {
+  const isOutstandingPage = initialDebtFilter === 'debt';
   // Available centers from center management
   const availableCenters = useMemo(() => {
     try {
@@ -870,7 +871,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           </span>
         );
       default:
-        return <span className="status-badge">{category}</span>;
+        return (
+          <span className="status-badge badge-showroom">
+            <Store size={12} /> {category ? category.replace('_', ' ') : 'Showroom Order'}
+          </span>
+        );
     }
   };
 
@@ -1170,8 +1175,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   <th>Phone & WhatsApp</th>
                   <th>Location / City</th>
                   <th>Order Type</th>
-                  <th>Orders</th>
-                  <th>Outstanding Balance</th>
+                  {isOutstandingPage && <th>Outstanding Balance</th>}
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
@@ -1279,53 +1283,49 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                       {/* Category Badge */}
                       <td>{renderCategoryBadge(cust.category)}</td>
 
-                      {/* Orders Count */}
-                      <td>
-                        <span style={{ fontWeight: 600 }}>{cust.total_orders || 1}</span>{' '}
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>order(s)</span>
-                      </td>
-
-                      {/* Outstanding Balance */}
-                      <td>
-                        {balance > 0 ? (
-                          <div>
-                            <span className="status-badge badge-debt">
-                              <AlertTriangle size={12} /> {formatLKR(balance)}
-                            </span>
-                            <span
-                              style={{
-                                display: 'block',
-                                fontSize: '0.72rem',
-                                color: 'var(--cash-out)',
-                                marginTop: '3px',
-                              }}
-                            >
-                              Payment pending
-                            </span>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="status-badge badge-settled">
-                              <CheckCircle size={12} /> Clear (Rs. 0.00)
-                            </span>
-                            <span
-                              style={{
-                                display: 'block',
-                                fontSize: '0.72rem',
-                                color: 'var(--cash-in)',
-                                marginTop: '3px',
-                              }}
-                            >
-                              Fully Paid
-                            </span>
-                          </div>
-                        )}
-                      </td>
+                      {/* Outstanding Balance (Only when on Outstanding Balances page) */}
+                      {isOutstandingPage && (
+                        <td>
+                          {balance > 0 ? (
+                            <div>
+                              <span className="status-badge badge-debt">
+                                <AlertTriangle size={12} /> {formatLKR(balance)}
+                              </span>
+                              <span
+                                style={{
+                                  display: 'block',
+                                  fontSize: '0.72rem',
+                                  color: 'var(--cash-out)',
+                                  marginTop: '3px',
+                                }}
+                              >
+                                Payment pending
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="status-badge badge-settled">
+                                <CheckCircle size={12} /> Clear (Rs. 0.00)
+                              </span>
+                              <span
+                                style={{
+                                  display: 'block',
+                                  fontSize: '0.72rem',
+                                  color: 'var(--cash-in)',
+                                  marginTop: '3px',
+                                }}
+                              >
+                                Fully Paid
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                      )}
 
                       {/* Actions */}
                       <td style={{ textAlign: 'right' }}>
                         <div className="action-btn-group" style={{ justifyContent: 'flex-end' }}>
-                          {balance > 0 && (
+                          {isOutstandingPage && balance > 0 && (
                             <button
                               className="btn btn-secondary"
                               style={{
@@ -1470,33 +1470,37 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                       </div>
                     )}
 
-                    {/* Orders & Total Spent */}
-                    <div className="customer-card-row">
-                      <span style={{ color: 'var(--text-faint)', fontSize: '0.78rem' }}>Orders:</span>
-                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                        {cust.total_orders || 1} order(s)
-                      </span>
-                    </div>
+                    {/* Orders & Total Spent (Only on Outstanding Balances page) */}
+                    {isOutstandingPage && (
+                      <div className="customer-card-row">
+                        <span style={{ color: 'var(--text-faint)', fontSize: '0.78rem' }}>Orders:</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                          {cust.total_orders || 1} order(s)
+                        </span>
+                      </div>
+                    )}
 
-                    {/* Balance */}
-                    <div className="customer-card-row">
-                      <span style={{ color: 'var(--text-faint)', fontSize: '0.78rem' }}>Outstanding:</span>
-                      {balance > 0 ? (
-                        <span className="status-badge badge-debt">
-                          <AlertTriangle size={12} /> {formatLKR(balance)}
-                        </span>
-                      ) : (
-                        <span className="status-badge badge-settled">
-                          <CheckCircle size={12} /> Clear (Rs. 0.00)
-                        </span>
-                      )}
-                    </div>
+                    {/* Balance (Only on Outstanding Balances page) */}
+                    {isOutstandingPage && (
+                      <div className="customer-card-row">
+                        <span style={{ color: 'var(--text-faint)', fontSize: '0.78rem' }}>Outstanding:</span>
+                        {balance > 0 ? (
+                          <span className="status-badge badge-debt">
+                            <AlertTriangle size={12} /> {formatLKR(balance)}
+                          </span>
+                        ) : (
+                          <span className="status-badge badge-settled">
+                            <CheckCircle size={12} /> Clear (Rs. 0.00)
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions Footer */}
                   <div className="customer-card-footer">
                     <div>
-                      {balance > 0 && (
+                      {isOutstandingPage && balance > 0 && (
                         <button
                           className="btn btn-secondary"
                           style={{
