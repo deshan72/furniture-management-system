@@ -1234,15 +1234,16 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
   }, [selectedContractForView, contractReceiptsHistory]);
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div className="payments-page-container" style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* =========================================================
           1. HEADER WITH STATS & ACTION BUTTONS
           ========================================================= */}
       <div
+        className="payments-header-card"
         style={{
-          background: '#fff',
+          background: 'var(--bg-card, #fff)',
           borderRadius: '12px',
-          border: '1px solid var(--ash-200)',
+          border: '1px solid var(--border-subtle, var(--ash-200))',
           padding: '16px 20px',
           display: 'flex',
           justifyContent: 'space-between',
@@ -1322,7 +1323,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           ========================================================= */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px' }}>
         {/* Card 1: Today's Collection */}
-        <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid var(--ash-200)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="payments-kpi-card" style={{ background: 'var(--bg-card, #fff)', borderRadius: '10px', border: '1px solid var(--border-subtle, var(--ash-200))', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#DCFCE7', color: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Wallet size={22} />
           </div>
@@ -1335,7 +1336,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
         </div>
 
         {/* Card 2: This Month's Collections */}
-        <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid var(--ash-200)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="payments-kpi-card" style={{ background: 'var(--bg-card, #fff)', borderRadius: '10px', border: '1px solid var(--border-subtle, var(--ash-200))', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#EFF6FF', color: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TrendingUp size={22} />
           </div>
@@ -1348,7 +1349,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
         </div>
 
         {/* Card 3: Total Advances Collected */}
-        <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid var(--ash-200)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="payments-kpi-card" style={{ background: 'var(--bg-card, #fff)', borderRadius: '10px', border: '1px solid var(--border-subtle, var(--ash-200))', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Receipt size={22} />
           </div>
@@ -1361,7 +1362,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
         </div>
 
         {/* Card 4: Total Portfolio Balance Due */}
-        <div style={{ background: '#fff', borderRadius: '10px', border: '1px solid var(--ash-200)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="payments-kpi-card" style={{ background: 'var(--bg-card, #fff)', borderRadius: '10px', border: '1px solid var(--border-subtle, var(--ash-200))', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#FEF2F2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Clock size={22} />
           </div>
@@ -1378,13 +1379,14 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           3. SUB-VIEW SWITCHER RIBBON
           ========================================================= */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', background: '#F1F5F9', padding: '4px', borderRadius: '10px', gap: '4px' }}>
+        <div className="subview-ribbon-bar" style={{ display: 'flex', background: 'var(--ash-100, #F1F5F9)', padding: '4px', borderRadius: '10px', gap: '4px' }}>
           <button
             type="button"
+            className={`subview-ribbon-btn ${activeSubView === 'accounts' ? 'active' : ''}`}
             onClick={() => setActiveSubView('accounts')}
             style={{
               border: 'none',
-              background: activeSubView === 'accounts' ? '#fff' : 'transparent',
+              background: activeSubView === 'accounts' ? 'var(--bg-card, #fff)' : 'transparent',
               color: activeSubView === 'accounts' ? 'var(--primary)' : 'var(--ash-600)',
               padding: '8px 18px',
               borderRadius: '7px',
@@ -1402,10 +1404,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           </button>
           <button
             type="button"
+            className={`subview-ribbon-btn ${activeSubView === 'ledger' ? 'active' : ''}`}
             onClick={() => setActiveSubView('ledger')}
             style={{
               border: 'none',
-              background: activeSubView === 'ledger' ? '#fff' : 'transparent',
+              background: activeSubView === 'ledger' ? 'var(--bg-card, #fff)' : 'transparent',
               color: activeSubView === 'ledger' ? 'var(--primary)' : 'var(--ash-600)',
               padding: '8px 18px',
               borderRadius: '7px',
@@ -1490,7 +1493,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                   onClick={() => setViewMode('cards')}
                   style={{
                     border: 'none',
-                    background: viewMode === 'cards' ? '#fff' : 'transparent',
+                    background: viewMode === 'cards' ? 'var(--bg-card, #fff)' : 'transparent',
                     color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -1511,7 +1514,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                   onClick={() => setViewMode('table')}
                   style={{
                     border: 'none',
-                    background: viewMode === 'table' ? '#fff' : 'transparent',
+                    background: viewMode === 'table' ? 'var(--bg-card, #fff)' : 'transparent',
                     color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -1534,12 +1537,13 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           {/* Accounts Content: Empty / Cards / Table */}
           {filteredAccounts.length === 0 ? (
             <div
+              className="empty-state-box"
               style={{
                 padding: '60px',
                 textAlign: 'center',
-                background: '#fff',
+                background: 'var(--bg-card, #fff)',
                 borderRadius: '12px',
-                border: '1px dashed var(--ash-300)',
+                border: '1px dashed var(--border-subtle, var(--ash-300))',
                 color: 'var(--ash-500)',
               }}
             >
@@ -1566,10 +1570,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                   return (
                     <div
                       key={order.id}
+                      className="payments-card-item"
                       style={{
-                        background: '#fff',
+                        background: 'var(--bg-card, #fff)',
                         borderRadius: '12px',
-                        border: '1px solid var(--ash-200)',
+                        border: '1px solid var(--border-subtle, var(--ash-200))',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                         padding: '16px 18px',
                         display: 'flex',
@@ -1656,12 +1661,13 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
                         {/* Furniture Item Box */}
                         <div
+                          className="card-sub-box"
                           style={{
                             background: 'var(--ash-50)',
                             padding: '10px 12px',
                             borderRadius: '8px',
                             marginTop: '10px',
-                            border: '1px solid var(--ash-200)',
+                            border: '1px solid var(--border-subtle, var(--ash-200))',
                           }}
                         >
                           <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-900)' }}>
@@ -1675,6 +1681,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
                         {/* Financial Metrics 3-Column Box */}
                         <div
+                          className="metrics-3col-box"
                           style={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -1682,8 +1689,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                             marginTop: '10px',
                             padding: '10px',
                             borderRadius: '8px',
-                            background: '#F8FAFC',
-                            border: '1px solid #E2E8F0',
+                            background: 'var(--ash-100, #F8FAFC)',
+                            border: '1px solid var(--border-subtle, #E2E8F0)',
                             textAlign: 'center',
                           }}
                         >
@@ -1719,7 +1726,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                             <span>Settlement Progress</span>
                             <strong style={{ color: isPaid ? '#16A34A' : 'var(--primary)' }}>{progressPercent}% Paid</strong>
                           </div>
-                          <div style={{ height: '6px', width: '100%', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
+                          <div style={{ height: '6px', width: '100%', background: 'var(--border-subtle, #E2E8F0)', borderRadius: '999px', overflow: 'hidden' }}>
                             <div
                               style={{
                                 height: '100%',
@@ -1802,8 +1809,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                           <button
                             type="button"
                             style={{
-                              border: '1px solid var(--ash-200)',
-                              background: '#fff',
+                              border: '1px solid var(--border-subtle, var(--ash-200))',
+                              background: 'var(--bg-card, #fff)',
                               color: 'var(--ash-400)',
                               cursor: 'pointer',
                               padding: '5px 7px',
@@ -1822,8 +1829,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.color = 'var(--ash-400)';
-                              e.currentTarget.style.borderColor = 'var(--ash-200)';
-                              e.currentTarget.style.background = '#fff';
+                              e.currentTarget.style.borderColor = 'var(--border-subtle, var(--ash-200))';
+                              e.currentTarget.style.background = 'var(--bg-card, #fff)';
                             }}
                           >
                             <Trash2 size={12} />
@@ -1837,11 +1844,12 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
               {/* Cards View Summary Bar */}
               <div
+                className="summary-footer-bar"
                 style={{
                   padding: '12px 18px',
-                  background: '#F8FAFC',
+                  background: 'var(--ash-100, #F8FAFC)',
                   borderRadius: '10px',
-                  border: '1px solid var(--ash-200)',
+                  border: '1px solid var(--border-subtle, var(--ash-200))',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -1867,10 +1875,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
             </div>
           ) : (
             <div
+              className="payments-table-card"
               style={{
-                background: '#fff',
+                background: 'var(--bg-card, #fff)',
                 borderRadius: '12px',
-                border: '1px solid var(--ash-200)',
+                border: '1px solid var(--border-subtle, var(--ash-200))',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
                 overflow: 'hidden',
                 width: '100%',
@@ -1879,29 +1888,29 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               <div className="table-responsive" style={{ margin: 0, width: '100%', overflowX: 'auto' }}>
                 <table className="custom-table" style={{ margin: 0, width: '100%', minWidth: '1060px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
                   <thead>
-                    <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '1px solid var(--ash-200)' }}>
-                      <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    <tr style={{ background: 'var(--ash-100, #F8FAFC)', borderBottom: '1px solid var(--border-subtle, var(--ash-200))' }}>
+                      <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Contract & Date
                       </th>
-                      <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Client Profile & NIC
                       </th>
-                      <th style={{ width: '16%', minWidth: '155px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '16%', minWidth: '155px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Furniture Item
                       </th>
-                      <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Order Value
                       </th>
-                      <th style={{ width: '13%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '13%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Repayment Plan
                       </th>
-                      <th style={{ width: '11%', minWidth: '115px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '11%', minWidth: '115px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Balance Due
                       </th>
-                      <th style={{ width: '7%', minWidth: '95px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '7%', minWidth: '95px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         Status
                       </th>
-                      <th style={{ width: '8%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '8%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         Actions
                       </th>
                     </tr>
@@ -1913,12 +1922,12 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                         <tr
                           key={order.id}
                           style={{
-                            borderBottom: '1px solid var(--ash-100)',
-                            background: idx % 2 === 0 ? '#fff' : 'var(--ash-50)',
+                            borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
+                            background: idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--ash-50)',
                             transition: 'background 0.15s ease',
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : 'var(--ash-50)')}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover, #F1F5F9)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--ash-50)')}
                         >
                           {/* 1. Contract Code & Date */}
                           <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
@@ -2142,8 +2151,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                               <button
                                 type="button"
                                 style={{
-                                  border: '1px solid var(--ash-200)',
-                                  background: '#fff',
+                                  border: '1px solid var(--border-subtle, var(--ash-200))',
+                                  background: 'var(--bg-card, #fff)',
                                   color: 'var(--ash-400)',
                                   cursor: 'pointer',
                                   padding: '4px 6px',
@@ -2163,8 +2172,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                                 }}
                                 onMouseLeave={(e) => {
                                   e.currentTarget.style.color = 'var(--ash-400)';
-                                  e.currentTarget.style.borderColor = 'var(--ash-200)';
-                                  e.currentTarget.style.background = '#fff';
+                                  e.currentTarget.style.borderColor = 'var(--border-subtle, var(--ash-200))';
+                                  e.currentTarget.style.background = 'var(--bg-card, #fff)';
                                 }}
                               >
                                 <Trash2 size={12} />
@@ -2180,10 +2189,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
               {/* Table Footer */}
               <div
+                className="summary-footer-bar"
                 style={{
                   padding: '12px 18px',
-                  background: '#F8FAFC',
-                  borderTop: '1px solid var(--ash-200)',
+                  background: 'var(--ash-100, #F8FAFC)',
+                  borderTop: '1px solid var(--border-subtle, var(--ash-200))',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -2286,7 +2296,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                   onClick={() => setViewMode('cards')}
                   style={{
                     border: 'none',
-                    background: viewMode === 'cards' ? '#fff' : 'transparent',
+                    background: viewMode === 'cards' ? 'var(--bg-card, #fff)' : 'transparent',
                     color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -2307,7 +2317,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                   onClick={() => setViewMode('table')}
                   style={{
                     border: 'none',
-                    background: viewMode === 'table' ? '#fff' : 'transparent',
+                    background: viewMode === 'table' ? 'var(--bg-card, #fff)' : 'transparent',
                     color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
                     padding: '6px 12px',
                     borderRadius: '6px',
@@ -2330,12 +2340,13 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           {/* Transactions Ledger Content: Empty / Cards / Table */}
           {filteredPayments.length === 0 ? (
             <div
+              className="empty-state-box"
               style={{
                 padding: '60px',
                 textAlign: 'center',
-                background: '#fff',
+                background: 'var(--bg-card, #fff)',
                 borderRadius: '12px',
-                border: '1px dashed var(--ash-300)',
+                border: '1px dashed var(--border-subtle, var(--ash-300))',
                 color: 'var(--ash-500)',
               }}
             >
@@ -2354,10 +2365,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                 {filteredPayments.map((pay) => (
                   <div
                     key={pay.id}
+                    className="payments-card-item"
                     style={{
-                      background: '#fff',
+                      background: 'var(--bg-card, #fff)',
                       borderRadius: '12px',
-                      border: '1px solid var(--ash-200)',
+                      border: '1px solid var(--border-subtle, var(--ash-200))',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                       padding: '16px 18px',
                       display: 'flex',
@@ -2424,7 +2436,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                       </div>
 
                       {/* Contract & Center Info */}
-                      <div style={{ marginTop: '8px', fontSize: '0.74rem', color: 'var(--ash-600)', background: '#F8FAFC', padding: '6px 10px', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="card-sub-box" style={{ marginTop: '8px', fontSize: '0.74rem', color: 'var(--ash-600)', background: 'var(--ash-100, #F8FAFC)', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-subtle, #E2E8F0)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
                           📜 {pay.contract_no}
                         </span>
@@ -2435,6 +2447,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
                       {/* Collection Metrics */}
                       <div
+                        className="metrics-3col-box"
                         style={{
                           display: 'grid',
                           gridTemplateColumns: 'repeat(2, 1fr)',
@@ -2442,8 +2455,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                           marginTop: '10px',
                           padding: '10px',
                           borderRadius: '8px',
-                          background: '#F0FDF4',
-                          border: '1px solid #BBF7D0',
+                          background: 'var(--ash-50, #F0FDF4)',
+                          border: '1px solid var(--border-subtle, #BBF7D0)',
                           textAlign: 'center',
                         }}
                       >
@@ -2489,8 +2502,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                       <button
                         type="button"
                         style={{
-                          border: '1px solid var(--ash-200)',
-                          background: '#fff',
+                          border: '1px solid var(--border-subtle, var(--ash-200))',
+                          background: 'var(--bg-card, #fff)',
                           color: 'var(--ash-400)',
                           cursor: 'pointer',
                           padding: '6px 8px',
@@ -2509,8 +2522,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.color = 'var(--ash-400)';
-                          e.currentTarget.style.borderColor = 'var(--ash-200)';
-                          e.currentTarget.style.background = '#fff';
+                          e.currentTarget.style.borderColor = 'var(--border-subtle, var(--ash-200))';
+                          e.currentTarget.style.background = 'var(--bg-card, #fff)';
                         }}
                       >
                         <Trash2 size={13} />
@@ -2522,11 +2535,12 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
               {/* Cards View Summary Bar */}
               <div
+                className="summary-footer-bar"
                 style={{
                   padding: '12px 18px',
-                  background: '#F8FAFC',
+                  background: 'var(--ash-100, #F8FAFC)',
                   borderRadius: '10px',
-                  border: '1px solid var(--ash-200)',
+                  border: '1px solid var(--border-subtle, var(--ash-200))',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -2546,10 +2560,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
             </div>
           ) : (
             <div
+              className="payments-table-card"
               style={{
-                background: '#fff',
+                background: 'var(--bg-card, #fff)',
                 borderRadius: '12px',
-                border: '1px solid var(--ash-200)',
+                border: '1px solid var(--border-subtle, var(--ash-200))',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
                 overflow: 'hidden',
                 width: '100%',
@@ -2558,29 +2573,29 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               <div className="table-responsive" style={{ margin: 0, width: '100%', overflowX: 'auto' }}>
                 <table className="custom-table" style={{ margin: 0, width: '100%', minWidth: '1060px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
                   <thead>
-                    <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '1px solid var(--ash-200)' }}>
-                      <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    <tr style={{ background: 'var(--ash-100, #F8FAFC)', borderBottom: '1px solid var(--border-subtle, var(--ash-200))' }}>
+                      <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Receipt & Date
                       </th>
-                      <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '15%', minWidth: '145px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Contract Code
                       </th>
-                      <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Client Profile & NIC
                       </th>
-                      <th style={{ width: '13%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '13%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Payment Type
                       </th>
-                      <th style={{ width: '10%', minWidth: '100px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '10%', minWidth: '100px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Method
                       </th>
-                      <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         Amount Collected
                       </th>
-                      <th style={{ width: '10%', minWidth: '100px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '10%', minWidth: '100px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                         New Balance
                       </th>
-                      <th style={{ width: '7%', minWidth: '95px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <th style={{ width: '7%', minWidth: '95px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         Actions
                       </th>
                     </tr>
@@ -2590,12 +2605,12 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                       <tr
                         key={pay.id}
                         style={{
-                          borderBottom: '1px solid var(--ash-100)',
-                          background: idx % 2 === 0 ? '#fff' : 'var(--ash-50)',
+                          borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
+                          background: idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--ash-50)',
                           transition: 'background 0.15s ease',
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : 'var(--ash-50)')}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover, #F1F5F9)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--ash-50)')}
                       >
                         {/* 1. Receipt & Date */}
                         <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
@@ -2742,8 +2757,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                             <button
                               type="button"
                               style={{
-                                border: '1px solid var(--ash-200)',
-                                background: '#fff',
+                                border: '1px solid var(--border-subtle, var(--ash-200))',
+                                background: 'var(--bg-card, #fff)',
                                 color: 'var(--ash-400)',
                                 cursor: 'pointer',
                                 padding: '4px 6px',
@@ -2763,8 +2778,8 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                               }}
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.color = 'var(--ash-400)';
-                                e.currentTarget.style.borderColor = 'var(--ash-200)';
-                                e.currentTarget.style.background = '#fff';
+                                e.currentTarget.style.borderColor = 'var(--border-subtle, var(--ash-200))';
+                                e.currentTarget.style.background = 'var(--bg-card, #fff)';
                               }}
                             >
                               <Trash2 size={12} />
@@ -2779,10 +2794,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
               {/* Table Footer */}
               <div
+                className="summary-footer-bar"
                 style={{
                   padding: '12px 18px',
-                  background: '#F8FAFC',
-                  borderTop: '1px solid var(--ash-200)',
+                  background: 'var(--ash-100, #F8FAFC)',
+                  borderTop: '1px solid var(--border-subtle, var(--ash-200))',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -2855,15 +2871,16 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               {/* Suggestions Popover */}
               {isContractDropdownOpen && (
                 <div
+                  className="dropdown-popover"
                   style={{
                     position: 'absolute',
                     top: '100%',
                     left: 0,
                     right: 0,
                     marginTop: '4px',
-                    background: '#fff',
+                    background: 'var(--bg-card, #fff)',
                     borderRadius: '8px',
-                    border: '1px solid var(--primary-border)',
+                    border: '1px solid var(--border-subtle, var(--primary-border))',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
                     maxHeight: '220px',
                     overflowY: 'auto',
@@ -2878,6 +2895,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                     orderSuggestions.map((ord) => (
                       <div
                         key={ord.id}
+                        className="dropdown-popover-item"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           handleSelectOrder(ord);
@@ -2887,12 +2905,12 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'center',
-                          borderBottom: '1px solid var(--ash-100)',
+                          borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
                           cursor: 'pointer',
-                          background: selectedOrder?.id === ord.id ? 'var(--primary-tint)' : '#fff',
+                          background: selectedOrder?.id === ord.id ? 'var(--primary-tint)' : 'var(--bg-card, #fff)',
                         }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = selectedOrder?.id === ord.id ? 'var(--primary-tint)' : '#fff')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = selectedOrder?.id === ord.id ? 'var(--primary-tint)' : 'var(--bg-card, #fff)')}
                       >
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2981,7 +2999,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           </div>
 
           {/* STEP 2: PAYMENT DETAILS FORM */}
-          <div style={{ background: '#fff', border: '1px solid var(--ash-200)', borderRadius: '10px', padding: '16px' }}>
+          <div className="form-section-card" style={{ background: 'var(--bg-card, #fff)', border: '1px solid var(--border-subtle, var(--ash-200))', borderRadius: '10px', padding: '16px' }}>
             <label className="form-label" style={{ fontWeight: 800, fontSize: '0.86rem', marginBottom: '12px', display: 'block' }}>
               2. Payment Collection Details
             </label>
@@ -2998,14 +3016,14 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                       <button
                         type="button"
                         onClick={() => setFormAmount(selectedOrder.installment_value || '')}
-                        style={{ border: '1px solid var(--ash-300)', background: '#fff', fontSize: '0.66rem', padding: '2px 5px', borderRadius: '3px', cursor: 'pointer', fontWeight: 700 }}
+                        style={{ border: '1px solid var(--border-subtle, var(--ash-300))', background: 'var(--bg-card, #fff)', color: 'var(--text-main)', fontSize: '0.66rem', padding: '2px 5px', borderRadius: '3px', cursor: 'pointer', fontWeight: 700 }}
                       >
                         1 Installment
                       </button>
                       <button
                         type="button"
                         onClick={() => setFormAmount(selectedOrder.balance_due || '')}
-                        style={{ border: '1px solid var(--ash-300)', background: '#fff', fontSize: '0.66rem', padding: '2px 5px', borderRadius: '3px', cursor: 'pointer', fontWeight: 700 }}
+                        style={{ border: '1px solid var(--border-subtle, var(--ash-300))', background: 'var(--bg-card, #fff)', color: 'var(--text-main)', fontSize: '0.66rem', padding: '2px 5px', borderRadius: '3px', cursor: 'pointer', fontWeight: 700 }}
                       >
                         Full Balance
                       </button>

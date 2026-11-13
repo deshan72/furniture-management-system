@@ -1237,15 +1237,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   }, [filteredOrders]);
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div className="orders-page-container" style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
       {/* =========================================================
           1. HEADER: CLEAN, PROMINENT "+ Add New Order" BUTTON
           ========================================================= */}
       <div
+        className="orders-header-card"
         style={{
-          background: '#fff',
+          background: 'var(--bg-card, #fff)',
           borderRadius: '12px',
-          border: '1px solid var(--ash-200)',
+          border: '1px solid var(--border-subtle, var(--ash-200))',
           padding: '16px 20px',
           display: 'flex',
           justifyContent: 'space-between',
@@ -1398,7 +1399,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             onClick={() => setViewMode('cards')}
             style={{
               border: 'none',
-              background: viewMode === 'cards' ? '#fff' : 'transparent',
+              background: viewMode === 'cards' ? 'var(--bg-card, #fff)' : 'transparent',
               color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
               padding: '6px 12px',
               borderRadius: '6px',
@@ -1418,7 +1419,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             onClick={() => setViewMode('table')}
             style={{
               border: 'none',
-              background: viewMode === 'table' ? '#fff' : 'transparent',
+              background: viewMode === 'table' ? 'var(--bg-card, #fff)' : 'transparent',
               color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
               padding: '6px 12px',
               borderRadius: '6px',
@@ -1442,12 +1443,13 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
           ========================================================= */}
       {filteredOrders.length === 0 ? (
         <div
+          className="empty-state-box"
           style={{
             padding: '60px',
             textAlign: 'center',
-            background: '#fff',
+            background: 'var(--bg-card, #fff)',
             borderRadius: '12px',
-            border: '1px dashed var(--ash-300)',
+            border: '1px dashed var(--border-subtle, var(--ash-300))',
             color: 'var(--ash-500)',
           }}
         >
@@ -1466,10 +1468,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             return (
               <div
                 key={order.id}
+                className="orders-card-item"
                 style={{
-                  background: '#fff',
+                  background: 'var(--bg-card, #fff)',
                   borderRadius: '12px',
-                  border: '1px solid var(--ash-200)',
+                  border: '1px solid var(--border-subtle, var(--ash-200))',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                   padding: '16px 18px',
                   display: 'flex',
@@ -1552,12 +1555,13 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
                   {/* Furniture Item Box */}
                   <div
+                    className="card-sub-box"
                     style={{
                       background: 'var(--ash-50)',
                       padding: '10px 12px',
                       borderRadius: '8px',
                       marginTop: '10px',
-                      border: '1px solid var(--ash-200)',
+                      border: '1px solid var(--border-subtle, var(--ash-200))',
                     }}
                   >
                     <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--ash-900)' }}>
@@ -1573,7 +1577,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   </div>
 
                   {/* Delivery Location & Notes */}
-                  <div style={{ marginTop: '10px', background: '#F8FAFC', padding: '8px 10px', borderRadius: '6px', fontSize: '0.76rem', color: 'var(--ash-700)', border: '1px solid #E2E8F0' }}>
+                  <div className="card-sub-box" style={{ marginTop: '10px', background: 'var(--ash-100, #F8FAFC)', padding: '8px 10px', borderRadius: '6px', fontSize: '0.76rem', color: 'var(--ash-700)', border: '1px solid var(--border-subtle, #E2E8F0)' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
                       <MapPin size={13} style={{ flexShrink: 0, marginTop: '2px', color: 'var(--primary)' }} />
                       <span style={{ fontWeight: 600 }}>{order.customer_address || 'Showroom Pickup / Maharagama'}</span>
@@ -1586,7 +1590,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   </div>
 
                   {/* Order Total */}
-                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--ash-200)', paddingTop: '8px' }}>
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-subtle, var(--ash-200))', paddingTop: '8px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--ash-600)', fontWeight: 700 }}>Total Order Value:</span>
                     <strong style={{ fontSize: '1.05rem', color: 'var(--ash-900)', fontWeight: 900 }}>
                       {formatLKR(order.gross_amount)}
@@ -1595,7 +1599,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 </div>
 
                 {/* Bottom Actions for each card */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--ash-100)', paddingTop: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-subtle, var(--ash-100))', paddingTop: '10px' }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -1629,10 +1633,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       ) : (
         /* PROFESSIONAL ENTERPRISE TABLE VIEW (ORDER DETAILS ONLY) */
         <div
+          className="orders-table-card"
           style={{
-            background: '#fff',
+            background: 'var(--bg-card, #fff)',
             borderRadius: '12px',
-            border: '1px solid var(--ash-200)',
+            border: '1px solid var(--border-subtle, var(--ash-200))',
             boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
             overflow: 'hidden',
             width: '100%',
@@ -1641,26 +1646,26 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
           <div className="table-responsive" style={{ margin: 0, width: '100%', overflowX: 'auto' }}>
             <table className="custom-table" style={{ margin: 0, width: '100%', minWidth: '1060px', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
-                <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '1px solid var(--ash-200)' }}>
-                  <th style={{ width: '16%', minWidth: '150px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                <tr style={{ background: 'var(--ash-100, #F8FAFC)', borderBottom: '1px solid var(--border-subtle, var(--ash-200))' }}>
+                  <th style={{ width: '16%', minWidth: '150px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Order & Invoice
                   </th>
-                  <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Customer Details
                   </th>
-                  <th style={{ width: '22%', minWidth: '200px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '22%', minWidth: '200px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Furniture Item & Specs
                   </th>
-                  <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Delivery Address & Notes
                   </th>
-                  <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Total Amount
                   </th>
-                  <th style={{ width: '13%', minWidth: '135px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '13%', minWidth: '135px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
                     Order Status
                   </th>
-                  <th style={{ width: '11%', minWidth: '110px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '11%', minWidth: '110px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     Actions
                   </th>
                 </tr>
@@ -1672,12 +1677,12 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     <tr
                       key={order.id}
                       style={{
-                        borderBottom: '1px solid var(--ash-100)',
-                        background: idx % 2 === 0 ? '#fff' : 'var(--ash-50)',
+                        borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
+                        background: idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--ash-50)',
                         transition: 'background 0.15s ease',
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#F1F5F9')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : 'var(--ash-50)')}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card-hover, #F1F5F9)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? 'var(--bg-card, #fff)' : 'var(--ash-50)')}
                     >
                       {/* 1. Order Invoice & Date */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
@@ -1851,8 +1856,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                           <button
                             type="button"
                             style={{
-                              border: '1px solid var(--ash-200)',
-                              background: '#fff',
+                              border: '1px solid var(--border-subtle, var(--ash-200))',
+                              background: 'var(--bg-card, #fff)',
                               color: 'var(--ash-400)',
                               cursor: 'pointer',
                               padding: '4px 6px',
@@ -1872,8 +1877,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.color = 'var(--ash-400)';
-                              e.currentTarget.style.borderColor = 'var(--ash-200)';
-                              e.currentTarget.style.background = '#fff';
+                              e.currentTarget.style.borderColor = 'var(--border-subtle, var(--ash-200))';
+                              e.currentTarget.style.background = 'var(--bg-card, #fff)';
                             }}
                           >
                             <Trash2 size={12} />
@@ -1889,10 +1894,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
           {/* Table Summary Footer */}
           <div
+            className="summary-footer-bar"
             style={{
               padding: '12px 18px',
-              background: '#F8FAFC',
-              borderTop: '1px solid var(--ash-200)',
+              background: 'var(--ash-100, #F8FAFC)',
+              borderTop: '1px solid var(--border-subtle, var(--ash-200))',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -1993,7 +1999,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             {showQuickRegister && (
               <div
                 style={{
-                  background: '#fff',
+                  background: 'var(--bg-card, #fff)',
                   border: '1px solid var(--primary-border)',
                   borderRadius: '8px',
                   padding: '12px',
@@ -2102,15 +2108,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               {/* Live Customer Suggestions Popover */}
               {isClientDropdownOpen && (
                 <div
+                  className="dropdown-popover"
                   style={{
                     position: 'absolute',
                     top: '100%',
                     left: 0,
                     right: 0,
                     marginTop: '4px',
-                    background: '#fff',
+                    background: 'var(--bg-card, #fff)',
                     borderRadius: '8px',
-                    border: '1px solid var(--primary-border)',
+                    border: '1px solid var(--border-subtle, var(--primary-border))',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
                     maxHeight: '230px',
                     overflowY: 'auto',
@@ -2151,14 +2158,14 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            borderBottom: '1px solid var(--ash-100)',
+                            borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
                             cursor: 'pointer',
-                            background: isChosen ? 'var(--primary-tint)' : '#fff',
+                            background: isChosen ? 'var(--primary-tint)' : 'var(--bg-card, #fff)',
                             transition: 'background 0.1s ease',
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
                           onMouseLeave={(e) =>
-                            (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : '#fff')
+                            (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : 'var(--bg-card, #fff)')
                           }
                         >
                           <div>
@@ -2179,7 +2186,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                               fontSize: '0.72rem',
                               fontWeight: 700,
                               color: 'var(--ash-600)',
-                              background: '#F1F5F9',
+                              background: 'var(--ash-100, #F1F5F9)',
                               padding: '2px 8px',
                               borderRadius: '4px',
                             }}
@@ -2198,8 +2205,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               <div
                 style={{
                   marginTop: '10px',
-                  background: '#fff',
-                  border: '1px solid var(--ash-200)',
+                  background: 'var(--bg-card, #fff)',
+                  border: '1px solid var(--border-subtle, var(--ash-200))',
                   borderRadius: '6px',
                   padding: '8px 12px',
                   display: 'flex',
@@ -2316,15 +2323,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 {/* Live Code Suggestions Popover */}
                 {isCodeDropdownOpen && (
                   <div
+                    className="dropdown-popover"
                     style={{
                       position: 'absolute',
                       top: '100%',
                       left: 0,
                       right: 0,
                       marginTop: '4px',
-                      background: '#fff',
+                      background: 'var(--bg-card, #fff)',
                       borderRadius: '8px',
-                      border: '1px solid var(--primary-border)',
+                      border: '1px solid var(--border-subtle, var(--primary-border))',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
                       maxHeight: '220px',
                       overflowY: 'auto',
@@ -2343,6 +2351,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                         return (
                           <div
                             key={item.id || item.item_code || idx}
+                            className="dropdown-popover-item"
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSelectProduct(item);
@@ -2353,14 +2362,14 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              borderBottom: '1px solid var(--ash-100)',
+                              borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
                               cursor: 'pointer',
-                              background: isChosen ? 'var(--primary-tint)' : '#fff',
+                              background: isChosen ? 'var(--primary-tint)' : 'var(--bg-card, #fff)',
                               transition: 'background 0.1s ease',
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
                             onMouseLeave={(e) =>
-                              (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : '#fff')
+                              (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : 'var(--bg-card, #fff)')
                             }
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2447,15 +2456,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 {/* Live Name Suggestions Popover */}
                 {isNameDropdownOpen && (
                   <div
+                    className="dropdown-popover"
                     style={{
                       position: 'absolute',
                       top: '100%',
                       left: 0,
                       right: 0,
                       marginTop: '4px',
-                      background: '#fff',
+                      background: 'var(--bg-card, #fff)',
                       borderRadius: '8px',
-                      border: '1px solid var(--primary-border)',
+                      border: '1px solid var(--border-subtle, var(--primary-border))',
                       boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
                       maxHeight: '220px',
                       overflowY: 'auto',
@@ -2474,6 +2484,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                         return (
                           <div
                             key={item.id || item.item_code || idx}
+                            className="dropdown-popover-item"
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSelectProduct(item);
@@ -2484,14 +2495,14 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              borderBottom: '1px solid var(--ash-100)',
+                              borderBottom: '1px solid var(--border-subtle, var(--ash-100))',
                               cursor: 'pointer',
-                              background: isChosen ? 'var(--primary-tint)' : '#fff',
+                              background: isChosen ? 'var(--primary-tint)' : 'var(--bg-card, #fff)',
                               transition: 'background 0.1s ease',
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--primary-tint)')}
                             onMouseLeave={(e) =>
-                              (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : '#fff')
+                              (e.currentTarget.style.background = isChosen ? 'var(--primary-tint)' : 'var(--bg-card, #fff)')
                             }
                           >
                             <div>
@@ -2531,8 +2542,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               <div
                 style={{
                   marginTop: '12px',
-                  background: '#fff',
-                  border: '1px solid var(--ash-200)',
+                  background: 'var(--bg-card, #fff)',
+                  border: '1px solid var(--border-subtle, var(--ash-200))',
                   borderRadius: '8px',
                   padding: '12px',
                   display: 'grid',
@@ -2591,10 +2602,10 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 style={{
                   marginTop: '10px',
                   padding: '8px 12px',
-                  background: '#FFFBEB',
+                  background: 'var(--amber-tint, rgba(245, 158, 11, 0.12))',
                   borderRadius: '6px',
-                  border: '1px dashed #FDE68A',
-                  color: '#92400E',
+                  border: '1px dashed rgba(245, 158, 11, 0.4)',
+                  color: 'var(--amber-700, #D97706)',
                   fontSize: '0.76rem',
                 }}
               >
@@ -2606,8 +2617,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
           {/* STEP 3: CONTRACT CODE (pn / center code / item code) */}
           <div
             style={{
-              background: '#EFF6FF',
-              border: '1px solid #BFDBFE',
+              background: 'var(--blue-tint, rgba(59, 130, 246, 0.1))',
+              border: '1px solid var(--blue-200, rgba(59, 130, 246, 0.3))',
               borderRadius: '8px',
               padding: '10px 14px',
               display: 'flex',
@@ -2618,16 +2629,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             }}
           >
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 700, textTransform: 'uppercase' }}>
                 CONTRACT CODE (pn / center code / item code)
               </div>
-              <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.05rem', color: '#1D4ED8', marginTop: '2px' }}>
+              <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.05rem', color: 'var(--primary)', marginTop: '2px' }}>
                 📜 {formContractCode}
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.74rem', color: '#1E40AF', fontWeight: 600 }}>Branch:</span>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>Branch:</span>
               <input
                 type="text"
                 value={formPassbookNo}
@@ -2639,15 +2650,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   fontWeight: 700,
                   fontFamily: 'monospace',
                   borderRadius: '4px',
-                  border: '1px solid #93C5FD',
-                  background: '#fff',
+                  border: '1px solid var(--border-subtle, var(--ash-300))',
+                  background: 'var(--bg-card, #fff)',
+                  color: 'var(--text-main)',
                 }}
               />
             </div>
           </div>
 
           {/* STEP 4: INSTALLMENT PLAN, TERMS & FREQUENCY */}
-          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
+          <div style={{ background: 'var(--ash-50)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle, var(--ash-200))' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
               <label className="form-label" style={{ fontWeight: 800, margin: 0, fontSize: '0.86rem' }}>
                 3. Payment Terms & Installment Plan
@@ -2659,7 +2671,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   style={{
                     border: 'none',
                     background: formPaymentType === 'installment' ? 'var(--primary)' : 'transparent',
-                    color: formPaymentType === 'installment' ? '#fff' : 'var(--ash-700)',
+                    color: formPaymentType === 'installment' ? '#fff' : 'var(--text-main)',
                     padding: '4px 10px',
                     borderRadius: '5px',
                     fontWeight: 700,
@@ -2678,7 +2690,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   style={{
                     border: 'none',
                     background: formPaymentType === 'cash' ? 'var(--primary)' : 'transparent',
-                    color: formPaymentType === 'cash' ? '#fff' : 'var(--ash-700)',
+                    color: formPaymentType === 'cash' ? '#fff' : 'var(--text-main)',
                     padding: '4px 10px',
                     borderRadius: '5px',
                     fontWeight: 700,
@@ -2697,7 +2709,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   {/* Document Charge Field */}
                   <div className="form-group" style={{ margin: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                      <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800, margin: 0, color: 'var(--ash-800)' }}>
+                      <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>
                         Document Charge (LKR) *
                       </label>
                       <div style={{ display: 'flex', gap: '3px' }}>
@@ -2707,9 +2719,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                             type="button"
                             onClick={() => setFormDocumentCharge(amt)}
                             style={{
-                              border: '1px solid var(--ash-300)',
-                              background: formDocumentCharge === amt ? 'var(--primary)' : '#fff',
-                              color: formDocumentCharge === amt ? '#fff' : 'var(--ash-700)',
+                              border: '1px solid var(--border-subtle, var(--ash-300))',
+                              background: formDocumentCharge === amt ? 'var(--primary)' : 'var(--bg-card, #fff)',
+                              color: formDocumentCharge === amt ? '#fff' : 'var(--text-main)',
                               fontSize: '0.66rem',
                               padding: '2px 5px',
                               borderRadius: '3px',
@@ -2749,8 +2761,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                             type="button"
                             onClick={() => handleSetDownPaymentPercent(pct)}
                             style={{
-                              border: '1px solid var(--ash-300)',
-                              background: '#fff',
+                              border: '1px solid var(--border-subtle, var(--ash-300))',
+                              background: 'var(--bg-card, #fff)',
+                              color: 'var(--text-main)',
                               fontSize: '0.66rem',
                               padding: '2px 5px',
                               borderRadius: '3px',
@@ -2820,9 +2833,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                           type="button"
                           onClick={() => setFormLoanTerms(t)}
                           style={{
-                            border: '1px solid var(--ash-300)',
-                            background: formLoanTerms === t ? 'var(--primary)' : '#fff',
-                            color: formLoanTerms === t ? '#fff' : 'var(--ash-700)',
+                            border: '1px solid var(--border-subtle, var(--ash-300))',
+                            background: formLoanTerms === t ? 'var(--primary)' : 'var(--bg-card, #fff)',
+                            color: formLoanTerms === t ? '#fff' : 'var(--text-main)',
                             fontSize: '0.7rem',
                             padding: '6px 8px',
                             borderRadius: '4px',

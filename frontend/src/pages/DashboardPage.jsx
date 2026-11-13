@@ -656,6 +656,74 @@ export default function DashboardPage({
           border-color: #243554 !important;
         }
 
+        [data-theme="dark"] .tracker-stat-box.pillar-target {
+          background: rgba(245, 158, 11, 0.1) !important;
+          border-color: rgba(245, 158, 11, 0.3) !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-target .pillar-title {
+          color: #FBBF24 !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-target .pillar-val {
+          color: #FDE68A !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-target .pillar-sub {
+          color: #F59E0B !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-target .pillar-icon {
+          background: rgba(245, 158, 11, 0.22) !important;
+          color: #FBBF24 !important;
+        }
+
+        [data-theme="dark"] .tracker-stat-box.pillar-collected {
+          background: rgba(16, 185, 129, 0.1) !important;
+          border-color: rgba(16, 185, 129, 0.3) !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-collected .pillar-title {
+          color: #4ADE80 !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-collected .pillar-val {
+          color: #86EFAC !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-collected .pillar-sub {
+          color: #34D399 !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-collected .pillar-icon {
+          background: rgba(16, 185, 129, 0.22) !important;
+          color: #4ADE80 !important;
+        }
+
+        [data-theme="dark"] .tracker-stat-box.pillar-pending {
+          background: rgba(239, 68, 68, 0.1) !important;
+          border-color: rgba(239, 68, 68, 0.3) !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-pending .pillar-title {
+          color: #F87171 !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-pending .pillar-val {
+          color: #FCA5A5 !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-pending .pillar-sub {
+          color: #EF4444 !important;
+        }
+        [data-theme="dark"] .tracker-stat-box.pillar-pending .pillar-icon {
+          background: rgba(239, 68, 68, 0.22) !important;
+          color: #F87171 !important;
+        }
+
+        [data-theme="dark"] .tracker-search-input {
+          background: #141F36 !important;
+          color: #F8FAFC !important;
+          border-color: #243554 !important;
+        }
+        [data-theme="dark"] .tracker-search-input::placeholder {
+          color: #64748B !important;
+        }
+        [data-theme="dark"] .tracker-week-pill {
+          background: #141F36 !important;
+          border-color: #243554 !important;
+          color: #F8FAFC !important;
+        }
+
         [data-theme="dark"] .tracker-progress-track {
           background: #243554 !important;
         }
@@ -977,12 +1045,13 @@ export default function DashboardPage({
 
           <div className="tracker-pills-row">
             <div
+              className="tracker-week-pill"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
-                background: '#FFFFFF',
-                border: '1px solid var(--ash-300)',
+                background: 'var(--bg-card, #FFFFFF)',
+                border: '1px solid var(--border-subtle, var(--ash-300))',
                 padding: '6px 12px',
                 borderRadius: '8px',
                 fontSize: '0.78rem',
@@ -1010,8 +1079,9 @@ export default function DashboardPage({
         {/* 3-Pillar Progress Summary Strip */}
         <div className="tracker-stats-strip">
           {/* Pillar 1: Target to Collect */}
-          <div className="tracker-stat-box" style={{ background: '#FFFBEB' }}>
+          <div className="tracker-stat-box pillar-target" style={{ background: '#FFFBEB' }}>
             <div
+              className="pillar-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -1027,21 +1097,22 @@ export default function DashboardPage({
               <TrendingUp size={22} />
             </div>
             <div>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+              <div className="pillar-title" style={{ fontSize: '0.72rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
                 Weekly Target to Collect
               </div>
-              <div style={{ fontSize: '1.24rem', fontWeight: 900, color: '#92400E', marginTop: '2px' }}>
+              <div className="pillar-val" style={{ fontSize: '1.24rem', fontWeight: 900, color: '#92400E', marginTop: '2px' }}>
                 {formatLKR(totalWeeklyTarget)}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
+              <div className="pillar-sub" style={{ fontSize: '0.72rem', color: '#B45309' }}>
                 {weeklyDueAccounts.length} active installment accounts
               </div>
             </div>
           </div>
 
           {/* Pillar 2: Collected So Far This Week */}
-          <div className="tracker-stat-box" style={{ background: '#F0FDF4' }}>
+          <div className="tracker-stat-box pillar-collected" style={{ background: '#F0FDF4' }}>
             <div
+              className="pillar-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -1057,21 +1128,22 @@ export default function DashboardPage({
               <CheckCircle2 size={22} />
             </div>
             <div>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase' }}>
+              <div className="pillar-title" style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase' }}>
                 Collected This Week
               </div>
-              <div style={{ fontSize: '1.24rem', fontWeight: 900, color: '#166534', marginTop: '2px' }}>
+              <div className="pillar-val" style={{ fontSize: '1.24rem', fontWeight: 900, color: '#166534', marginTop: '2px' }}>
                 {formatLKR(collectedThisWeek)}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#15803D' }}>
+              <div className="pillar-sub" style={{ fontSize: '0.72rem', color: '#15803D' }}>
                 {weekPayments.length} payment receipt(s) cleared
               </div>
             </div>
           </div>
 
           {/* Pillar 3: Remaining to Recover */}
-          <div className="tracker-stat-box" style={{ background: '#FEF2F2' }}>
+          <div className="tracker-stat-box pillar-pending" style={{ background: '#FEF2F2' }}>
             <div
+              className="pillar-icon"
               style={{
                 width: '42px',
                 height: '42px',
@@ -1087,13 +1159,13 @@ export default function DashboardPage({
               <Clock size={22} />
             </div>
             <div>
-              <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase' }}>
+              <div className="pillar-title" style={{ fontSize: '0.72rem', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase' }}>
                 Pending Weekly Cash
               </div>
-              <div style={{ fontSize: '1.24rem', fontWeight: 900, color: '#991B1B', marginTop: '2px' }}>
+              <div className="pillar-val" style={{ fontSize: '1.24rem', fontWeight: 900, color: '#991B1B', marginTop: '2px' }}>
                 {formatLKR(remainingWeeklyToCollect)}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#DC2626' }}>
+              <div className="pillar-sub" style={{ fontSize: '0.72rem', color: '#DC2626' }}>
                 {weeklyDueAccounts.filter((a) => !a.isCollected).length} client(s) pending collection
               </div>
             </div>
@@ -1162,14 +1234,16 @@ export default function DashboardPage({
               placeholder="Search by client name, NIC, phone..."
               value={weeklySearch}
               onChange={(e) => setWeeklySearch(e.target.value)}
+              className="tracker-search-input"
               style={{
                 width: '100%',
                 padding: '7px 12px 7px 34px',
                 borderRadius: '8px',
-                border: '1px solid var(--ash-300)',
+                border: '1px solid var(--border-subtle, var(--ash-300))',
                 fontSize: '0.82rem',
                 outline: 'none',
-                background: '#FFFFFF',
+                background: 'var(--bg-card, #FFFFFF)',
+                color: 'var(--text-main)',
               }}
             />
           </div>
