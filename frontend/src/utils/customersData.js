@@ -170,6 +170,11 @@ export const loadSavedCustomers = () => {
 export const saveCustomersToStorage = (customersList) => {
   try {
     localStorage.setItem('dnd_customers_list', JSON.stringify(customersList));
+    // Dispatch in-tab events so active React views sync immediately
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dnd_customers_updated', { detail: customersList }));
+      window.dispatchEvent(new Event('storage'));
+    }
   } catch (e) {
     console.warn('Failed saving customers to localStorage:', e);
   }

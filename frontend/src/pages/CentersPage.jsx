@@ -32,14 +32,6 @@ import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest } from '../services/api';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
-import {
-  validateNic,
-  validatePhone,
-  validateName,
-  validateAmount,
-  sanitizeNicInput,
-  sanitizePhoneInput,
-} from '../utils/validators';
 
 // Visual branch identity themes (Colors & Hub names)
 const BRANCH_THEMES = {
@@ -209,33 +201,23 @@ export default function CentersPage({
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
 
-  // Add Client to Center Modal States
+  // Assign Client to Center Modal States
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(initialOpenAddClient);
   const [targetCenterForClient, setTargetCenterForClient] = useState(null);
-  const [clientModalTab, setClientModalTab] = useState('new'); // 'new' | 'existing'
   const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [clientFilterType, setClientFilterType] = useState('all'); // 'all' | 'other' | 'in_center'
+  const [selectedClientIds, setSelectedClientIds] = useState([]);
   const [assignmentFeedback, setAssignmentFeedback] = useState(null);
-
-  const [newClientForm, setNewClientForm] = useState({
-    first_name: '',
-    last_name: '',
-    nic: '',
-    phone: '',
-    whatsapp: '',
-    dob: '',
-    city: 'Maharagama',
-    address: '',
-    civil_status: 'Single',
-    category: 'custom_order',
-    outstanding_balance: '',
-    notes: '',
-  });
 
   // Sync initialOpenAddClient prop
   useEffect(() => {
     if (initialOpenAddClient) {
+      setCustomers(loadSavedCustomers());
       setTargetCenterForClient(centers[0] || null);
       setAssignmentFeedback(null);
+      setSelectedClientIds([]);
+      setClientSearchQuery('');
+      setClientFilterType('all');
       setIsAddClientModalOpen(true);
     }
   }, [initialOpenAddClient, centers]);
@@ -243,12 +225,16 @@ export default function CentersPage({
   // Sync external customer changes
   useEffect(() => {
     const handleStorageChange = (e) => {
-      if (!e || e.key === 'dnd_customers_list') {
+      if (!e || e.key === 'dnd_customers_list' || e.type === 'dnd_customers_updated') {
         setCustomers(loadSavedCustomers());
       }
     };
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('dnd_customers_updated', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('dnd_customers_updated', handleStorageChange);
+    };
   }, []);
 
   // Form State for Add Center
@@ -387,6 +373,59 @@ export default function CentersPage({
         return (a.center_code || '').localeCompare(b.center_code || '');
       });
   }, [centers, searchQuery, branchFilter, statusFilter, sortBy, getCustomersForCenter, headerCenter]);
+
+  // Counts for modal filtering
+  const modalClientCounts = useMemo(() => {
+    if (!targetCenterForClient) {
+      return { all: customers.length, other: customers.length, inCenter: 0 };
+    }
+    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
+    const targetCenter = formatCenterCode(targetCenterForClient.center_code);
+
+    let inCenter = 0;
+    customers.forEach((c) => {
+      const cBranch = String(c.branch_code || '').trim().toUpperCase();
+      const cCenter = formatCenterCode(c.center_code);
+      if (cBranch === targetBranch && cCenter === targetCenter) {
+        inCenter += 1;
+      }
+    });
+
+    return {
+      all: customers.length,
+      other: customers.length - inCenter,
+      inCenter,
+    };
+  }, [customers, targetCenterForClient]);
+
+  // Filtered clients list for the Assign Client modal
+  const filteredClientsForModal = useMemo(() => {
+    if (!targetCenterForClient) return customers;
+    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
+    const targetCenter = formatCenterCode(targetCenterForClient.center_code);
+    const q = clientSearchQuery.trim().toLowerCase();
+
+    return customers.filter((c) => {
+      const cBranch = String(c.branch_code || '').trim().toUpperCase();
+      const cCenter = formatCenterCode(c.center_code);
+      const isCurrentCenter = cBranch === targetBranch && cCenter === targetCenter;
+
+      if (clientFilterType === 'in_center' && !isCurrentCenter) return false;
+      if (clientFilterType === 'other' && isCurrentCenter) return false;
+
+      if (!q) return true;
+      return (
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.first_name && c.first_name.toLowerCase().includes(q)) ||
+        (c.last_name && c.last_name.toLowerCase().includes(q)) ||
+        (c.nic && c.nic.toLowerCase().includes(q)) ||
+        (c.customer_id && c.customer_id.toLowerCase().includes(q)) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.whatsapp && c.whatsapp.includes(q)) ||
+        (c.city && c.city.toLowerCase().includes(q))
+      );
+    });
+  }, [customers, targetCenterForClient, clientSearchQuery, clientFilterType]);
 
   // Reset filters
   const handleResetFilters = () => {
@@ -573,187 +612,161 @@ export default function CentersPage({
     }
   };
 
-  // Open Add Client to Center Modal
+  // Open Assign Client to Center Modal
   const handleOpenAddClient = (center = null) => {
     const target = center || (centers.length > 0 ? centers[0] : null);
+    setCustomers(loadSavedCustomers());
     setTargetCenterForClient(target);
-    setNewClientForm({
-      first_name: '',
-      last_name: '',
-      nic: '',
-      phone: '',
-      whatsapp: '',
-      dob: '',
-      city: target?.city || 'Maharagama',
-      address: '',
-      civil_status: 'Single',
-      category: 'custom_order',
-      outstanding_balance: '',
-      notes: '',
-    });
     setClientSearchQuery('');
+    setClientFilterType('all');
+    setSelectedClientIds([]);
     setAssignmentFeedback(null);
-    setClientModalTab('new');
     setIsAddClientModalOpen(true);
   };
 
-  // Register brand new client to target center
-  const handleRegisterClientToCenter = (e) => {
-    e.preventDefault();
+  // Toggle single client selection for bulk assignment
+  const handleToggleSelectClient = (clientId) => {
+    setSelectedClientIds((prev) =>
+      prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]
+    );
+  };
+
+  // Select / Deselect all visible clients in filtered table
+  const handleSelectAllFilteredClients = (filteredList) => {
+    const visibleIds = filteredList.map((c) => c.id || c.nic || c.customer_id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedClientIds.includes(id));
+    if (allSelected) {
+      setSelectedClientIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedClientIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  // Assign a single existing client to target center
+  const handleAssignExistingClient = async (cust) => {
     if (!targetCenterForClient) {
       alert('Please select a regional center first.');
       return;
     }
 
-    // 1. Validate First Name
-    const fnCheck = validateName(newClientForm.first_name, 'First Name', true);
-    if (!fnCheck.isValid) {
-      alert(fnCheck.message);
-      return;
-    }
-    if (newClientForm.last_name) {
-      const lnCheck = validateName(newClientForm.last_name, 'Last Name', false);
-      if (!lnCheck.isValid) {
-        alert(lnCheck.message);
-        return;
-      }
-    }
+    const cleanNic = cust.nic || cust.customer_id;
+    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
+    const targetCenterCode = formatCenterCode(targetCenterForClient.center_code);
 
-    // 2. Validate NIC (Sri Lankan 9 digits + V/X or 12 digits)
-    const nicCheck = validateNic(newClientForm.nic, true);
-    if (!nicCheck.isValid) {
-      alert(`NIC Validation Error:\n${nicCheck.message}`);
-      return;
-    }
+    const isCurrentCenter =
+      String(cust.branch_code || '').trim().toUpperCase() === targetBranch &&
+      formatCenterCode(cust.center_code) === targetCenterCode;
 
-    // 3. Validate Phone Number (10 digits starting with 0)
-    const phoneCheck = validatePhone(newClientForm.phone, true);
-    if (!phoneCheck.isValid) {
-      alert(`Phone Number Validation Error:\n${phoneCheck.message}`);
-      return;
-    }
-
-    // 4. Validate WhatsApp (if entered)
-    if (newClientForm.whatsapp) {
-      const waCheck = validatePhone(newClientForm.whatsapp, false);
-      if (!waCheck.isValid) {
-        alert(`WhatsApp Number Validation Error:\n${waCheck.message}`);
-        return;
-      }
-    }
-
-    const cleanNic = nicCheck.cleanNic;
-    const cleanPhone = phoneCheck.cleanPhone;
-    const cleanWa = newClientForm.whatsapp ? validatePhone(newClientForm.whatsapp, false).cleanPhone : cleanPhone;
-
-    const existing = customers.find(
-      (c) =>
-        (c.nic && c.nic.trim().toUpperCase() === cleanNic) ||
-        (c.customer_id && c.customer_id.trim().toUpperCase() === cleanNic)
-    );
-
-    if (existing) {
-      const confirmReassign = window.confirm(
-        `Customer "${existing.name}" (NIC: ${cleanNic}) is already registered in the system (Current Center: ${existing.branch_code || 'None'}/${existing.center_code || 'None'}).\n\nDo you want to reassign this customer to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}?`
-      );
-      if (!confirmReassign) return;
-
-      const updated = customers.map((c) =>
-        c.id === existing.id
-          ? {
-              ...c,
-              branch_code: targetCenterForClient.branch_code,
-              center_code: targetCenterForClient.center_code,
-            }
-          : c
-      );
-      setCustomers(updated);
-      saveCustomersToStorage(updated);
+    if (isCurrentCenter) {
       setAssignmentFeedback({
-        type: 'success',
-        message: `Customer ${existing.name} (NIC: ${cleanNic}) successfully reassigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,
+        type: 'info',
+        message: `Client "${cust.name}" is already registered at ${targetBranch}/${targetCenterCode}.`,
       });
       return;
     }
 
-    const fullName = `${newClientForm.first_name || ''} ${newClientForm.last_name || ''}`.trim() || newClientForm.first_name;
-    const newRecord = {
-      id: `cust-${Date.now()}`,
-      customer_id: cleanNic,
-      branch_code: targetCenterForClient.branch_code,
-      center_code: targetCenterForClient.center_code,
-      contract_no: '1',
-      item_code: '',
-      first_name: newClientForm.first_name.trim(),
-      last_name: (newClientForm.last_name || '').trim(),
-      name: fullName,
-      civil_status: newClientForm.civil_status || 'Single',
-      dob: newClientForm.dob || '',
-      phone: cleanPhone,
-      whatsapp: cleanWa,
-      nic: cleanNic,
-      city: newClientForm.city || targetCenterForClient.city || 'Maharagama',
-      address: newClientForm.address || '',
-      category: newClientForm.category || 'custom_order',
-      outstanding_balance: Number(newClientForm.outstanding_balance) || 0,
-      total_spent: Number(newClientForm.outstanding_balance) || 0,
-      total_orders: 1,
-      notes: newClientForm.notes || '',
-      created_at: new Date().toISOString(),
+    if (cust.branch_code && cust.center_code) {
+      const confirmTransfer = window.confirm(
+        `Customer "${cust.name}" (NIC: ${cleanNic}) is currently assigned to ${cust.branch_code}/${cust.center_code}.\n\nDo you want to reassign/transfer this client to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name})?`
+      );
+      if (!confirmTransfer) return;
+    }
+
+    const updatedCust = {
+      ...cust,
+      branch_code: targetBranch,
+      center_code: targetCenterCode,
+      city: cust.city || targetCenterForClient.city || 'Maharagama',
     };
 
-    const updated = [newRecord, ...customers];
+    const freshList = loadSavedCustomers();
+    const updated = freshList.map((c) =>
+      (c.id && c.id === cust.id) || (c.nic && c.nic === cust.nic) || (c.customer_id && c.customer_id === cust.customer_id)
+        ? updatedCust
+        : c
+    );
+
     setCustomers(updated);
     saveCustomersToStorage(updated);
 
+    try {
+      await apiRequest(`/customers/${cust.id}`, {
+        method: 'PUT',
+        body: updatedCust,
+      });
+    } catch {
+      // Local storage fallback
+    }
+
     addLiveNotification({
-      title: `Client Registered at Center`,
-      desc: `${fullName} (NIC: ${cleanNic}) assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}.`,
+      title: `Client Assigned to Center`,
+      desc: `${cust.name} (NIC: ${cleanNic}) assigned to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name}).`,
       category: 'alerts',
-      type: 'info',
-      targetTab: 'center-directory',
+      type: 'success',
+      targetTab: 'centers',
     });
 
     setAssignmentFeedback({
       type: 'success',
-      message: `Client "${fullName}" (NIC: ${cleanNic}) successfully registered and assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,
-    });
-    // Reset form
-    setNewClientForm({
-      first_name: '',
-      last_name: '',
-      nic: '',
-      phone: '',
-      whatsapp: '',
-      dob: '',
-      city: targetCenterForClient.city || 'Maharagama',
-      address: '',
-      civil_status: 'Single',
-      category: 'custom_order',
-      outstanding_balance: '',
-      notes: '',
+      message: `Client "${cust.name}" (NIC: ${cleanNic}) successfully assigned to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name})!`,
     });
   };
 
-  // Assign existing client to target center
-  const handleAssignExistingClient = (cust) => {
-    if (!targetCenterForClient) return;
-    const cleanNic = cust.nic || cust.customer_id;
-    const updated = customers.map((c) =>
-      c.id === cust.id
-        ? {
-            ...c,
-            branch_code: targetCenterForClient.branch_code,
-            center_code: targetCenterForClient.center_code,
-          }
-        : c
-    );
+  // Bulk assign selected clients to target center
+  const handleBatchAssignClients = async () => {
+    if (!targetCenterForClient) {
+      alert('Please select a regional center first.');
+      return;
+    }
+    if (selectedClientIds.length === 0) {
+      alert('Please select at least one customer to assign.');
+      return;
+    }
+
+    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
+    const targetCenterCode = formatCenterCode(targetCenterForClient.center_code);
+
+    const freshList = loadSavedCustomers();
+    const updated = freshList.map((c) => {
+      const matchId = c.id || c.nic || c.customer_id;
+      if (selectedClientIds.includes(matchId) || selectedClientIds.includes(c.id) || selectedClientIds.includes(c.nic)) {
+        return {
+          ...c,
+          branch_code: targetBranch,
+          center_code: targetCenterCode,
+          city: c.city || targetCenterForClient.city || 'Maharagama',
+        };
+      }
+      return c;
+    });
+
     setCustomers(updated);
     saveCustomersToStorage(updated);
+
+    for (const custId of selectedClientIds) {
+      const found = updated.find((c) => c.id === custId || c.nic === custId || c.customer_id === custId);
+      if (found) {
+        try {
+          await apiRequest(`/customers/${found.id}`, { method: 'PUT', body: found });
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    addLiveNotification({
+      title: `${selectedClientIds.length} Clients Assigned`,
+      desc: `${selectedClientIds.length} client(s) assigned to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name}).`,
+      category: 'alerts',
+      type: 'success',
+      targetTab: 'centers',
+    });
+
     setAssignmentFeedback({
       type: 'success',
-      message: `Client "${cust.name}" (NIC: ${cleanNic}) successfully assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,
+      message: `Successfully assigned ${selectedClientIds.length} client(s) to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name})!`,
     });
+    setSelectedClientIds([]);
   };
 
   // Export Centers to CSV
@@ -2094,33 +2107,38 @@ export default function CentersPage({
       </Modal>
 
       {/* =========================================================
-          7. MODAL: ADD CLIENT TO REGIONAL CENTER
+          7. MODAL: ASSIGN CLIENTS TO REGIONAL CENTER
           ========================================================= */}
       <Modal
         isOpen={isAddClientModalOpen}
         onClose={() => {
           setIsAddClientModalOpen(false);
           setAssignmentFeedback(null);
+          setSelectedClientIds([]);
           if (onNavigate && initialOpenAddClient) {
             onNavigate('centers');
           }
         }}
-        title="Add Client to Regional Center"
+        title="Assign Client to Regional Center"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Target Center Selector */}
-          <div style={{ background: 'var(--ash-50)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--ash-200)' }}>
-            <label className="form-label" style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Building2 size={15} color="var(--primary)" /> Target Regional Center *
+          {/* Target Center Selector Card */}
+          <div style={{ background: 'var(--ash-50)', padding: '14px 16px', borderRadius: '12px', border: '1px solid var(--ash-200)' }}>
+            <label className="form-label" style={{ fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--ash-900)' }}>
+              <Building2 size={16} color="var(--primary)" /> Target Regional Center *
             </label>
             <select
               className="form-select-full"
               value={targetCenterForClient?.id || ''}
               onChange={(e) => {
                 const found = centers.find((c) => c.id === e.target.value);
-                if (found) setTargetCenterForClient(found);
+                if (found) {
+                  setTargetCenterForClient(found);
+                  setSelectedClientIds([]);
+                  setAssignmentFeedback(null);
+                }
               }}
-              style={{ fontWeight: 600 }}
+              style={{ fontWeight: 700, fontSize: '0.92rem', padding: '10px 12px' }}
             >
               {centers.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -2129,21 +2147,65 @@ export default function CentersPage({
               ))}
             </select>
             {targetCenterForClient && (
-              <div style={{ marginTop: '8px', fontSize: '0.78rem', color: 'var(--ash-600)', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-                <span>📍 Branch: <strong>{targetCenterForClient.branch_code}</strong></span>
-                <span>🏛️ Center Code: <strong>{targetCenterForClient.center_code}</strong></span>
-                <span>👤 Officer: <strong>{targetCenterForClient.contact_person || 'N/A'}</strong></span>
-                <span>👥 Registered Clients: <strong>{getCustomersForCenter(targetCenterForClient).length}</strong></span>
+              <div style={{ marginTop: '10px', fontSize: '0.8rem', color: 'var(--ash-600)', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span>📍 Branch: <strong style={{ color: 'var(--ash-800)' }}>{targetCenterForClient.branch_code}</strong></span>
+                <span>🏛️ Center Code: <strong style={{ color: 'var(--ash-800)' }}>{targetCenterForClient.center_code}</strong></span>
+                <span>👤 Officer: <strong style={{ color: 'var(--ash-800)' }}>{targetCenterForClient.contact_person || 'N/A'}</strong></span>
+                <span style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                  👥 Registered Clients: {modalClientCounts.inCenter}
+                </span>
               </div>
+            )}
+          </div>
+
+          {/* Quick Helper Note / Link to Customer Directory */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '10px 14px',
+            background: '#F8FAFC',
+            border: '1px solid #E2E8F0',
+            borderRadius: '8px',
+            fontSize: '0.8rem',
+            color: 'var(--ash-600)',
+            flexWrap: 'wrap',
+            gap: '8px',
+          }}>
+            <span>
+              ℹ️ Select registered customers from the system directory to link or transfer to this center.
+            </span>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddClientModalOpen(false);
+                  onNavigate('customers');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: 0,
+                  fontSize: '0.8rem',
+                }}
+              >
+                <Plus size={13} /> Add New Client to System First →
+              </button>
             )}
           </div>
 
           {/* Feedback Alert */}
           {assignmentFeedback && (
             <div style={{
-              background: '#DCFCE7',
-              border: '1px solid #86EFAC',
-              color: '#15803D',
+              background: assignmentFeedback.type === 'error' ? '#FEE2E2' : assignmentFeedback.type === 'info' ? '#EFF6FF' : '#DCFCE7',
+              border: `1px solid ${assignmentFeedback.type === 'error' ? '#FCA5A5' : assignmentFeedback.type === 'info' ? '#BFDBFE' : '#86EFAC'}`,
+              color: assignmentFeedback.type === 'error' ? '#B91C1C' : assignmentFeedback.type === 'info' ? '#1D4ED8' : '#15803D',
               padding: '10px 14px',
               borderRadius: '8px',
               fontSize: '0.84rem',
@@ -2152,359 +2214,258 @@ export default function CentersPage({
               justifyContent: 'space-between',
               gap: '8px',
             }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle size={16} /> {assignmentFeedback.message}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                {assignmentFeedback.type === 'error' ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
+                {assignmentFeedback.message}
               </span>
               <button
                 type="button"
                 onClick={() => setAssignmentFeedback(null)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#15803D' }}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}
               >
                 <X size={14} />
               </button>
             </div>
           )}
 
-          {/* Tab switcher: Register New vs Assign Existing */}
-          <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--ash-200)', paddingBottom: '10px' }}>
-            <button
-              type="button"
-              className={`btn ${clientModalTab === 'new' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '6px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-              onClick={() => {
-                setClientModalTab('new');
-                setAssignmentFeedback(null);
-              }}
-            >
-              <UserPlus size={14} /> Register New Client
-            </button>
-            <button
-              type="button"
-              className={`btn ${clientModalTab === 'existing' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '6px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-              onClick={() => {
-                setClientModalTab('existing');
-                setAssignmentFeedback(null);
-              }}
-            >
-              <Users size={14} /> Assign Existing Client ({customers.length})
-            </button>
-          </div>
-
-          {clientModalTab === 'new' ? (
-            <form onSubmit={handleRegisterClientToCenter}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>First Name *</span>
-                    {newClientForm.first_name && (
-                      <span className={`validation-status-pill ${validateName(newClientForm.first_name, 'First Name').isValid ? 'valid' : 'invalid'}`}>
-                        {validateName(newClientForm.first_name, 'First Name').isValid ? '✓ Valid' : 'Invalid'}
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    className={`form-input ${newClientForm.first_name ? (validateName(newClientForm.first_name, 'First Name').isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                    required
-                    placeholder="e.g. Sunil"
-                    value={newClientForm.first_name}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, first_name: e.target.value })}
-                  />
-                  {newClientForm.first_name && !validateName(newClientForm.first_name, 'First Name').isValid && (
-                    <div className="validation-hint error">
-                      <AlertCircle size={12} /> {validateName(newClientForm.first_name, 'First Name').message}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>Last Name</span>
-                    {newClientForm.last_name && (
-                      <span className={`validation-status-pill ${validateName(newClientForm.last_name, 'Last Name', false).isValid ? 'valid' : 'invalid'}`}>
-                        {validateName(newClientForm.last_name, 'Last Name', false).isValid ? '✓ Valid' : 'Invalid'}
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    className={`form-input ${newClientForm.last_name ? (validateName(newClientForm.last_name, 'Last Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                    placeholder="e.g. Jayawardena"
-                    value={newClientForm.last_name}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, last_name: e.target.value })}
-                  />
-                  {newClientForm.last_name && !validateName(newClientForm.last_name, 'Last Name', false).isValid && (
-                    <div className="validation-hint error">
-                      <AlertCircle size={12} /> {validateName(newClientForm.last_name, 'Last Name', false).message}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>NIC (National Identity Card) *</span>
-                    {newClientForm.nic && (
-                      <span className={`validation-status-pill ${validateNic(newClientForm.nic).isValid ? 'valid' : 'invalid'}`}>
-                        {validateNic(newClientForm.nic).isValid ? '✓ Valid NIC' : 'Invalid NIC'}
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    className={`form-input ${newClientForm.nic ? (validateNic(newClientForm.nic).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                    required
-                    maxLength={12}
-                    placeholder="e.g. 198512345678 or 851234567V"
-                    value={newClientForm.nic}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, nic: sanitizeNicInput(e.target.value) })}
-                  />
-                  <div
-                    className={`validation-hint ${newClientForm.nic ? (validateNic(newClientForm.nic).isValid ? 'success' : 'error') : ''}`}
-                    style={{ color: newClientForm.nic ? undefined : 'var(--text-muted)' }}
-                  >
-                    {newClientForm.nic ? (
-                      <>
-                        {validateNic(newClientForm.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                        <span>{validateNic(newClientForm.nic).message}</span>
-                      </>
-                    ) : (
-                      <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
-                    )}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>Phone Number *</span>
-                    {newClientForm.phone && (
-                      <span className={`validation-status-pill ${validatePhone(newClientForm.phone).isValid ? 'valid' : 'invalid'}`}>
-                        {validatePhone(newClientForm.phone).isValid ? '✓ 10 Digits' : `${newClientForm.phone.length}/10 Digits`}
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    type="tel"
-                    className={`form-input ${newClientForm.phone ? (validatePhone(newClientForm.phone).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                    required
-                    maxLength={10}
-                    placeholder="07XXXXXXXX (10 digits)"
-                    value={newClientForm.phone}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, phone: sanitizePhoneInput(e.target.value) })}
-                  />
-                  <div
-                    className={`validation-hint ${newClientForm.phone ? (validatePhone(newClientForm.phone).isValid ? 'success' : 'error') : ''}`}
-                    style={{ color: newClientForm.phone ? undefined : 'var(--text-muted)' }}
-                  >
-                    {newClientForm.phone ? (
-                      <>
-                        {validatePhone(newClientForm.phone).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                        <span>{validatePhone(newClientForm.phone).message}</span>
-                      </>
-                    ) : (
-                      <span>10 digits without letters, starting with 0</span>
-                    )}
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span>WhatsApp Number</span>
-                    {newClientForm.whatsapp && (
-                      <span className={`validation-status-pill ${validatePhone(newClientForm.whatsapp, false).isValid ? 'valid' : 'invalid'}`}>
-                        {validatePhone(newClientForm.whatsapp, false).isValid ? '✓ 10 Digits' : `${newClientForm.whatsapp.length}/10`}
-                      </span>
-                    )}
-                  </label>
-                  <input
-                    type="tel"
-                    className={`form-input ${newClientForm.whatsapp ? (validatePhone(newClientForm.whatsapp, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                    maxLength={10}
-                    placeholder="07XXXXXXXX (Optional)"
-                    value={newClientForm.whatsapp}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, whatsapp: sanitizePhoneInput(e.target.value) })}
-                  />
-                  {newClientForm.whatsapp && !validatePhone(newClientForm.whatsapp, false).isValid && (
-                    <div className="validation-hint error">
-                      <AlertTriangle size={12} /> {validatePhone(newClientForm.whatsapp, false).message}
-                    </div>
-                  )}
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Date of Birth</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    max={new Date().toISOString().split('T')[0]}
-                    value={newClientForm.dob}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, dob: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">City / Town</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="e.g. Maharagama"
-                    value={newClientForm.city}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, city: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Civil Status</label>
-                  <select
-                    className="form-select-full"
-                    value={newClientForm.civil_status}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, civil_status: e.target.value })}
-                  >
-                    <option value="Single">Single</option>
-                    <option value="Married">Married</option>
-                    <option value="Divorced">Divorced</option>
-                    <option value="Widowed">Widowed</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div className="form-group full-width">
-                  <label className="form-label">Full Delivery Address</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="House No, Street, Road, City"
-                    value={newClientForm.address}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, address: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Customer Category</label>
-                  <select
-                    className="form-select-full"
-                    value={newClientForm.category}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, category: e.target.value })}
-                  >
-                    <option value="custom_order">Custom Made Furniture</option>
-                    <option value="showroom">Showroom / Ready Stock</option>
-                    <option value="wholesale">Commercial / Wholesale</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Initial Outstanding Balance (LKR)</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    min="0"
-                    step="500"
-                    placeholder="0.00"
-                    value={newClientForm.outstanding_balance}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, outstanding_balance: e.target.value })}
-                  />
-                </div>
-                <div className="form-group full-width">
-                  <label className="form-label">Furniture Preferences & Notes</label>
-                  <textarea
-                    className="form-textarea"
-                    placeholder="e.g. Teak wood bedroom suite, showroom inquiries..."
-                    value={newClientForm.notes}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, notes: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-actions" style={{ marginTop: '18px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsAddClientModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <UserPlus size={16} /> Save & Register to Center
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div>
-              {/* Search Existing Clients */}
-              <div style={{ position: 'relative', marginBottom: '12px' }}>
-                <Search size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--ash-400)' }} />
+          {/* Search Bar & Filter Tabs */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
+                <Search size={15} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
                 <input
                   type="text"
                   className="form-input"
-                  style={{ paddingLeft: '36px' }}
-                  placeholder="Filter existing clients by name, NIC, or phone..."
+                  style={{ paddingLeft: '36px', height: '38px', fontSize: '0.84rem' }}
+                  placeholder="Filter clients by Name, NIC, Mobile, or Town..."
                   value={clientSearchQuery}
                   onChange={(e) => setClientSearchQuery(e.target.value)}
                 />
               </div>
 
-              <div style={{ maxHeight: '280px', overflowY: 'auto', border: '1px solid var(--ash-200)', borderRadius: '10px' }}>
-                <table className="custom-table" style={{ margin: 0, fontSize: '0.82rem' }}>
-                  <thead>
-                    <tr>
-                      <th>Client Name</th>
-                      <th>NIC</th>
-                      <th>Phone</th>
-                      <th>Current Center</th>
-                      <th style={{ textAlign: 'right' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customers
-                      .filter((c) => {
-                        if (!clientSearchQuery) return true;
-                        const q = clientSearchQuery.toLowerCase();
-                        return (
-                          (c.name && c.name.toLowerCase().includes(q)) ||
-                          (c.nic && c.nic.toLowerCase().includes(q)) ||
-                          (c.customer_id && c.customer_id.toLowerCase().includes(q)) ||
-                          (c.phone && c.phone.includes(q))
-                        );
-                      })
-                      .map((c) => {
-                        const isCurrentCenter =
-                          targetCenterForClient &&
-                          c.branch_code === targetCenterForClient.branch_code &&
-                          formatCenterCode(c.center_code) === formatCenterCode(targetCenterForClient.center_code);
-
-                        return (
-                          <tr key={c.id}>
-                            <td style={{ fontWeight: 600, color: 'var(--ash-900)' }}>{c.name}</td>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--primary)' }}>
-                              {c.nic || c.customer_id}
-                            </td>
-                            <td style={{ fontFamily: 'monospace' }}>{c.phone}</td>
-                            <td>
-                              <span style={{
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                fontSize: '0.72rem',
-                                background: isCurrentCenter ? '#DCFCE7' : 'var(--ash-100)',
-                                color: isCurrentCenter ? '#15803D' : 'var(--ash-700)',
-                                fontWeight: 600,
-                              }}>
-                                {c.branch_code && c.center_code ? `${c.branch_code}/${c.center_code}` : 'Unassigned'}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              {isCurrentCenter ? (
-                                <span style={{ fontSize: '0.74rem', color: '#16A34A', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                  <CheckCircle size={13} /> In Center
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn btn-primary"
-                                  style={{ padding: '3px 10px', fontSize: '0.74rem' }}
-                                  onClick={() => handleAssignExistingClient(c)}
-                                >
-                                  Assign Here
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+              {/* Quick Filter Pills */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`btn ${clientFilterType === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                  onClick={() => setClientFilterType('all')}
+                >
+                  All ({modalClientCounts.all})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${clientFilterType === 'other' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                  onClick={() => setClientFilterType('other')}
+                >
+                  To Assign ({modalClientCounts.other})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${clientFilterType === 'in_center' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                  onClick={() => setClientFilterType('in_center')}
+                >
+                  In Center ({modalClientCounts.inCenter})
+                </button>
               </div>
             </div>
-          )}
+
+            {/* Bulk Action Strip (Visible when checkboxes selected) */}
+            {selectedClientIds.length > 0 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: '0.82rem',
+              }}>
+                <span style={{ fontWeight: 700, color: '#1E40AF' }}>
+                  Selected {selectedClientIds.length} customer(s)
+                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '0.76rem' }}
+                    onClick={() => setSelectedClientIds([])}
+                  >
+                    Clear Selection
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ padding: '4px 12px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    onClick={handleBatchAssignClients}
+                  >
+                    <UserPlus size={14} /> Assign Selected ({selectedClientIds.length}) to {targetCenterForClient?.branch_code}/{targetCenterForClient?.center_code}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Existing Clients Directory Table */}
+          <div style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid var(--ash-200)', borderRadius: '10px' }}>
+            <table className="custom-table" style={{ margin: 0, fontSize: '0.82rem', width: '100%' }}>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--ash-100)', zIndex: 1 }}>
+                <tr>
+                  <th style={{ width: '38px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredClientsForModal.length > 0 &&
+                        filteredClientsForModal.every((c) => selectedClientIds.includes(c.id || c.nic || c.customer_id))
+                      }
+                      onChange={() => handleSelectAllFilteredClients(filteredClientsForModal)}
+                      title="Select all visible"
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
+                  <th>Client Information</th>
+                  <th>NIC Identification</th>
+                  <th>Mobile Phone</th>
+                  <th>Current Center</th>
+                  <th style={{ textAlign: 'right' }}>Assignment Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredClientsForModal.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--ash-500)' }}>
+                      No customers match the current filter or search query.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredClientsForModal.map((c) => {
+                    const clientKey = c.id || c.nic || c.customer_id;
+                    const isSelected = selectedClientIds.includes(clientKey) || (c.id && selectedClientIds.includes(c.id)) || (c.nic && selectedClientIds.includes(c.nic));
+                    const targetBranch = String(targetCenterForClient?.branch_code || '').trim().toUpperCase();
+                    const targetCenter = formatCenterCode(targetCenterForClient?.center_code);
+
+                    const cBranch = String(c.branch_code || '').trim().toUpperCase();
+                    const cCenter = formatCenterCode(c.center_code);
+                    const isCurrentCenter = targetCenterForClient && cBranch === targetBranch && cCenter === targetCenter;
+
+                    return (
+                      <tr
+                        key={clientKey}
+                        style={{
+                          background: isSelected ? '#EFF6FF' : isCurrentCenter ? '#F0FDF4' : undefined,
+                        }}
+                      >
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectClient(clientKey)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, color: 'var(--ash-900)' }}>{c.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
+                            {c.city ? `📍 ${c.city}` : ''} {c.address ? `• ${c.address}` : ''}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            color: 'var(--primary)',
+                            background: 'var(--ash-100)',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '0.76rem',
+                          }}>
+                            {c.nic || c.customer_id || 'N/A'}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 600 }}>{c.phone || 'N/A'}</div>
+                          {c.whatsapp && c.whatsapp !== c.phone && (
+                            <div style={{ fontSize: '0.7rem', color: '#16A34A' }}>WA: {c.whatsapp}</div>
+                          )}
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '0.74rem',
+                              background: isCurrentCenter ? '#DCFCE7' : c.branch_code && c.center_code ? '#FEF3C7' : '#F1F5F9',
+                              color: isCurrentCenter ? '#15803D' : c.branch_code && c.center_code ? '#B45309' : '#64748B',
+                              fontWeight: 700,
+                              display: 'inline-block',
+                            }}
+                          >
+                            {c.branch_code && c.center_code ? `${c.branch_code}/${c.center_code}` : 'Unassigned'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {isCurrentCenter ? (
+                            <span
+                              style={{
+                                fontSize: '0.76rem',
+                                color: '#16A34A',
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#DCFCE7',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                              }}
+                            >
+                              <CheckCircle size={14} /> In This Center
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{
+                                padding: '5px 12px',
+                                fontSize: '0.75rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: 700,
+                              }}
+                              onClick={() => handleAssignExistingClient(c)}
+                            >
+                              <UserPlus size={13} /> Assign Here
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Modal Footer Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--ash-200)' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setIsAddClientModalOpen(false);
+                setAssignmentFeedback(null);
+                setSelectedClientIds([]);
+                if (onNavigate && initialOpenAddClient) {
+                  onNavigate('centers');
+                }
+              }}
+            >
+              Done / Close
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

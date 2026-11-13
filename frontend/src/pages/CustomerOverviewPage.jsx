@@ -84,7 +84,11 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
       setPayments(loadSavedPayments());
     };
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('dnd_customers_updated', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('dnd_customers_updated', handleStorage);
+    };
   }, []);
 
   // Helper to match all orders belonging to any customer record

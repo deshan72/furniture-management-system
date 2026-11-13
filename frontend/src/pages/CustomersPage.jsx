@@ -278,6 +278,19 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     }
   };
 
+  // Sync external customer changes (from Centers or Overview page)
+  useEffect(() => {
+    const handleCustomerSync = () => {
+      setCustomers(loadSavedCustomers());
+    };
+    window.addEventListener('storage', handleCustomerSync);
+    window.addEventListener('dnd_customers_updated', handleCustomerSync);
+    return () => {
+      window.removeEventListener('storage', handleCustomerSync);
+      window.removeEventListener('dnd_customers_updated', handleCustomerSync);
+    };
+  }, []);
+
   // Save to localStorage whenever customers change
   useEffect(() => {
     try {
