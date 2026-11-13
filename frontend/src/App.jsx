@@ -21,8 +21,33 @@ import { loadSavedCenters } from './utils/centersData';
 import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 import { getAuthenticatedUser, logoutUser } from './utils/authData';
 
+// Helper to determine initial active tab on page load/refresh
+const getInitialActiveTab = () => {
+  try {
+    // 1. Check URL hash (e.g., #/products, #/orders, #/customer-overview)
+    if (window.location.hash) {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      if (hash) return hash;
+    }
+
+    // 2. Check URL search param (e.g., ?tab=products)
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam) return tabParam.trim();
+
+    // 3. Check localStorage
+    const saved = localStorage.getItem('dnd_active_tab');
+    if (saved && saved.trim()) {
+      return saved.trim();
+    }
+  } catch (err) {
+    console.warn('Error determining initial active tab:', err);
+  }
+  return 'dashboard';
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => getInitialActiveTab());
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Active Authenticated User State
@@ -32,7 +57,37 @@ export default function App() {
   const handleLogout = () => {
     logoutUser();
     setCurrentUser(null);
+    try {
+      localStorage.removeItem('dnd_active_tab');
+      window.history.replaceState(null, '', '#/dashboard');
+    } catch {}
+    setActiveTab('dashboard');
   };
+
+  // Persist activeTab to localStorage and URL hash so refreshes stay on the exact page
+  useEffect(() => {
+    try {
+      localStorage.setItem('dnd_active_tab', activeTab);
+      const currentHash = window.location.hash.replace(/^#\/?/, '').trim();
+      if (currentHash !== activeTab) {
+        window.history.replaceState(null, '', `#/${activeTab}`);
+      }
+    } catch (err) {
+      console.warn('Failed syncing activeTab to history/storage:', err);
+    }
+  }, [activeTab]);
+
+  // Listen to browser Back / Forward buttons and hash changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      if (hash && hash !== activeTab) {
+        setActiveTab(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
 
   // One-click role switch handler
   const handleSwitchRole = (newRole) => {
@@ -450,7 +505,8 @@ export default function App() {
       <LoginPage
         onLoginSuccess={(user) => {
           setCurrentUser(user);
-          setActiveTab('dashboard');
+          const target = getInitialActiveTab();
+          setActiveTab(target || 'dashboard');
         }}
       />
     );
