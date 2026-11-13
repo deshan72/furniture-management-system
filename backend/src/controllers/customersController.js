@@ -15,6 +15,7 @@ function serializeCustomerToDb(raw) {
     dob: raw.dob || '',
     cat: raw.category || 'custom_order',
     fn: raw.first_name || '',
+    mn: raw.middle_name || '',
     ln: raw.last_name || '',
     orders: Number(raw.total_orders) || 1,
     spent: Number(raw.total_spent) || 0,
@@ -69,7 +70,8 @@ function deserializeCustomerFromDb(row) {
   const fullName = row.name || '';
   const nameParts = fullName.split(' ');
   const firstName = meta.fn || nameParts[0] || '';
-  const lastName = meta.ln || nameParts.slice(1).join(' ') || '';
+  const middleName = meta.mn || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '');
+  const lastName = meta.ln || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '');
 
   return {
     ...row,
@@ -79,6 +81,7 @@ function deserializeCustomerFromDb(row) {
     contract_no: meta.orders ? String(meta.orders) : '1',
     item_code: '',
     first_name: firstName,
+    middle_name: middleName,
     last_name: lastName,
     civil_status: meta.cs || 'Single',
     dob: meta.dob || '',

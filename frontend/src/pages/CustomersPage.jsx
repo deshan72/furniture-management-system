@@ -134,6 +134,7 @@ const migrateCustomerRecord = (c) => {
   const seed = (c.id && SAMPLE_MIGRATION_MAP[c.id]) || (cleanNic && SAMPLE_MIGRATION_NIC_MAP[cleanNic]) || {};
   const customerId = cleanNic || c.customer_id || '';
   const derivedCity = c.city || seed.city || (c.address ? c.address.split(',').pop().trim() : 'Maharagama');
+  const nameParts = (c.name || '').trim().split(/\s+/).filter(Boolean);
 
   return {
     ...c,
@@ -142,8 +143,9 @@ const migrateCustomerRecord = (c) => {
     city: derivedCity,
     customer_id: customerId,
     nic: cleanNic || c.nic || '',
-    first_name: c.first_name || (c.name ? c.name.split(' ')[0] : ''),
-    last_name: c.last_name || (c.name ? c.name.split(' ').slice(1).join(' ') : ''),
+    first_name: c.first_name || (nameParts[0] || ''),
+    middle_name: c.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : ''),
+    last_name: c.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : ''),
     civil_status: c.civil_status || 'Single',
     dob: c.dob || '',
   };
@@ -241,6 +243,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     photo: '',
     image_url: '',
     first_name: '',
+    middle_name: '',
     last_name: '',
     name: '',
     civil_status: 'Single',
@@ -251,7 +254,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     city: 'Maharagama',
     address: '',
     category: 'custom_order',
-    outstanding_balance: '',
+    outstanding_balance: 0,
     notes: '',
   });
 
@@ -483,6 +486,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       photo: '',
       image_url: '',
       first_name: '',
+      middle_name: '',
       last_name: '',
       name: '',
       civil_status: 'Single',
@@ -568,11 +572,18 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   const handleAddCustomer = async (e) => {
     e.preventDefault();
 
-    // 1. Validate First Name
+    // 1. Validate First Name, Middle Name, Last Name
     const fnCheck = validateName(newCustomer.first_name || newCustomer.name, 'First Name', true);
     if (!fnCheck.isValid) {
       alert(fnCheck.message);
       return;
+    }
+    if (newCustomer.middle_name) {
+      const mnCheck = validateName(newCustomer.middle_name, 'Middle Name', false);
+      if (!mnCheck.isValid) {
+        alert(mnCheck.message);
+        return;
+      }
     }
     if (newCustomer.last_name) {
       const lnCheck = validateName(newCustomer.last_name, 'Last Name', false);
@@ -605,19 +616,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       }
     }
 
-    // 5. Validate Outstanding Balance
-    if (newCustomer.outstanding_balance) {
-      const balCheck = validateAmount(newCustomer.outstanding_balance, 'Initial Outstanding Balance');
-      if (!balCheck.isValid) {
-        alert(balCheck.message);
-        return;
-      }
-    }
-
     const cleanNic = nicCheck.cleanNic;
     const cleanPhone = phoneCheck.cleanPhone;
     const cleanWa = newCustomer.whatsapp ? validatePhone(newCustomer.whatsapp, false).cleanPhone : cleanPhone;
-    const fullName = `${newCustomer.first_name || ''} ${newCustomer.last_name || ''}`.trim() || newCustomer.name;
+    const nameParts = [newCustomer.first_name, newCustomer.middle_name, newCustomer.last_name].filter(Boolean);
+    const fullName = nameParts.join(' ').trim() || newCustomer.name;
 
     // Check if customer with this NIC already exists
     const existingWithNic = customers.find(
@@ -649,6 +652,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       photo: newCustomer.photo || newCustomer.image_url || '',
       image_url: newCustomer.photo || newCustomer.image_url || '',
       first_name: newCustomer.first_name || '',
+      middle_name: newCustomer.middle_name || '',
       last_name: newCustomer.last_name || '',
       name: fullName,
       civil_status: newCustomer.civil_status || 'Single',
@@ -658,11 +662,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       nic: cleanNic,
       city: newCustomer.city || 'Maharagama',
       address: newCustomer.address || '',
-      category: newCustomer.category || 'custom_order',
-      outstanding_balance: Number(newCustomer.outstanding_balance) || 0,
-      total_spent: Number(newCustomer.outstanding_balance) || 0,
+      category: 'custom_order',
+      outstanding_balance: 0,
+      total_spent: 0,
       total_orders: totalOrders,
-      notes: newCustomer.notes || '',
+      notes: '',
       created_at: new Date().toISOString(),
     };
 
@@ -706,6 +710,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       photo: '',
       image_url: '',
       first_name: '',
+      middle_name: '',
       last_name: '',
       name: '',
       civil_status: 'Single',
@@ -716,7 +721,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       city: 'Maharagama',
       address: '',
       category: 'custom_order',
-      outstanding_balance: '',
+      outstanding_balance: 0,
       notes: '',
     });
   };
@@ -964,11 +969,20 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Open Edit Customer Modal
   const handleOpenEdit = (customer) => {
     let firstName = customer.first_name || '';
+    let middleName = customer.middle_name || '';
     let lastName = customer.last_name || '';
     if (!firstName && customer.name) {
       const parts = customer.name.split(' ');
-      firstName = parts[0] || '';
-      lastName = parts.slice(1).join(' ') || '';
+      if (parts.length === 1) {
+        firstName = parts[0] || '';
+      } else if (parts.length === 2) {
+        firstName = parts[0] || '';
+        lastName = parts[1] || '';
+      } else {
+        firstName = parts[0] || '';
+        middleName = parts.slice(1, -1).join(' ') || '';
+        lastName = parts[parts.length - 1] || '';
+      }
     }
     const cleanNic = customer.nic ? String(customer.nic).trim().toUpperCase() : (customer.customer_id || '');
     setEditingCustomer({
@@ -978,8 +992,9 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       customer_id: cleanNic,
       nic: cleanNic,
       first_name: firstName,
+      middle_name: middleName,
       last_name: lastName,
-      name: customer.name || `${firstName} ${lastName}`.trim(),
+      name: customer.name || [firstName, middleName, lastName].filter(Boolean).join(' ').trim(),
       civil_status: customer.civil_status || 'Single',
       dob: customer.dob || '',
       branch_code: customer.branch_code || 'MHG',
@@ -992,11 +1007,18 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   const handleUpdateCustomer = async (e) => {
     e.preventDefault();
 
-    // 1. Validate First Name & Last Name
+    // 1. Validate First Name, Middle Name (optional) & Last Name (optional)
     const fnCheck = validateName(editingCustomer.first_name || editingCustomer.name, 'First Name', true);
     if (!fnCheck.isValid) {
       alert(fnCheck.message);
       return;
+    }
+    if (editingCustomer.middle_name) {
+      const mnCheck = validateName(editingCustomer.middle_name, 'Middle Name', false);
+      if (!mnCheck.isValid) {
+        alert(mnCheck.message);
+        return;
+      }
     }
     if (editingCustomer.last_name) {
       const lnCheck = validateName(editingCustomer.last_name, 'Last Name', false);
@@ -1029,19 +1051,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       }
     }
 
-    // 5. Validate Outstanding Balance
-    if (editingCustomer.outstanding_balance) {
-      const balCheck = validateAmount(editingCustomer.outstanding_balance, 'Outstanding Balance');
-      if (!balCheck.isValid) {
-        alert(balCheck.message);
-        return;
-      }
-    }
-
     const cleanNic = nicCheck.cleanNic;
     const cleanPhone = phoneCheck.cleanPhone;
     const cleanWa = editingCustomer.whatsapp ? validatePhone(editingCustomer.whatsapp, false).cleanPhone : cleanPhone;
-    const fullName = `${editingCustomer.first_name || ''} ${editingCustomer.last_name || ''}`.trim() || editingCustomer.name;
+    const nameParts = [editingCustomer.first_name, editingCustomer.middle_name, editingCustomer.last_name].filter(Boolean);
+    const fullName = nameParts.join(' ').trim() || editingCustomer.name;
 
     if (
       customers.some(
@@ -1059,6 +1073,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       image_url: editingCustomer.photo || editingCustomer.image_url || '',
       name: fullName,
       first_name: editingCustomer.first_name || '',
+      middle_name: editingCustomer.middle_name || '',
       last_name: editingCustomer.last_name || '',
       customer_id: cleanNic,
       nic: cleanNic,
@@ -1968,7 +1983,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               </div>
             </div>
 
-            {/* Row 1: First Name & Last Name */}
+            {/* Row 1: First Name & Middle Name */}
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>First Name *</span>
@@ -1986,10 +2001,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={newCustomer.first_name || ''}
                 onChange={(e) => {
                   const fn = e.target.value;
+                  const fullName = [fn, newCustomer.middle_name, newCustomer.last_name].filter(Boolean).join(' ');
                   setNewCustomer({
                     ...newCustomer,
                     first_name: fn,
-                    name: `${fn} ${newCustomer.last_name || ''}`.trim(),
+                    name: fullName,
                   });
                 }}
               />
@@ -2000,6 +2016,38 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               )}
             </div>
 
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Middle Name</span>
+                {newCustomer.middle_name && (
+                  <span className={`validation-status-pill ${validateName(newCustomer.middle_name, 'Middle Name', false).isValid ? 'valid' : 'invalid'}`}>
+                    {validateName(newCustomer.middle_name, 'Middle Name', false).isValid ? '✓ Valid' : 'Invalid'}
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                className={`form-input ${newCustomer.middle_name ? (validateName(newCustomer.middle_name, 'Middle Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                placeholder="e.g. Ananda (Optional)"
+                value={newCustomer.middle_name || ''}
+                onChange={(e) => {
+                  const mn = e.target.value;
+                  const fullName = [newCustomer.first_name, mn, newCustomer.last_name].filter(Boolean).join(' ');
+                  setNewCustomer({
+                    ...newCustomer,
+                    middle_name: mn,
+                    name: fullName,
+                  });
+                }}
+              />
+              {newCustomer.middle_name && !validateName(newCustomer.middle_name, 'Middle Name', false).isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validateName(newCustomer.middle_name, 'Middle Name', false).message}
+                </div>
+              )}
+            </div>
+
+            {/* Row 2: Last Name & Date of Birth */}
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>Last Name</span>
@@ -2016,10 +2064,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={newCustomer.last_name || ''}
                 onChange={(e) => {
                   const ln = e.target.value;
+                  const fullName = [newCustomer.first_name, newCustomer.middle_name, ln].filter(Boolean).join(' ');
                   setNewCustomer({
                     ...newCustomer,
                     last_name: ln,
-                    name: `${newCustomer.first_name || ''} ${ln}`.trim(),
+                    name: fullName,
                   });
                 }}
               />
@@ -2030,7 +2079,18 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               )}
             </div>
 
-            {/* Row 2: NIC & Phone Number */}
+            <div className="form-group">
+              <label className="form-label">Date of Birth</label>
+              <input
+                type="date"
+                className="form-input"
+                max={new Date().toISOString().split('T')[0]}
+                value={newCustomer.dob || ''}
+                onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
+              />
+            </div>
+
+            {/* Row 3: NIC & Phone Number */}
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>NIC (National Identity Card) *</span>
@@ -2115,7 +2175,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               </div>
             </div>
 
-            {/* Row 3: WhatsApp Number & Date of Birth */}
+            {/* Row 4: WhatsApp Number & Assigned Center */}
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>WhatsApp Number</span>
@@ -2141,18 +2201,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Date of Birth</label>
-              <input
-                type="date"
-                className="form-input"
-                max={new Date().toISOString().split('T')[0]}
-                value={newCustomer.dob || ''}
-                onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
-              />
-            </div>
-
-            {/* Row 4: Assigned Center & Customer Category */}
-            <div className="form-group">
               <label className="form-label">Assigned Center</label>
               <select
                 className="form-select-full"
@@ -2174,19 +2222,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                     </option>
                   );
                 })}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Customer Category</label>
-              <select
-                className="form-select-full"
-                value={newCustomer.category || 'custom_order'}
-                onChange={(e) => setNewCustomer({ ...newCustomer, category: e.target.value })}
-              >
-                <option value="custom_order">Custom Made Furniture</option>
-                <option value="showroom">Showroom / Ready Stock</option>
-                <option value="wholesale">Commercial / Wholesale</option>
               </select>
             </div>
 
@@ -2226,31 +2261,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 placeholder="House No, Street, Road, City"
                 value={newCustomer.address || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
-              />
-            </div>
-
-            {/* Row 7: Initial Outstanding Balance */}
-            <div className="form-group full-width">
-              <label className="form-label">Initial Outstanding Balance (LKR)</label>
-              <input
-                type="number"
-                className="form-input"
-                placeholder="0.00"
-                min="0"
-                step="500"
-                value={newCustomer.outstanding_balance ?? ''}
-                onChange={(e) => setNewCustomer({ ...newCustomer, outstanding_balance: e.target.value })}
-              />
-            </div>
-
-            {/* Row 8: Notes */}
-            <div className="form-group full-width">
-              <label className="form-label">Wood / Furniture Preferences & Notes</label>
-              <textarea
-                className="form-textarea"
-                placeholder="e.g., Requested Teak wood living room suite, delivery promised for October 25th."
-                value={newCustomer.notes || ''}
-                onChange={(e) => setNewCustomer({ ...newCustomer, notes: e.target.value })}
               />
             </div>
           </div>
@@ -2658,294 +2668,285 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               </div>
             </div>
 
-            {/* Row 1: First Name & Last Name */}
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>First Name *</span>
-                  {editingCustomer.first_name && (
-                    <span className={`validation-status-pill ${validateName(editingCustomer.first_name, 'First Name').isValid ? 'valid' : 'invalid'}`}>
-                      {validateName(editingCustomer.first_name, 'First Name').isValid ? '✓ Valid' : 'Invalid'}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  className={`form-input ${editingCustomer.first_name ? (validateName(editingCustomer.first_name, 'First Name').isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                  required
-                  placeholder="e.g. Sunil"
-                  value={editingCustomer.first_name || ''}
-                  onChange={(e) => {
-                    const fn = e.target.value;
-                    setEditingCustomer({
-                      ...editingCustomer,
-                      first_name: fn,
-                      name: `${fn} ${editingCustomer.last_name || ''}`.trim(),
-                    });
-                  }}
-                />
-                {editingCustomer.first_name && !validateName(editingCustomer.first_name, 'First Name').isValid && (
-                  <div className="validation-hint error">
-                    <AlertCircle size={12} /> {validateName(editingCustomer.first_name, 'First Name').message}
-                  </div>
+            {/* Row 1: First Name & Middle Name */}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>First Name *</span>
+                {editingCustomer.first_name && (
+                  <span className={`validation-status-pill ${validateName(editingCustomer.first_name, 'First Name').isValid ? 'valid' : 'invalid'}`}>
+                    {validateName(editingCustomer.first_name, 'First Name').isValid ? '✓ Valid' : 'Invalid'}
+                  </span>
                 )}
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Last Name</span>
-                  {editingCustomer.last_name && (
-                    <span className={`validation-status-pill ${validateName(editingCustomer.last_name, 'Last Name', false).isValid ? 'valid' : 'invalid'}`}>
-                      {validateName(editingCustomer.last_name, 'Last Name', false).isValid ? '✓ Valid' : 'Invalid'}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  className={`form-input ${editingCustomer.last_name ? (validateName(editingCustomer.last_name, 'Last Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                  placeholder="e.g. Jayawardena"
-                  value={editingCustomer.last_name || ''}
-                  onChange={(e) => {
-                    const ln = e.target.value;
-                    setEditingCustomer({
-                      ...editingCustomer,
-                      last_name: ln,
-                      name: `${editingCustomer.first_name || ''} ${ln}`.trim(),
-                    });
-                  }}
-                />
-                {editingCustomer.last_name && !validateName(editingCustomer.last_name, 'Last Name', false).isValid && (
-                  <div className="validation-hint error">
-                    <AlertCircle size={12} /> {validateName(editingCustomer.last_name, 'Last Name', false).message}
-                  </div>
-                )}
-              </div>
-
-              {/* Row 2: NIC & Phone Number */}
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>NIC (National Identity Card) *</span>
-                  {editingCustomer.nic && (
-                    <span className={`validation-status-pill ${validateNic(editingCustomer.nic).isValid ? 'valid' : 'invalid'}`}>
-                      {validateNic(editingCustomer.nic).isValid ? '✓ Valid NIC' : 'Invalid NIC'}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  className={`form-input ${editingCustomer.nic ? (validateNic(editingCustomer.nic).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                  required
-                  maxLength={12}
-                  placeholder="e.g. 198512345678 or 851234567V"
-                  value={editingCustomer.nic || ''}
-                  onChange={(e) => {
-                    const val = sanitizeNicInput(e.target.value);
-                    setEditingCustomer({
-                      ...editingCustomer,
-                      nic: val,
-                      customer_id: val.trim().toUpperCase(),
-                    });
-                  }}
-                />
-                <div
-                  className={`validation-hint ${editingCustomer.nic ? (validateNic(editingCustomer.nic).isValid ? 'success' : 'error') : ''}`}
-                  style={{ color: editingCustomer.nic ? undefined : 'var(--text-muted)' }}
-                >
-                  {editingCustomer.nic ? (
-                    <>
-                      {validateNic(editingCustomer.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                      <span>{validateNic(editingCustomer.nic).message}</span>
-                    </>
-                  ) : (
-                    <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
-                  )}
+              </label>
+              <input
+                type="text"
+                className={`form-input ${editingCustomer.first_name ? (validateName(editingCustomer.first_name, 'First Name').isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                required
+                placeholder="e.g. Sunil"
+                value={editingCustomer.first_name || ''}
+                onChange={(e) => {
+                  const fn = e.target.value;
+                  const fullName = [fn, editingCustomer.middle_name, editingCustomer.last_name].filter(Boolean).join(' ');
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    first_name: fn,
+                    name: fullName,
+                  });
+                }}
+              />
+              {editingCustomer.first_name && !validateName(editingCustomer.first_name, 'First Name').isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validateName(editingCustomer.first_name, 'First Name').message}
                 </div>
-              </div>
+              )}
+            </div>
 
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Phone Number *</span>
-                  {editingCustomer.phone && (
-                    <span className={`validation-status-pill ${validatePhone(editingCustomer.phone).isValid ? 'valid' : 'invalid'}`}>
-                      {validatePhone(editingCustomer.phone).isValid ? '✓ 10 Digits' : `${editingCustomer.phone.length}/10 Digits`}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="tel"
-                  className={`form-input ${editingCustomer.phone ? (validatePhone(editingCustomer.phone).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                  required
-                  maxLength={10}
-                  placeholder="07XXXXXXXX (10 digits)"
-                  value={editingCustomer.phone || ''}
-                  onChange={(e) =>
-                    setEditingCustomer({
-                      ...editingCustomer,
-                      phone: sanitizePhoneInput(e.target.value),
-                    })
-                  }
-                />
-                <div
-                  className={`validation-hint ${editingCustomer.phone ? (validatePhone(editingCustomer.phone).isValid ? 'success' : 'error') : ''}`}
-                  style={{ color: editingCustomer.phone ? undefined : 'var(--text-muted)' }}
-                >
-                  {editingCustomer.phone ? (
-                    <>
-                      {validatePhone(editingCustomer.phone).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                      <span>{validatePhone(editingCustomer.phone).message}</span>
-                    </>
-                  ) : (
-                    <span>10 digits without letters, starting with 0 (e.g. 077XXXXXXX)</span>
-                  )}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Middle Name</span>
+                {editingCustomer.middle_name && (
+                  <span className={`validation-status-pill ${validateName(editingCustomer.middle_name, 'Middle Name', false).isValid ? 'valid' : 'invalid'}`}>
+                    {validateName(editingCustomer.middle_name, 'Middle Name', false).isValid ? '✓ Valid' : 'Invalid'}
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                className={`form-input ${editingCustomer.middle_name ? (validateName(editingCustomer.middle_name, 'Middle Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                placeholder="e.g. Ananda (Optional)"
+                value={editingCustomer.middle_name || ''}
+                onChange={(e) => {
+                  const mn = e.target.value;
+                  const fullName = [editingCustomer.first_name, mn, editingCustomer.last_name].filter(Boolean).join(' ');
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    middle_name: mn,
+                    name: fullName,
+                  });
+                }}
+              />
+              {editingCustomer.middle_name && !validateName(editingCustomer.middle_name, 'Middle Name', false).isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validateName(editingCustomer.middle_name, 'Middle Name', false).message}
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Row 3: WhatsApp Number & Date of Birth */}
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>WhatsApp Number</span>
-                  {editingCustomer.whatsapp && (
-                    <span className={`validation-status-pill ${validatePhone(editingCustomer.whatsapp, false).isValid ? 'valid' : 'invalid'}`}>
-                      {validatePhone(editingCustomer.whatsapp, false).isValid ? '✓ 10 Digits' : `${editingCustomer.whatsapp.length}/10`}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="tel"
-                  className={`form-input ${editingCustomer.whatsapp ? (validatePhone(editingCustomer.whatsapp, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
-                  maxLength={10}
-                  placeholder="07XXXXXXXX (Optional)"
-                  value={editingCustomer.whatsapp || ''}
-                  onChange={(e) =>
-                    setEditingCustomer({
-                      ...editingCustomer,
-                      whatsapp: sanitizePhoneInput(e.target.value),
-                    })
-                  }
-                />
-                {editingCustomer.whatsapp && !validatePhone(editingCustomer.whatsapp, false).isValid && (
-                  <div className="validation-hint error">
-                    <AlertTriangle size={12} /> {validatePhone(editingCustomer.whatsapp, false).message}
-                  </div>
+            {/* Row 2: Last Name & Date of Birth */}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Last Name</span>
+                {editingCustomer.last_name && (
+                  <span className={`validation-status-pill ${validateName(editingCustomer.last_name, 'Last Name', false).isValid ? 'valid' : 'invalid'}`}>
+                    {validateName(editingCustomer.last_name, 'Last Name', false).isValid ? '✓ Valid' : 'Invalid'}
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                className={`form-input ${editingCustomer.last_name ? (validateName(editingCustomer.last_name, 'Last Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                placeholder="e.g. Jayawardena"
+                value={editingCustomer.last_name || ''}
+                onChange={(e) => {
+                  const ln = e.target.value;
+                  const fullName = [editingCustomer.first_name, editingCustomer.middle_name, ln].filter(Boolean).join(' ');
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    last_name: ln,
+                    name: fullName,
+                  });
+                }}
+              />
+              {editingCustomer.last_name && !validateName(editingCustomer.last_name, 'Last Name', false).isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validateName(editingCustomer.last_name, 'Last Name', false).message}
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Date of Birth</label>
+              <input
+                type="date"
+                className="form-input"
+                max={new Date().toISOString().split('T')[0]}
+                value={editingCustomer.dob || ''}
+                onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
+              />
+            </div>
+
+            {/* Row 3: NIC & Phone Number */}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>NIC (National Identity Card) *</span>
+                {editingCustomer.nic && (
+                  <span className={`validation-status-pill ${validateNic(editingCustomer.nic).isValid ? 'valid' : 'invalid'}`}>
+                    {validateNic(editingCustomer.nic).isValid ? '✓ Valid NIC' : 'Invalid NIC'}
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                className={`form-input ${editingCustomer.nic ? (validateNic(editingCustomer.nic).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                required
+                maxLength={12}
+                placeholder="e.g. 198512345678 or 851234567V"
+                value={editingCustomer.nic || ''}
+                onChange={(e) => {
+                  const val = sanitizeNicInput(e.target.value);
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    nic: val,
+                    customer_id: val.trim().toUpperCase(),
+                  });
+                }}
+              />
+              <div
+                className={`validation-hint ${editingCustomer.nic ? (validateNic(editingCustomer.nic).isValid ? 'success' : 'error') : ''}`}
+                style={{ color: editingCustomer.nic ? undefined : 'var(--text-muted)' }}
+              >
+                {editingCustomer.nic ? (
+                  <>
+                    {validateNic(editingCustomer.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                    <span>{validateNic(editingCustomer.nic).message}</span>
+                  </>
+                ) : (
+                  <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
                 )}
               </div>
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">Date of Birth</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  max={new Date().toISOString().split('T')[0]}
-                  value={editingCustomer.dob || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
-                />
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Phone Number *</span>
+                {editingCustomer.phone && (
+                  <span className={`validation-status-pill ${validatePhone(editingCustomer.phone).isValid ? 'valid' : 'invalid'}`}>
+                    {validatePhone(editingCustomer.phone).isValid ? '✓ 10 Digits' : `${editingCustomer.phone.length}/10 Digits`}
+                  </span>
+                )}
+              </label>
+              <input
+                type="tel"
+                className={`form-input ${editingCustomer.phone ? (validatePhone(editingCustomer.phone).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                required
+                maxLength={10}
+                placeholder="07XXXXXXXX (10 digits)"
+                value={editingCustomer.phone || ''}
+                onChange={(e) =>
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    phone: sanitizePhoneInput(e.target.value),
+                  })
+                }
+              />
+              <div
+                className={`validation-hint ${editingCustomer.phone ? (validatePhone(editingCustomer.phone).isValid ? 'success' : 'error') : ''}`}
+                style={{ color: editingCustomer.phone ? undefined : 'var(--text-muted)' }}
+              >
+                {editingCustomer.phone ? (
+                  <>
+                    {validatePhone(editingCustomer.phone).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                    <span>{validatePhone(editingCustomer.phone).message}</span>
+                  </>
+                ) : (
+                  <span>10 digits without letters, starting with 0 (e.g. 077XXXXXXX)</span>
+                )}
               </div>
+            </div>
 
-              {/* Row 4: Assigned Center & Customer Category */}
-              <div className="form-group">
-                <label className="form-label">Assigned Center</label>
-                <select
-                  className="form-select-full"
-                  value={`${editingCustomer.branch_code || 'MHG'}/${editingCustomer.center_code || 'C001'}`}
-                  onChange={(e) => {
-                    const parts = e.target.value.split('/');
-                    setEditingCustomer((prev) => ({
-                      ...prev,
-                      branch_code: parts[0] || 'MHG',
-                      center_code: parts[1] || 'C001',
-                    }));
-                  }}
-                >
-                  {availableCenters.map((cntr) => {
-                    const val = `${cntr.branch_code}/${cntr.center_code}`;
-                    return (
-                      <option key={cntr.id || val} value={val}>
-                        {cntr.branch_code}/{cntr.center_code} — {cntr.name} ({cntr.city})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+            {/* Row 4: WhatsApp Number & Assigned Center */}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>WhatsApp Number</span>
+                {editingCustomer.whatsapp && (
+                  <span className={`validation-status-pill ${validatePhone(editingCustomer.whatsapp, false).isValid ? 'valid' : 'invalid'}`}>
+                    {validatePhone(editingCustomer.whatsapp, false).isValid ? '✓ 10 Digits' : `${editingCustomer.whatsapp.length}/10`}
+                  </span>
+                )}
+              </label>
+              <input
+                type="tel"
+                className={`form-input ${editingCustomer.whatsapp ? (validatePhone(editingCustomer.whatsapp, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                maxLength={10}
+                placeholder="07XXXXXXXX (Optional)"
+                value={editingCustomer.whatsapp || ''}
+                onChange={(e) =>
+                  setEditingCustomer({
+                    ...editingCustomer,
+                    whatsapp: sanitizePhoneInput(e.target.value),
+                  })
+                }
+              />
+              {editingCustomer.whatsapp && !validatePhone(editingCustomer.whatsapp, false).isValid && (
+                <div className="validation-hint error">
+                  <AlertTriangle size={12} /> {validatePhone(editingCustomer.whatsapp, false).message}
+                </div>
+              )}
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">Customer Category</label>
-                <select
-                  className="form-select-full"
-                  value={editingCustomer.category || 'custom_order'}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, category: e.target.value })}
-                >
-                  <option value="custom_order">Custom Made Furniture</option>
-                  <option value="showroom">Showroom / Ready Stock</option>
-                  <option value="wholesale">Commercial / Wholesale</option>
-                </select>
-              </div>
+            <div className="form-group">
+              <label className="form-label">Assigned Center</label>
+              <select
+                className="form-select-full"
+                value={`${editingCustomer.branch_code || 'MHG'}/${editingCustomer.center_code || 'C001'}`}
+                onChange={(e) => {
+                  const parts = e.target.value.split('/');
+                  setEditingCustomer((prev) => ({
+                    ...prev,
+                    branch_code: parts[0] || 'MHG',
+                    center_code: parts[1] || 'C001',
+                  }));
+                }}
+              >
+                {availableCenters.map((cntr) => {
+                  const val = `${cntr.branch_code}/${cntr.center_code}`;
+                  return (
+                    <option key={cntr.id || val} value={val}>
+                      {cntr.branch_code}/{cntr.center_code} — {cntr.name} ({cntr.city})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
 
-              {/* Row 5: City & Civil Status */}
-              <div className="form-group">
-                <label className="form-label">City / Town</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Maharagama, Kottawa, Negombo"
-                  value={editingCustomer.city || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, city: e.target.value })}
-                />
-              </div>
+            {/* Row 5: City & Civil Status */}
+            <div className="form-group">
+              <label className="form-label">City / Town</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Maharagama, Kottawa, Negombo"
+                value={editingCustomer.city || ''}
+                onChange={(e) => setEditingCustomer({ ...editingCustomer, city: e.target.value })}
+              />
+            </div>
 
-              <div className="form-group">
-                <label className="form-label">Civil Status</label>
-                <select
-                  className="form-select-full"
-                  value={editingCustomer.civil_status || 'Single'}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, civil_status: e.target.value })}
-                >
-                  <option value="Single">Single</option>
-                  <option value="Married">Married</option>
-                  <option value="Divorced">Divorced</option>
-                  <option value="Widowed">Widowed</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
+            <div className="form-group">
+              <label className="form-label">Civil Status</label>
+              <select
+                className="form-select-full"
+                value={editingCustomer.civil_status || 'Single'}
+                onChange={(e) => setEditingCustomer({ ...editingCustomer, civil_status: e.target.value })}
+              >
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Divorced">Divorced</option>
+                <option value="Widowed">Widowed</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
 
-              {/* Row 6: Delivery Address */}
-              <div className="form-group full-width">
-                <label className="form-label">Full Delivery Address</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="House No, Street, Road, City"
-                  value={editingCustomer.address || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
-                />
-              </div>
-
-              {/* Row 7: Outstanding Balance */}
-              <div className="form-group full-width">
-                <label className="form-label">Outstanding Balance (LKR)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  min="0"
-                  step="500"
-                  placeholder="0.00"
-                  value={editingCustomer.outstanding_balance ?? ''}
-                  onChange={(e) =>
-                    setEditingCustomer({
-                      ...editingCustomer,
-                      outstanding_balance: e.target.value === '' ? '' : Number(e.target.value),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="form-group full-width">
-                <label className="form-label">Wood / Furniture Preferences & Notes</label>
-                <textarea
-                  className="form-textarea"
-                  placeholder="Special customer preferences, wood type, delivery schedule, etc."
-                  value={editingCustomer.notes || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, notes: e.target.value })}
-                />
-              </div>
+            {/* Row 6: Delivery Address */}
+            <div className="form-group full-width">
+              <label className="form-label">Full Delivery Address</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="House No, Street, Road, City"
+                value={editingCustomer.address || ''}
+                onChange={(e) => setEditingCustomer({ ...editingCustomer, address: e.target.value })}
+              />
+            </div>
             </div>
 
             <div className="modal-actions">
