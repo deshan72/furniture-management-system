@@ -28,6 +28,7 @@ import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
+import { addLiveNotification } from '../utils/notificationsData';
 
 // Visual branch identity themes (Colors & Hub names)
 const BRANCH_THEMES = {
@@ -649,6 +650,15 @@ export default function CentersPage({
     const updated = [newRecord, ...customers];
     setCustomers(updated);
     saveCustomersToStorage(updated);
+
+    addLiveNotification({
+      title: `Client Registered at Center`,
+      desc: `${fullName} (NIC: ${cleanNic}) assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}.`,
+      category: 'alerts',
+      type: 'info',
+      targetTab: 'center-directory',
+    });
+
     setAssignmentFeedback({
       type: 'success',
       message: `Client "${fullName}" (NIC: ${cleanNic}) successfully registered and assigned to ${targetCenterForClient.branch_code}/${targetCenterForClient.center_code}!`,

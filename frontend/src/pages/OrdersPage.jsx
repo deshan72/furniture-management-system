@@ -34,6 +34,7 @@ import {
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
+import { addLiveNotification } from '../utils/notificationsData';
 import { apiRequest } from '../services/api';
 
 export default function OrdersPage({ headerCenter = 'all' }) {
@@ -506,6 +507,14 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setCustomers(updated);
     saveCustomersToStorage(updated);
 
+    addLiveNotification({
+      title: `Client Registered`,
+      desc: `${newCust.name} (NIC: ${newCust.nic}) registered at ${newCust.branch_code}/${newCust.center_code}.`,
+      category: 'alerts',
+      type: 'info',
+      targetTab: 'customer-directory',
+    });
+
     setFormCustomerId(newCust.id);
     setClientSearchText(`${newCust.name} — NIC: ${newCust.nic}`);
     setFormCenterCode(newCust.center_code);
@@ -603,6 +612,25 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     setCustomers(updatedCustomers);
     saveCustomersToStorage(updatedCustomers);
 
+    // Broadcast live notifications for real-time order creation & advance payment
+    addLiveNotification({
+      title: `New Order: ${newOrder.invoice_no}`,
+      desc: `${newOrder.item_name} (Qty: ${newOrder.quantity || 1}) placed for ${newOrder.customer_name} (${newOrder.branch_code}/${newOrder.center_code}). Total: ${formatLKR(newOrder.gross_amount)}.`,
+      category: 'orders',
+      type: 'order',
+      targetTab: 'orders',
+    });
+
+    if (finalAdvance > 0) {
+      addLiveNotification({
+        title: `Advance Received: ${formatLKR(finalAdvance)}`,
+        desc: `Initial down payment received for ${newOrder.contract_no} from ${newOrder.customer_name} via ${formPaymentMethod}.`,
+        category: 'payments',
+        type: 'payment',
+        targetTab: 'payments',
+      });
+    }
+
     setPlacedSuccessOrder(newOrder);
     setActiveSelectedOrder(newOrder);
     setIsAddOrderModalOpen(false);
@@ -668,6 +696,15 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     };
     setActiveSelectedOrder(updatedCurrent);
 
+    // Broadcast live payment notification
+    addLiveNotification({
+      title: newBal <= 0 ? `Loan Fully Settled! 🎉` : `Payment Received: ${formatLKR(amt)}`,
+      desc: `${formatLKR(amt)} received for ${activeSelectedOrder.contract_no} (${activeSelectedOrder.customer_name}). ${newBal <= 0 ? 'Account is now cleared!' : `Remaining balance: ${formatLKR(newBal)}`}`,
+      category: newBal <= 0 ? 'collections' : 'payments',
+      type: newBal <= 0 ? 'collection' : 'payment',
+      targetTab: 'payments',
+    });
+
     setIsPaymentModalOpen(false);
     setPaymentAmount('');
     alert(`Installment of ${formatLKR(amt)} recorded! Remaining balance: ${formatLKR(newBal)}`);
@@ -676,6 +713,7 @@ export default function OrdersPage({ headerCenter = 'all' }) {
   // Cancel / Delete Order
   const handleDeleteOrder = (orderId, contractNo) => {
     if (window.confirm(`Are you sure you want to cancel order "${contractNo}"?`)) {
+      const removed = orders.find((o) => o.id === orderId);
       const updated = orders.filter((o) => o.id !== orderId);
       setOrders(updated);
       saveOrdersToStorage(updated);
@@ -683,6 +721,14 @@ export default function OrdersPage({ headerCenter = 'all' }) {
         setIsViewDetailsModalOpen(false);
         setActiveSelectedOrder(null);
       }
+
+      addLiveNotification({
+        title: `Order Cancelled`,
+        desc: `Order ${removed?.invoice_no || contractNo} was removed from the active register.`,
+        category: 'alerts',
+        type: 'warning',
+        targetTab: 'orders',
+      });
     }
   };
 
@@ -695,9 +741,11 @@ export default function OrdersPage({ headerCenter = 'all' }) {
 
   // Quick Order Status Updater
   const handleUpdateOrderStatus = (orderId, newStatus) => {
+    let affectedOrder = null;
     const updated = orders.map((o) => {
       if (o.id === orderId) {
-        return { ...o, order_status: newStatus };
+        affectedOrder = { ...o, order_status: newStatus };
+        return affectedOrder;
       }
       return o;
     });
@@ -705,6 +753,16 @@ export default function OrdersPage({ headerCenter = 'all' }) {
     saveOrdersToStorage(updated);
     if (activeSelectedOrder && activeSelectedOrder.id === orderId) {
       setActiveSelectedOrder({ ...activeSelectedOrder, order_status: newStatus });
+    }
+
+    if (affectedOrder) {
+      addLiveNotification({
+        title: `Order Status: ${newStatus}`,
+        desc: `Order ${affectedOrder.invoice_no} (${affectedOrder.item_name}) for ${affectedOrder.customer_name} marked as "${newStatus}".`,
+        category: 'orders',
+        type: newStatus === 'Delivered' ? 'success' : 'order',
+        targetTab: 'orders',
+      });
     }
   };
 

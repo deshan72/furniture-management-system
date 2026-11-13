@@ -21,66 +21,13 @@ import {
   Trash2,
 } from 'lucide-react';
 import { formatCenterCode } from '../utils/centersData';
-
-const NOTIFICATIONS_STORAGE_KEY = 'dns_live_notifications_v2';
-
-const INITIAL_NOTIFICATIONS = [
-  {
-    id: 'notif-1',
-    title: 'Low Stock Alert',
-    desc: 'Solid Teak 4-Seater Coffee Table stock is below reorder threshold (2 units left).',
-    category: 'alerts',
-    type: 'warning',
-    targetTab: 'low-stock',
-    time: '10 min ago',
-    read: false,
-    created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-2',
-    title: 'Weekly Cash Recovery Scheduled',
-    desc: 'Active installment accounts due for weekly collection this week.',
-    category: 'collections',
-    type: 'collection',
-    targetTab: 'payments',
-    time: '45 min ago',
-    read: false,
-    created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-3',
-    title: 'Payment Receipt Cleared',
-    desc: 'Rs. 6,542.00 installment advance received from Sunil Jayawardena (MHG/C001).',
-    category: 'payments',
-    type: 'payment',
-    targetTab: 'payments',
-    time: 'Today, 11:30 AM',
-    read: false,
-    created_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-4',
-    title: 'Workshop Production Underway',
-    desc: 'Order DS-INV-9186 (New Cupboard) is currently in production at Maharagama workshop.',
-    category: 'orders',
-    type: 'order',
-    targetTab: 'orders',
-    time: 'Yesterday',
-    read: true,
-    created_at: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-5',
-    title: 'Customer Credit Reminder',
-    desc: 'Rs. 239,664.00 total outstanding balance across 3 registered client profiles.',
-    category: 'alerts',
-    type: 'warning',
-    targetTab: 'customer-overview',
-    time: '2 days ago',
-    read: true,
-    created_at: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
-  },
-];
+import {
+  NOTIFICATIONS_STORAGE_KEY,
+  INITIAL_NOTIFICATIONS,
+  loadSavedNotifications,
+  saveNotificationsToStorage,
+  formatRelativeTime,
+} from '../utils/notificationsData';
 
 export default function Header({
   title,
@@ -110,28 +57,38 @@ export default function Header({
   const [notifFilter, setNotifFilter] = useState('all'); // 'all' | 'alerts' | 'collections' | 'payments' | 'orders'
   const notifRef = useRef(null);
 
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed to load notifications from storage:', e);
-    }
-    return INITIAL_NOTIFICATIONS;
-  });
+  const [notifications, setNotifications] = useState(() => loadSavedNotifications());
 
-  // Save notifications to storage
+  // Save notifications to storage and notify all listeners
   const saveNotifications = (newList) => {
     setNotifications(newList);
-    try {
-      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(newList));
-    } catch (e) {
-      console.warn('Failed saving notifications to storage:', e);
-    }
+    saveNotificationsToStorage(newList);
   };
+
+  // Sync notifications from real-time events and cross-tab storage
+  useEffect(() => {
+    const handleUpdate = () => {
+      setNotifications(loadSavedNotifications());
+    };
+    window.addEventListener('dns:notification_update', handleUpdate);
+    const handleStorage = (e) => {
+      if (!e || e.key === NOTIFICATIONS_STORAGE_KEY) {
+        handleUpdate();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('dns:notification_update', handleUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  // Whenever dropdown opens, refresh timestamps so they reflect current elapsed time
+  useEffect(() => {
+    if (isNotifOpen) {
+      setNotifications(loadSavedNotifications());
+    }
+  }, [isNotifOpen]);
 
   // Close dropdown on outside click or Escape key
   useEffect(() => {
@@ -200,7 +157,12 @@ export default function Header({
 
   // Reset demo notifications
   const handleResetNotifications = () => {
-    saveNotifications(INITIAL_NOTIFICATIONS);
+    saveNotifications(
+      INITIAL_NOTIFICATIONS.map((n) => ({
+        ...n,
+        time: formatRelativeTime(n.created_at),
+      }))
+    );
   };
 
   // Find active center object if selected
@@ -282,6 +244,42 @@ export default function Header({
             }}
           >
             <Package size={17} />
+          </div>
+        );
+      case 'success':
+        return (
+          <div
+            style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: '9px',
+              background: '#DCFCE7',
+              color: '#15803D',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <CheckCircle size={17} />
+          </div>
+        );
+      case 'info':
+        return (
+          <div
+            style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: '9px',
+              background: '#EFF6FF',
+              color: '#2563EB',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <User size={17} />
           </div>
         );
       default:
@@ -531,7 +529,16 @@ export default function Header({
                               gap: '3px',
                             }}
                           >
-                            Open Ledger <ChevronRight size={11} />
+                            {notif.targetTab === 'orders'
+                              ? 'View Order'
+                              : notif.targetTab === 'payments'
+                              ? 'View Ledger'
+                              : notif.targetTab?.includes('customer')
+                              ? 'View Client'
+                              : notif.targetTab?.includes('stock')
+                              ? 'View Stock'
+                              : 'Open Module'}{' '}
+                            <ChevronRight size={11} />
                           </span>
                           {!notif.read && (
                             <span

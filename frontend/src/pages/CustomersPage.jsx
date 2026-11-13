@@ -34,6 +34,7 @@ import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
 import { INITIAL_CUSTOMERS } from '../utils/customersData';
+import { addLiveNotification } from '../utils/notificationsData';
 
 // Helper to compress and convert customer photo to optimized Base64 Data URL (~30-60 KB)
 const compressImageFile = (file, maxDim = 600, quality = 0.8) => {
@@ -595,6 +596,15 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     }
 
     setCustomers((prev) => [createdRecord, ...prev]);
+
+    addLiveNotification({
+      title: `Client Registered`,
+      desc: `${fullName} (NIC: ${cleanNic}) added to directory at ${createdRecord.branch_code}/${createdRecord.center_code}.`,
+      category: 'alerts',
+      type: 'info',
+      targetTab: 'customer-directory',
+    });
+
     setIsAddModalOpen(false);
     setMatchedCustomerAlert(null);
     setNewCustomer({
@@ -628,6 +638,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       if (selectedCustomer?.id === id) {
         setIsViewModalOpen(false);
       }
+
+      addLiveNotification({
+        title: `Client Removed`,
+        desc: `Customer ${name} was deleted from the customer directory.`,
+        category: 'alerts',
+        type: 'warning',
+        targetTab: 'customer-directory',
+      });
     }
   };
 
@@ -659,6 +677,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     setSelectedCustomer((prev) =>
       prev ? { ...prev, outstanding_balance: Math.max(0, Number(prev.outstanding_balance) - amount) } : null
     );
+
+    addLiveNotification({
+      title: `Payment Collected: Rs. ${amount.toLocaleString()}`,
+      desc: `Rs. ${amount.toLocaleString()} received from ${selectedCustomer.name} (NIC: ${selectedCustomer.nic}).`,
+      category: 'payments',
+      type: 'payment',
+      targetTab: 'payments',
+    });
 
     setIsPayModalOpen(false);
     setPaymentAmount('');

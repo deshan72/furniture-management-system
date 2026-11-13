@@ -36,6 +36,7 @@ import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersDa
 import { loadSavedOrders, saveOrdersToStorage } from '../utils/ordersData';
 import { loadSavedPayments, savePaymentsToStorage, generateNextReceiptNo } from '../utils/paymentsData';
 import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
+import { addLiveNotification } from '../utils/notificationsData';
 import { formatLKR, formatDate } from '../utils/formatters';
 
 export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigate }) {
@@ -305,6 +306,15 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
     });
     setCustomers(updatedCustomers);
     saveCustomersToStorage(updatedCustomers);
+
+    const isFullSettlement = nextBal <= 0;
+    addLiveNotification({
+      title: isFullSettlement ? `Loan Account Settled! 🎉` : `Payment Received: ${formatLKR(amt)}`,
+      desc: `Receipt ${receiptNo}: ${formatLKR(amt)} received from ${activeCustomer.name} (${targetOrderForPayment.contract_no}). ${isFullSettlement ? 'Balance cleared!' : `Remaining balance: ${formatLKR(nextBal)}`}`,
+      category: isFullSettlement ? 'collections' : 'payments',
+      type: isFullSettlement ? 'collection' : 'payment',
+      targetTab: 'payments',
+    });
 
     setIsRecordPaymentModalOpen(false);
     alert(`Payment of ${formatLKR(amt)} logged successfully! Receipt: ${receiptNo}`);

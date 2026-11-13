@@ -38,6 +38,7 @@ import {
   loadSavedOrders,
   saveOrdersToStorage,
 } from '../utils/ordersData';
+import { addLiveNotification } from '../utils/notificationsData';
 import { formatLKR, formatDate } from '../utils/formatters';
 
 export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
@@ -218,6 +219,16 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
 
+    // Broadcast live payment notification
+    const isFullSettlement = nextBal <= 0;
+    addLiveNotification({
+      title: isFullSettlement ? `Loan Fully Settled! 🎉` : `Payment Received: ${formatLKR(payAmt)}`,
+      desc: `Receipt ${newPayment.receipt_no}: ${formatLKR(payAmt)} collected from ${newPayment.customer_name} (${newPayment.contract_no}) via ${newPayment.payment_method}.${isFullSettlement ? ' Account is now cleared!' : ` Remaining balance: ${formatLKR(nextBal)}`}`,
+      category: isFullSettlement ? 'collections' : 'payments',
+      type: isFullSettlement ? 'collection' : 'payment',
+      targetTab: 'payments',
+    });
+
     setIsRecordPaymentModalOpen(false);
 
     if (andPrint) {
@@ -232,6 +243,14 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       const updated = payments.filter((p) => p.id !== paymentId);
       setPayments(updated);
       savePaymentsToStorage(updated);
+
+      addLiveNotification({
+        title: `Payment Receipt Voided`,
+        desc: `Receipt ${receiptNo} was deleted from the payments ledger.`,
+        category: 'alerts',
+        type: 'warning',
+        targetTab: 'payments',
+      });
     }
   };
 
@@ -244,6 +263,14 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       if (selectedContractForView && selectedContractForView.id === orderId) {
         setIsContractViewModalOpen(false);
       }
+
+      addLiveNotification({
+        title: `Contract Account Removed`,
+        desc: `Contract record "${contractNo}" was removed from the system.`,
+        category: 'alerts',
+        type: 'warning',
+        targetTab: 'payments',
+      });
     }
   };
 
