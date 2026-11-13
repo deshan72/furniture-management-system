@@ -1442,7 +1442,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     <span>📞 {order.customer_phone}</span>
                   </div>
                   <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '2px' }}>
-                    📍 Center: {order.branch_code}/{order.center_code} • Ordered: {formatDate(order.date)}
+                    📍 Center: {order.center_code || 'C001'} • Ordered: {formatDate(order.date)}
                   </div>
 
                   {/* Furniture Item Box */}
@@ -1606,7 +1606,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                           </span>
                         </div>
                         <div style={{ fontSize: '0.68rem', color: 'var(--ash-500)', marginTop: '1px', whiteSpace: 'nowrap' }}>
-                          📞 {order.customer_phone} • {order.branch_code}/{order.center_code}
+                          📞 {order.customer_phone} • {order.center_code || 'C001'}
                         </div>
                       </td>
 
@@ -2042,7 +2042,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                               borderRadius: '4px',
                             }}
                           >
-                            {cust.branch_code || 'MHG'}/{cust.center_code || 'C001'}
+                            {cust.center_code || 'C001'}
                           </span>
                         </div>
                       );
@@ -2071,7 +2071,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   NIC: <strong style={{ color: 'var(--primary)', fontFamily: 'monospace' }}>{formSelectedCustomer.nic || formSelectedCustomer.customer_id}</strong>
                 </div>
                 <div style={{ color: 'var(--ash-600)' }}>
-                  📍 Center: <strong>{formBranchCode}/{formCenterCode}</strong>
+                  📍 Center: <strong>{formCenterCode}</strong>
                 </div>
               </div>
             )}
@@ -3012,7 +3012,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     NIC: <strong style={{ color: 'var(--primary)', fontFamily: 'monospace' }}>{placedSuccessOrder.customer_nic || placedSuccessOrder.customer_id}</strong>
                   </div>
                   <div>Phone: <strong>{placedSuccessOrder.customer_phone}</strong></div>
-                  <div>Center: <strong>{placedSuccessOrder.branch_code}/{placedSuccessOrder.center_code}</strong></div>
+                  <div>Center: <strong>{placedSuccessOrder.center_code || 'C001'}</strong></div>
                   {placedSuccessOrder.customer_address && (
                     <div style={{ fontSize: '0.76rem', color: 'var(--ash-500)', marginTop: '2px' }}>
                       📍 {placedSuccessOrder.customer_address}
@@ -3157,7 +3157,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 </div>
               </div>
               <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#1E40AF' }}>
-                <div><strong>Center Hub:</strong> {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}</div>
+                <div><strong>Center Hub:</strong> {activeSelectedOrder.center_code || 'C001'}</div>
                 <div style={{ fontSize: '0.72rem', color: '#3B82F6', marginTop: '2px' }}>Status: Registered</div>
               </div>
             </div>
@@ -3174,7 +3174,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     🆔 NIC: {activeSelectedOrder.customer_nic || activeSelectedOrder.customer_id}
                   </span>
                   <span>📞 Phone: {activeSelectedOrder.customer_phone}</span>
-                  <span>📍 Center: {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}</span>
+                  <span>📍 Center: {activeSelectedOrder.center_code || 'C001'}</span>
                   <span>🏠 Address: <strong>{activeSelectedOrder.customer_address || 'Showroom Pickup'}</strong></span>
                 </div>
               </div>
@@ -3334,7 +3334,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900 }}>D N S HOME SOLUTIONS</h3>
                   <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                    Center: {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}
+                    Center: {activeSelectedOrder.center_code || 'C001'}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>

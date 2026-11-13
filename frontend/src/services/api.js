@@ -422,11 +422,38 @@ async function directSupabaseRequest(endpoint, options = {}) {
         throw new Error(err.message || 'Direct Supabase centers query failed');
       }
       const data = await res.json();
-      return { success: true, count: data.length, data };
+      const decoded = (data || []).map((c) => {
+        let dd = c.due_date || '';
+        let cd = c.cash_collect_date || '';
+        if (c.notes && c.notes.includes('<!--DNS_META:')) {
+          try {
+            const match = c.notes.match(/<!--DNS_META:(\{.*?\})-->/);
+            if (match) {
+              const meta = JSON.parse(match[1]);
+              if (meta.dd && !dd) dd = meta.dd;
+              if (meta.cd && !cd) cd = meta.cd;
+            }
+          } catch (_) {}
+        }
+        return {
+          ...c,
+          due_date: dd,
+          cash_collect_date: cd,
+        };
+      });
+      return { success: true, count: decoded.length, data: decoded };
     }
 
     if (method === 'POST') {
       const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      let baseNotes = (parsedBody.notes || '').replace(/\s*<!--DNS_META:\{.*?\}-->/g, '').trim();
+      const meta = {};
+      if (parsedBody.due_date) meta.dd = parsedBody.due_date;
+      if (parsedBody.cash_collect_date) meta.cd = parsedBody.cash_collect_date;
+      const combinedNotes = Object.keys(meta).length > 0
+        ? `${baseNotes} <!--DNS_META:${JSON.stringify(meta)}-->`.trim()
+        : baseNotes;
+
       const payload = {
         center_code: parsedBody.center_code || parsedBody.code,
         branch_code: parsedBody.branch_code || 'MHG',
@@ -437,7 +464,7 @@ async function directSupabaseRequest(endpoint, options = {}) {
         contact_person: parsedBody.contact_person || parsedBody.officer_name || null,
         phone: parsedBody.phone || null,
         status: parsedBody.status || 'active',
-        notes: parsedBody.notes || null,
+        notes: combinedNotes || null,
       };
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       if (parsedBody.id && uuidRegex.test(parsedBody.id)) {
@@ -461,8 +488,22 @@ async function directSupabaseRequest(endpoint, options = {}) {
     if (method === 'PUT' || method === 'PATCH') {
       if (!id) throw new Error('Missing center ID for update');
       const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
-      const payload = { ...parsedBody, updated_at: new Date().toISOString() };
+      let baseNotes = (parsedBody.notes || '').replace(/\s*<!--DNS_META:\{.*?\}-->/g, '').trim();
+      const meta = {};
+      if (parsedBody.due_date) meta.dd = parsedBody.due_date;
+      if (parsedBody.cash_collect_date) meta.cd = parsedBody.cash_collect_date;
+      const combinedNotes = Object.keys(meta).length > 0
+        ? `${baseNotes} <!--DNS_META:${JSON.stringify(meta)}-->`.trim()
+        : baseNotes;
+
+      const payload = {
+        ...parsedBody,
+        notes: combinedNotes || null,
+        updated_at: new Date().toISOString(),
+      };
       delete payload.id;
+      delete payload.due_date;
+      delete payload.cash_collect_date;
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
       const queryParam = isUuid ? `id=eq.${id}` : `center_code=eq.${encodeURIComponent(id)}`;
 

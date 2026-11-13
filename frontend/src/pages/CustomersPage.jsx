@@ -477,10 +477,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Open Add New Customer Modal (NIC is the primary customer identifier)
   const handleOpenAddModal = () => {
     setMatchedCustomerAlert(null);
+    const defaultCenter = selectedCenter && selectedCenter !== 'all'
+      ? (selectedCenter.includes('/') ? selectedCenter.split('/')[1] : selectedCenter)
+      : (availableCenters[0]?.center_code || 'C001');
+
     setNewCustomer({
       customer_id: '',
-      branch_code: selectedCenter && selectedCenter.includes('/') ? selectedCenter.split('/')[0] : 'MHG',
-      center_code: selectedCenter && selectedCenter.includes('/') ? selectedCenter.split('/')[1] : 'C001',
+      branch_code: '',
+      center_code: defaultCenter,
       contract_no: '1',
       item_code: '',
       photo: '',
@@ -1493,7 +1497,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                             <div className="customer-meta">
                               {cust.center_code && (
                                 <span className="nic-pill">
-                                  📍 {cust.branch_code ? `${cust.branch_code}/${cust.center_code}` : cust.center_code}
+                                  📍 {cust.center_code}
                                 </span>
                               )}
                               {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
@@ -1712,7 +1716,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                         <div className="customer-meta">
                           {cust.center_code && (
                             <span className="nic-pill">
-                              📍 {cust.branch_code ? `${cust.branch_code}/${cust.center_code}` : cust.center_code}
+                              📍 {cust.center_code}
                             </span>
                           )}
                           {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
@@ -2204,24 +2208,21 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               <label className="form-label">Assigned Center</label>
               <select
                 className="form-select-full"
-                value={`${newCustomer.branch_code || 'MHG'}/${newCustomer.center_code || 'C001'}`}
+                value={newCustomer.center_code || 'C001'}
                 onChange={(e) => {
-                  const parts = e.target.value.split('/');
+                  const val = e.target.value;
                   setNewCustomer((prev) => ({
                     ...prev,
-                    branch_code: parts[0] || 'MHG',
-                    center_code: parts[1] || 'C001',
+                    branch_code: '',
+                    center_code: val,
                   }));
                 }}
               >
-                {availableCenters.map((cntr) => {
-                  const val = `${cntr.branch_code}/${cntr.center_code}`;
-                  return (
-                    <option key={cntr.id || val} value={val}>
-                      {cntr.branch_code}/{cntr.center_code} — {cntr.name} ({cntr.city})
-                    </option>
-                  );
-                })}
+                {availableCenters.map((cntr) => (
+                  <option key={cntr.id || cntr.center_code} value={cntr.center_code}>
+                    {cntr.center_code} — {cntr.name} ({cntr.city})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -2349,7 +2350,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   {renderCategoryBadge(selectedCustomer.category)}
                   {selectedCustomer.center_code && (
                     <span className="nic-pill">
-                      📍 Center: {selectedCustomer.branch_code ? `${selectedCustomer.branch_code}/${selectedCustomer.center_code}` : selectedCustomer.center_code}
+                      📍 Center: {selectedCustomer.center_code}
                     </span>
                   )}
                   {selectedCustomer.civil_status && <span className="nic-pill">Status: {selectedCustomer.civil_status}</span>}
@@ -2888,24 +2889,21 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               <label className="form-label">Assigned Center</label>
               <select
                 className="form-select-full"
-                value={`${editingCustomer.branch_code || 'MHG'}/${editingCustomer.center_code || 'C001'}`}
+                value={editingCustomer.center_code || 'C001'}
                 onChange={(e) => {
-                  const parts = e.target.value.split('/');
+                  const val = e.target.value;
                   setEditingCustomer((prev) => ({
                     ...prev,
-                    branch_code: parts[0] || 'MHG',
-                    center_code: parts[1] || 'C001',
+                    branch_code: '',
+                    center_code: val,
                   }));
                 }}
               >
-                {availableCenters.map((cntr) => {
-                  const val = `${cntr.branch_code}/${cntr.center_code}`;
-                  return (
-                    <option key={cntr.id || val} value={val}>
-                      {cntr.branch_code}/{cntr.center_code} — {cntr.name} ({cntr.city})
-                    </option>
-                  );
-                })}
+                {availableCenters.map((cntr) => (
+                  <option key={cntr.id || cntr.center_code} value={cntr.center_code}>
+                    {cntr.center_code} — {cntr.name} ({cntr.city})
+                  </option>
+                ))}
               </select>
             </div>
 

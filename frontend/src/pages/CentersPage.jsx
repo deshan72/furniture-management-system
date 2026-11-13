@@ -33,29 +33,23 @@ import { apiRequest } from '../services/api';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
 
-// Visual branch identity themes (Colors & Hub names)
-const BRANCH_THEMES = {
-  MHG: { bg: '#E0F2FE', color: '#0369A1', border: '#BAE6FD', label: 'Maharagama Hub' },
-  MRT: { bg: '#FEF3C7', color: '#B45309', border: '#FDE68A', label: 'Moratuwa Workshop' },
-  NGB: { bg: '#DCFCE7', color: '#15803D', border: '#BBF7D0', label: 'Negombo Coastal' },
-  DHW: { bg: '#EDE9FE', color: '#6D28D9', border: '#DDD6FE', label: 'Dehiwala Urban' },
-  CMB: { bg: '#E8F1FA', color: '#1E4D8C', border: '#C6DCF2', label: 'Colombo Central' },
-  KDY: { bg: '#FCE7F3', color: '#BE185D', border: '#FBCFE8', label: 'Kandy Hill' },
-  GAL: { bg: '#CCFBF1', color: '#0F766E', border: '#99F6E4', label: 'Galle Southern' },
-  KRN: { bg: '#FEF9C3', color: '#A16207', border: '#FEF08A', label: 'Kurunegala Hub' },
-  GMP: { bg: '#F1F5F9', color: '#334155', border: '#CBD5E1', label: 'Gampaha Hub' },
-};
+// Visual center themes based on center code (C001, C002, etc.)
+const CENTER_THEMES = [
+  { bg: '#E0F2FE', color: '#0369A1', border: '#BAE6FD' }, // Sky
+  { bg: '#FEF3C7', color: '#B45309', border: '#FDE68A' }, // Amber
+  { bg: '#DCFCE7', color: '#15803D', border: '#BBF7D0' }, // Emerald
+  { bg: '#F3E8FF', color: '#7E22CE', border: '#E9D5FF' }, // Purple
+  { bg: '#FFE4E6', color: '#BE123C', border: '#FECDD3' }, // Rose
+  { bg: '#CCFBF1', color: '#0F766E', border: '#99F6E4' }, // Teal
+  { bg: '#FFEDD5', color: '#C2410C', border: '#FED7AA' }, // Orange
+  { bg: '#EDE9FE', color: '#6D28D9', border: '#DDD6FE' }, // Violet
+];
 
-const getBranchTheme = (branchCode) => {
-  const code = String(branchCode || '').toUpperCase();
-  return (
-    BRANCH_THEMES[code] || {
-      bg: '#F1F5F9',
-      color: '#334155',
-      border: '#CBD5E1',
-      label: `${code} Branch`,
-    }
-  );
+const getCenterTheme = (code) => {
+  if (!code) return CENTER_THEMES[0];
+  const numMatch = String(code).match(/(\d+)/);
+  const idx = numMatch ? parseInt(numMatch[1], 10) : 0;
+  return CENTER_THEMES[idx % CENTER_THEMES.length];
 };
 
 // Normalizes and formats center codes into 'C001' style (C followed by 3 digits)
@@ -69,12 +63,32 @@ const formatCenterCode = (val) => {
   return clean.startsWith('C') ? clean : `C${clean}`;
 };
 
-// Default seed centers
+// Automatically generates the next Center Code in sequence (e.g. C001, C002 -> C003)
+export const getNextCenterCode = (centerList = []) => {
+  if (!Array.isArray(centerList) || centerList.length === 0) {
+    return 'C001';
+  }
+  let maxNum = 0;
+  centerList.forEach((c) => {
+    const raw = String(c.center_code || '').trim().toUpperCase();
+    const match = raw.match(/^(?:C)?(\d+)$/i);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (!isNaN(n) && n > maxNum) {
+        maxNum = n;
+      }
+    }
+  });
+  const nextNum = maxNum > 0 ? maxNum + 1 : centerList.length + 1;
+  return `C${String(nextNum).padStart(3, '0')}`;
+};
+
+// Default seed centers (Unique center codes, no branch codes)
 const INITIAL_CENTERS = [
   {
     id: 'cntr-1',
     center_code: 'C001',
-    branch_code: 'MHG',
+    branch_code: '',
     name: 'Maharagama Main Center',
     name_si: '',
     city: 'Maharagama',
@@ -88,7 +102,7 @@ const INITIAL_CENTERS = [
   {
     id: 'cntr-2',
     center_code: 'C002',
-    branch_code: 'MHG',
+    branch_code: '',
     name: 'Kottawa Town Center',
     name_si: '',
     city: 'Kottawa',
@@ -101,8 +115,8 @@ const INITIAL_CENTERS = [
   },
   {
     id: 'cntr-3',
-    center_code: 'C001',
-    branch_code: 'MRT',
+    center_code: 'C003',
+    branch_code: '',
     name: 'Moratuwa Woodcraft Center',
     name_si: '',
     city: 'Moratuwa',
@@ -115,8 +129,8 @@ const INITIAL_CENTERS = [
   },
   {
     id: 'cntr-4',
-    center_code: 'C001',
-    branch_code: 'NGB',
+    center_code: 'C004',
+    branch_code: '',
     name: 'Negombo Coastal Center',
     name_si: '',
     city: 'Negombo',
@@ -129,8 +143,8 @@ const INITIAL_CENTERS = [
   },
   {
     id: 'cntr-5',
-    center_code: 'C001',
-    branch_code: 'DHW',
+    center_code: 'C005',
+    branch_code: '',
     name: 'Dehiwala Urban Center',
     name_si: '',
     city: 'Dehiwala',
@@ -143,8 +157,8 @@ const INITIAL_CENTERS = [
   },
   {
     id: 'cntr-6',
-    center_code: 'C003',
-    branch_code: 'CMB',
+    center_code: 'C006',
+    branch_code: '',
     name: 'Colombo Central Center',
     name_si: '',
     city: 'Colombo',
@@ -163,18 +177,48 @@ export default function CentersPage({
   headerCenter = 'all',
   onNavigate,
 }) {
-  // Centers List State with localStorage persistence
+  // Centers List State with localStorage persistence (branch_code removed, unique center_code guaranteed)
   const [centers, setCenters] = useState(() => {
     try {
       const saved = localStorage.getItem('dnd_centers_list');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Normalize legacy 2-digit center codes (e.g. C01 -> C001)
-          return parsed.map((c) => ({
-            ...c,
-            center_code: formatCenterCode(c.center_code || 'C001'),
-          }));
+          const usedCodes = new Set();
+          let fallbackCounter = 1;
+
+          return parsed.map((c, idx) => {
+            let dd = c.due_date || '';
+            let cd = c.cash_collect_date || '';
+            if (c.notes && c.notes.includes('<!--DNS_META:')) {
+              try {
+                const match = c.notes.match(/<!--DNS_META:(\{.*?\})-->/);
+                if (match) {
+                  const meta = JSON.parse(match[1]);
+                  if (meta.dd && !dd) dd = meta.dd;
+                  if (meta.cd && !cd) cd = meta.cd;
+                }
+              } catch (_) {}
+            }
+
+            let code = formatCenterCode(c.center_code);
+            if (!code || usedCodes.has(code)) {
+              while (usedCodes.has(`C${String(fallbackCounter).padStart(3, '0')}`)) {
+                fallbackCounter++;
+              }
+              code = `C${String(fallbackCounter).padStart(3, '0')}`;
+              fallbackCounter++;
+            }
+            usedCodes.add(code);
+
+            return {
+              ...c,
+              branch_code: '',
+              center_code: code,
+              due_date: dd,
+              cash_collect_date: cd,
+            };
+          });
         }
       }
     } catch {
@@ -188,9 +232,9 @@ export default function CentersPage({
 
   // Filter & Search States
   const [searchQuery, setSearchQuery] = useState('');
-  const [branchFilter, setBranchFilter] = useState('all');
+  const [cityFilter, setCityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('branch_asc');
+  const [sortBy, setSortBy] = useState('code_asc');
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'cards'
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
@@ -237,19 +281,51 @@ export default function CentersPage({
     };
   }, []);
 
-  // Form State for Add Center
-  const [newCenter, setNewCenter] = useState({
+  // Form State for Add Center (Center Code auto-generated)
+  const [newCenter, setNewCenter] = useState(() => ({
     center_code: '',
-    branch_code: 'MHG',
+    branch_code: '',
     name: '',
     name_si: '',
     city: 'Maharagama',
+    due_date: '',
+    cash_collect_date: '',
     address: '',
     contact_person: '',
     phone: '',
     status: 'active',
     notes: '',
-  });
+  }));
+
+  // Open Create Center modal with next auto-generated Center Code
+  const handleOpenAddModal = () => {
+    const nextCode = getNextCenterCode(centers);
+    setNewCenter({
+      center_code: nextCode,
+      branch_code: '',
+      name: '',
+      name_si: '',
+      city: 'Maharagama',
+      due_date: '',
+      cash_collect_date: '',
+      address: '',
+      contact_person: '',
+      phone: '',
+      status: 'active',
+      notes: '',
+    });
+    setIsAddModalOpen(true);
+  };
+
+  // Ensure center_code is always generated and ready when modal is open
+  useEffect(() => {
+    if (isAddModalOpen && !newCenter.center_code) {
+      setNewCenter((prev) => ({
+        ...prev,
+        center_code: getNextCenterCode(centers),
+      }));
+    }
+  }, [isAddModalOpen, centers]);
 
   // Save centers to localStorage
   useEffect(() => {
@@ -266,7 +342,12 @@ export default function CentersPage({
     apiRequest('/centers')
       .then((res) => {
         if (isMounted && res && res.data && res.data.length > 0) {
-          setCenters(res.data);
+          const sanitized = res.data.map((c) => ({
+            ...c,
+            branch_code: '',
+            center_code: formatCenterCode(c.center_code),
+          }));
+          setCenters(sanitized);
         }
       })
       .catch(() => {
@@ -277,39 +358,35 @@ export default function CentersPage({
     };
   }, []);
 
-  // Compute customers linked to a center
+  // Compute customers linked to a center (directly by center_code)
   const getCustomersForCenter = useCallback((center) => {
     if (!center) return [];
-    const targetBranch = String(center.branch_code || '').toUpperCase();
     const targetCenter = formatCenterCode(center.center_code);
     return customers.filter((c) => {
       const parts = String(c.customer_id || '').split('/');
-      const bCode = (c.branch_code || (parts.length === 4 ? parts[0] : '')).toUpperCase();
       const cCode = formatCenterCode(c.center_code || (parts.length === 4 ? parts[1] : ''));
-      return bCode === targetBranch && cCode === targetCenter;
+      return cCode === targetCenter;
     });
   }, [customers]);
 
-  // Unique branches for filter dropdown
-  const availableBranches = useMemo(() => {
-    const branches = new Set();
+  // Unique cities / locations for filter dropdown
+  const availableCities = useMemo(() => {
+    const cities = new Set();
     centers.forEach((c) => {
-      if (c.branch_code) branches.add(c.branch_code.toUpperCase());
+      if (c.city) cities.add(c.city.trim());
     });
-    return Array.from(branches).sort();
+    return Array.from(cities).sort();
   }, [centers]);
 
   // KPI Statistics
   const stats = useMemo(() => {
     const total = centers.length;
     const activeCenters = centers.filter((c) => c.status === 'active').length;
-    const uniqueBranches = new Set(centers.map((c) => c.branch_code?.toUpperCase())).size;
     const totalClientsCount = customers.length;
 
     return {
       total,
       activeCenters,
-      uniqueBranches,
       totalClientsCount,
     };
   }, [centers, customers]);
@@ -324,7 +401,6 @@ export default function CentersPage({
             cntr.name?.toLowerCase().includes(q) ||
             cntr.name_si?.toLowerCase().includes(q) ||
             cntr.center_code?.toLowerCase().includes(q) ||
-            cntr.branch_code?.toLowerCase().includes(q) ||
             cntr.city?.toLowerCase().includes(q) ||
             cntr.contact_person?.toLowerCase().includes(q) ||
             cntr.phone?.toLowerCase().includes(q) ||
@@ -334,7 +410,7 @@ export default function CentersPage({
           if (!matches) return false;
         }
 
-        if (branchFilter !== 'all' && cntr.branch_code?.toUpperCase() !== branchFilter.toUpperCase()) {
+        if (cityFilter !== 'all' && cntr.city?.trim().toLowerCase() !== cityFilter.trim().toLowerCase()) {
           return false;
         }
 
@@ -344,14 +420,9 @@ export default function CentersPage({
 
         // Global Center Filter from Header
         if (headerCenter && headerCenter !== 'all') {
-          if (headerCenter.includes('/')) {
-            const [selB, selC] = headerCenter.split('/');
-            if (
-              cntr.branch_code?.toUpperCase() !== selB.toUpperCase() ||
-              formatCenterCode(cntr.center_code) !== formatCenterCode(selC)
-            ) {
-              return false;
-            }
+          const selC = headerCenter.includes('/') ? headerCenter.split('/')[1] : headerCenter;
+          if (formatCenterCode(cntr.center_code) !== formatCenterCode(selC)) {
+            return false;
           }
         }
 
@@ -367,26 +438,22 @@ export default function CentersPage({
         if (sortBy === 'recent') {
           return new Date(b.created_at || 0) - new Date(a.created_at || 0);
         }
-        // 'branch_asc' default
-        const brCmp = (a.branch_code || '').localeCompare(b.branch_code || '');
-        if (brCmp !== 0) return brCmp;
+        // 'code_asc' default
         return (a.center_code || '').localeCompare(b.center_code || '');
       });
-  }, [centers, searchQuery, branchFilter, statusFilter, sortBy, getCustomersForCenter, headerCenter]);
+  }, [centers, searchQuery, cityFilter, statusFilter, sortBy, getCustomersForCenter, headerCenter]);
 
   // Counts for modal filtering
   const modalClientCounts = useMemo(() => {
     if (!targetCenterForClient) {
       return { all: customers.length, other: customers.length, inCenter: 0 };
     }
-    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
     const targetCenter = formatCenterCode(targetCenterForClient.center_code);
 
     let inCenter = 0;
     customers.forEach((c) => {
-      const cBranch = String(c.branch_code || '').trim().toUpperCase();
       const cCenter = formatCenterCode(c.center_code);
-      if (cBranch === targetBranch && cCenter === targetCenter) {
+      if (cCenter === targetCenter) {
         inCenter += 1;
       }
     });
@@ -401,14 +468,12 @@ export default function CentersPage({
   // Filtered clients list for the Assign Client modal
   const filteredClientsForModal = useMemo(() => {
     if (!targetCenterForClient) return customers;
-    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
     const targetCenter = formatCenterCode(targetCenterForClient.center_code);
     const q = clientSearchQuery.trim().toLowerCase();
 
     return customers.filter((c) => {
-      const cBranch = String(c.branch_code || '').trim().toUpperCase();
       const cCenter = formatCenterCode(c.center_code);
-      const isCurrentCenter = cBranch === targetBranch && cCenter === targetCenter;
+      const isCurrentCenter = cCenter === targetCenter;
 
       if (clientFilterType === 'in_center' && !isCurrentCenter) return false;
       if (clientFilterType === 'other' && isCurrentCenter) return false;
@@ -430,28 +495,22 @@ export default function CentersPage({
   // Reset filters
   const handleResetFilters = () => {
     setSearchQuery('');
-    setBranchFilter('all');
+    setCityFilter('all');
     setStatusFilter('all');
-    setSortBy('branch_asc');
+    setSortBy('code_asc');
   };
 
   const isFilterActive =
-    searchQuery.trim() !== '' || branchFilter !== 'all' || statusFilter !== 'all' || sortBy !== 'branch_asc';
+    searchQuery.trim() !== '' || cityFilter !== 'all' || statusFilter !== 'all' || sortBy !== 'code_asc';
 
   // Handle Create Center
   const handleAddCenter = async (e) => {
     e.preventDefault();
-    const rawCenter = String(newCenter.center_code || '').trim();
-    const cCode = formatCenterCode(rawCenter);
-    const bCode = String(newCenter.branch_code || '').trim().toUpperCase();
+    let cCode = formatCenterCode(newCenter.center_code || getNextCenterCode(centers));
+    const bCode = '';
 
     if (!cCode) {
-      alert('Please enter a Center Code (e.g. C001, C002).');
-      return;
-    }
-    if (!bCode) {
-      alert('Please enter a Branch Code (e.g. MHG, MRT).');
-      return;
+      cCode = getNextCenterCode(centers);
     }
     if (!newCenter.name.trim()) {
       alert('Please enter Center Name.');
@@ -466,22 +525,21 @@ export default function CentersPage({
       }
     }
 
-    // Check duplicate center within same branch
-    const exists = centers.some(
-      (c) => c.branch_code?.toUpperCase() === bCode && formatCenterCode(c.center_code) === cCode
-    );
+    // Check duplicate center code
+    const exists = centers.some((c) => formatCenterCode(c.center_code) === cCode);
     if (exists) {
-      alert(`Center Code "${cCode}" already exists for Branch "${bCode}". Please choose another code.`);
-      return;
+      cCode = getNextCenterCode(centers);
     }
 
     const createdRecord = {
       id: `cntr-${Date.now()}`,
       center_code: cCode,
-      branch_code: bCode,
+      branch_code: '',
       name: newCenter.name.trim(),
-      name_si: newCenter.name_si.trim() || '',
+      name_si: '',
       city: newCenter.city.trim() || 'Maharagama',
+      due_date: newCenter.due_date || '',
+      cash_collect_date: newCenter.cash_collect_date || '',
       address: newCenter.address.trim() || '',
       contact_person: newCenter.contact_person.trim() || '',
       phone: newCenter.phone.trim() || '',
@@ -500,17 +558,21 @@ export default function CentersPage({
       // Local state fallback
     }
 
-    setCenters((prev) => [createdRecord, ...prev]);
+    const updatedCenters = [createdRecord, ...centers];
+    setCenters(updatedCenters);
     setIsAddModalOpen(false);
     if (onNavigate) onNavigate('centers');
 
-    // Reset Form
+    // Reset Form for next addition with auto-incremented center code
+    const nextCode = getNextCenterCode(updatedCenters);
     setNewCenter({
-      center_code: '',
-      branch_code: bCode,
+      center_code: nextCode,
+      branch_code: '',
       name: '',
       name_si: '',
-      city: newCenter.city || 'Maharagama',
+      city: 'Maharagama',
+      due_date: '',
+      cash_collect_date: '',
       address: '',
       contact_person: '',
       phone: '',
@@ -523,6 +585,8 @@ export default function CentersPage({
   const handleOpenEdit = (center) => {
     setEditingCenter({
       ...center,
+      due_date: center.due_date || '',
+      cash_collect_date: center.cash_collect_date || '',
     });
     setIsEditModalOpen(true);
   };
@@ -532,10 +596,9 @@ export default function CentersPage({
     e.preventDefault();
     const rawCenter = String(editingCenter.center_code || '').trim();
     const cCode = formatCenterCode(rawCenter);
-    const bCode = String(editingCenter.branch_code || '').trim().toUpperCase();
 
-    if (!cCode || !bCode || !editingCenter.name.trim()) {
-      alert('Please enter Center Code, Branch Code and Name.');
+    if (!cCode || !editingCenter.name.trim()) {
+      alert('Please enter Center Code and Name.');
       return;
     }
 
@@ -550,24 +613,26 @@ export default function CentersPage({
     const exists = centers.some(
       (c) =>
         c.id !== editingCenter.id &&
-        c.branch_code?.toUpperCase() === bCode &&
         formatCenterCode(c.center_code) === cCode
     );
     if (exists) {
-      alert(`Center Code "${cCode}" already exists for Branch "${bCode}".`);
+      alert(`Center Code "${cCode}" already exists.`);
       return;
     }
 
     const updated = {
       ...editingCenter,
       center_code: cCode,
-      branch_code: bCode,
+      branch_code: '',
       name: editingCenter.name.trim(),
       name_si: editingCenter.name_si?.trim() || '',
-      city: editingCenter.city?.trim() || '',
+      city: editingCenter.city?.trim() || 'Maharagama',
+      due_date: editingCenter.due_date || '',
+      cash_collect_date: editingCenter.cash_collect_date || '',
       address: editingCenter.address?.trim() || '',
       contact_person: editingCenter.contact_person?.trim() || '',
       phone: editingCenter.phone?.trim() || '',
+      status: editingCenter.status || 'active',
       notes: editingCenter.notes?.trim() || '',
     };
 
@@ -650,31 +715,28 @@ export default function CentersPage({
     }
 
     const cleanNic = cust.nic || cust.customer_id;
-    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
     const targetCenterCode = formatCenterCode(targetCenterForClient.center_code);
 
-    const isCurrentCenter =
-      String(cust.branch_code || '').trim().toUpperCase() === targetBranch &&
-      formatCenterCode(cust.center_code) === targetCenterCode;
+    const isCurrentCenter = formatCenterCode(cust.center_code) === targetCenterCode;
 
     if (isCurrentCenter) {
       setAssignmentFeedback({
         type: 'info',
-        message: `Client "${cust.name}" is already registered at ${targetBranch}/${targetCenterCode}.`,
+        message: `Client "${cust.name}" is already registered at Center ${targetCenterCode}.`,
       });
       return;
     }
 
-    if (cust.branch_code && cust.center_code) {
+    if (cust.center_code) {
       const confirmTransfer = window.confirm(
-        `Customer "${cust.name}" (NIC: ${cleanNic}) is currently assigned to ${cust.branch_code}/${cust.center_code}.\n\nDo you want to reassign/transfer this client to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name})?`
+        `Customer "${cust.name}" (NIC: ${cleanNic}) is currently assigned to Center ${cust.center_code}.\n\nDo you want to reassign/transfer this client to Center ${targetCenterCode} (${targetCenterForClient.name})?`
       );
       if (!confirmTransfer) return;
     }
 
     const updatedCust = {
       ...cust,
-      branch_code: targetBranch,
+      branch_code: '',
       center_code: targetCenterCode,
       city: cust.city || targetCenterForClient.city || 'Maharagama',
     };
@@ -700,7 +762,7 @@ export default function CentersPage({
 
     addLiveNotification({
       title: `Client Assigned to Center`,
-      desc: `${cust.name} (NIC: ${cleanNic}) assigned to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name}).`,
+      desc: `${cust.name} (NIC: ${cleanNic}) assigned to Center ${targetCenterCode} (${targetCenterForClient.name}).`,
       category: 'alerts',
       type: 'success',
       targetTab: 'centers',
@@ -708,7 +770,7 @@ export default function CentersPage({
 
     setAssignmentFeedback({
       type: 'success',
-      message: `Client "${cust.name}" (NIC: ${cleanNic}) successfully assigned to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name})!`,
+      message: `Client "${cust.name}" (NIC: ${cleanNic}) successfully assigned to Center ${targetCenterCode} (${targetCenterForClient.name})!`,
     });
   };
 
@@ -723,7 +785,6 @@ export default function CentersPage({
       return;
     }
 
-    const targetBranch = String(targetCenterForClient.branch_code || '').trim().toUpperCase();
     const targetCenterCode = formatCenterCode(targetCenterForClient.center_code);
 
     const freshList = loadSavedCustomers();
@@ -732,7 +793,7 @@ export default function CentersPage({
       if (selectedClientIds.includes(matchId) || selectedClientIds.includes(c.id) || selectedClientIds.includes(c.nic)) {
         return {
           ...c,
-          branch_code: targetBranch,
+          branch_code: '',
           center_code: targetCenterCode,
           city: c.city || targetCenterForClient.city || 'Maharagama',
         };
@@ -756,7 +817,7 @@ export default function CentersPage({
 
     addLiveNotification({
       title: `${selectedClientIds.length} Clients Assigned`,
-      desc: `${selectedClientIds.length} client(s) assigned to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name}).`,
+      desc: `${selectedClientIds.length} client(s) assigned to Center ${targetCenterCode} (${targetCenterForClient.name}).`,
       category: 'alerts',
       type: 'success',
       targetTab: 'centers',
@@ -764,7 +825,7 @@ export default function CentersPage({
 
     setAssignmentFeedback({
       type: 'success',
-      message: `Successfully assigned ${selectedClientIds.length} client(s) to ${targetBranch}/${targetCenterCode} (${targetCenterForClient.name})!`,
+      message: `Successfully assigned ${selectedClientIds.length} client(s) to Center ${targetCenterCode} (${targetCenterForClient.name})!`,
     });
     setSelectedClientIds([]);
   };
@@ -776,12 +837,11 @@ export default function CentersPage({
       return;
     }
 
-    const headers = ['Center Code', 'Branch Code', 'Center Name', 'Secondary Name', 'City', 'Officer In Charge', 'Phone', 'Address', 'Status', 'Registered Clients', 'Notes'];
+    const headers = ['Center Code', 'Center Name', 'Secondary Name', 'City', 'Officer In Charge', 'Phone', 'Address', 'Status', 'Registered Clients', 'Due Date', 'Cash Collect Date', 'Notes'];
     const rows = filteredCenters.map((c) => {
       const custCount = getCustomersForCenter(c).length;
       return [
         `"${c.center_code || ''}"`,
-        `"${c.branch_code || ''}"`,
         `"${c.name?.replace(/"/g, '""') || ''}"`,
         `"${c.name_si?.replace(/"/g, '""') || ''}"`,
         `"${c.city || ''}"`,
@@ -790,6 +850,8 @@ export default function CentersPage({
         `"${c.address?.replace(/"/g, '""') || ''}"`,
         `"${c.status || 'active'}"`,
         custCount,
+        `"${c.due_date || ''}"`,
+        `"${c.cash_collect_date || ''}"`,
         `"${c.notes?.replace(/"/g, '""') || ''}"`,
       ];
     });
@@ -818,8 +880,7 @@ export default function CentersPage({
         <tr>
           <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: center;">${idx + 1}</td>
           <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-weight: 700;">
-            <span style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px;">${c.branch_code}</span> / 
-            <span style="background: #f1f5f9; color: #334155; padding: 2px 6px; border-radius: 4px;">${c.center_code}</span>
+            <span style="background: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 4px; font-size: 11px;">${c.center_code}</span>
           </td>
           <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0;">
             <strong>${c.name}</strong>
@@ -868,7 +929,7 @@ export default function CentersPage({
             <tr>
               <td>
                 <div class="brand-title">D N S HOME SOLUTIONS</div>
-                <div class="report-title">Regional Distribution Centers & Branch Codes Directory</div>
+                <div class="report-title">Regional Distribution Centers Directory</div>
               </td>
               <td style="text-align: right; color: #64748b;">
                 <div><strong>Date:</strong> ${new Date().toLocaleDateString('en-GB')}</div>
@@ -880,7 +941,7 @@ export default function CentersPage({
             <thead>
               <tr>
                 <th style="width: 30px; text-align: center;">#</th>
-                <th>Branch / Center Code</th>
+                <th>Center Code</th>
                 <th>Center Name</th>
                 <th>Location / Address</th>
                 <th>Officer in Charge & Phone</th>
@@ -914,10 +975,10 @@ export default function CentersPage({
           bg="var(--primary-tint)"
         />
         <StatCard
-          title="Active Regional Branches"
-          value={stats.uniqueBranches}
-          subtitle="Operating regional branch hubs"
-          icon={Store}
+          title="Cities & Coverage Areas"
+          value={availableCities.length}
+          subtitle="Operating coverage locations"
+          icon={MapPin}
           color="#0284c7"
           bg="#e0f2fe"
         />
@@ -950,7 +1011,7 @@ export default function CentersPage({
             <input
               type="text"
               className="filter-search-input"
-              placeholder="Search centers by code (e.g. C001, MHG), name, city, officer, or phone..."
+              placeholder="Search centers by code (e.g. C001), name, city, officer, or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -1040,7 +1101,7 @@ export default function CentersPage({
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={handleOpenAddModal}
               style={{ padding: '9px 18px', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '6px' }}
             >
               <Plus size={16} /> Create Center
@@ -1052,18 +1113,15 @@ export default function CentersPage({
         <div className="filter-row-secondary">
           <select
             className="filter-select"
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
           >
-            <option value="all">🏢 All Regional Branches</option>
-            {availableBranches.map((br) => {
-              const theme = getBranchTheme(br);
-              return (
-                <option key={br} value={br}>
-                  {br} — {theme.label}
-                </option>
-              );
-            })}
+            <option value="all">📍 All Cities & Coverage Areas</option>
+            {availableCities.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
           </select>
 
           <select
@@ -1081,7 +1139,7 @@ export default function CentersPage({
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
           >
-            <option value="branch_asc">🔤 Branch & Code (A to Z)</option>
+            <option value="code_asc">🔢 Center Code (C001, C002...)</option>
             <option value="clients_desc">👥 Most Registered Clients</option>
             <option value="name_asc">🏢 Center Name (A to Z)</option>
             <option value="recent">🔃 Recently Added</option>
@@ -1095,9 +1153,9 @@ export default function CentersPage({
 
             <button
               type="button"
-              className={`filter-chip-btn ${branchFilter === 'all' && statusFilter === 'all' ? 'active' : ''}`}
+              className={`filter-chip-btn ${cityFilter === 'all' && statusFilter === 'all' ? 'active' : ''}`}
               onClick={() => {
-                setBranchFilter('all');
+                setCityFilter('all');
                 setStatusFilter('all');
               }}
             >
@@ -1139,7 +1197,7 @@ export default function CentersPage({
         <div className="table-header-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Building2 size={18} color="var(--primary)" />
-            <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Regional Centers & Branch Network</h3>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Regional Centers Directory</h3>
           </div>
 
           {/* View Mode Toggle */}
@@ -1171,7 +1229,7 @@ export default function CentersPage({
             </h4>
             <p style={{ fontSize: '0.85rem' }}>
               {isFilterActive
-                ? 'Try adjusting your search query or branch filters.'
+                ? 'Try adjusting your search query or city filters.'
                 : 'Click "Create Center" to register your first regional distribution center.'}
             </p>
           </div>
@@ -1191,7 +1249,7 @@ export default function CentersPage({
               <tbody>
                 {filteredCenters.map((center) => {
                   const linkedCusts = getCustomersForCenter(center);
-                  const branchColor = getBranchTheme(center.branch_code);
+                  const centerTheme = getCenterTheme(center.center_code);
 
                   return (
                     <tr key={center.id}>
@@ -1201,14 +1259,19 @@ export default function CentersPage({
                           <div
                             className="center-branch-avatar"
                             style={{
-                              background: branchColor.bg,
-                              color: branchColor.color,
-                              borderColor: branchColor.border,
+                              background: centerTheme.bg,
+                              color: centerTheme.color,
+                              borderColor: centerTheme.border,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 800,
+                              fontFamily: 'monospace',
+                              fontSize: '0.86rem',
                             }}
-                            title={`Branch: ${center.branch_code} | Center: ${center.center_code}`}
+                            title={`Center Code: ${center.center_code}`}
                           >
-                            <span>{center.branch_code}</span>
-                            <small>{center.center_code}</small>
+                            <span>{center.center_code}</span>
                           </div>
 
                           <div>
@@ -1222,13 +1285,13 @@ export default function CentersPage({
                                   color: 'var(--primary)',
                                   padding: '1px 7px',
                                   borderRadius: '5px',
-                                  fontSize: '0.68rem',
+                                  fontSize: '0.70rem',
                                   fontWeight: '700',
                                   fontFamily: 'monospace',
                                   border: '1px solid var(--primary-border)',
                                 }}
                               >
-                                {center.branch_code}/{center.center_code}
+                                {center.center_code}
                               </span>
                             </div>
 
@@ -1239,6 +1302,16 @@ export default function CentersPage({
                                 </span>
                               )}
                               <span>{center.created_at ? `Created ${new Date(center.created_at).toLocaleDateString()}` : 'Active Center'}</span>
+                              {center.due_date && (
+                                <span style={{ color: '#B45309', fontWeight: 600 }}>
+                                  Due: {center.due_date}
+                                </span>
+                              )}
+                              {center.cash_collect_date && (
+                                <span style={{ color: '#15803D', fontWeight: 600 }}>
+                                  Collect: {center.cash_collect_date}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1387,7 +1460,7 @@ export default function CentersPage({
           <div className="center-cards-grid">
             {filteredCenters.map((center) => {
               const linkedCusts = getCustomersForCenter(center);
-              const branchColor = getBranchTheme(center.branch_code);
+              const centerTheme = getCenterTheme(center.center_code);
 
               return (
                 <div key={center.id} className="center-card">
@@ -1398,13 +1471,18 @@ export default function CentersPage({
                         <div
                           className="center-branch-avatar"
                           style={{
-                            background: branchColor.bg,
-                            color: branchColor.color,
-                            borderColor: branchColor.border,
+                            background: centerTheme.bg,
+                            color: centerTheme.color,
+                            borderColor: centerTheme.border,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontFamily: 'monospace',
+                            fontSize: '0.86rem',
                           }}
                         >
-                          <span>{center.branch_code}</span>
-                          <small>{center.center_code}</small>
+                          <span>{center.center_code}</span>
                         </div>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1419,11 +1497,11 @@ export default function CentersPage({
                                 fontFamily: 'monospace',
                               }}
                             >
-                              {center.branch_code}/{center.center_code}
+                              {center.center_code}
                             </span>
                           </div>
                           <span style={{ fontSize: '0.75rem', color: 'var(--ash-500)' }}>
-                            {branchColor.label}
+                            {center.city}
                           </span>
                         </div>
                       </div>
@@ -1458,6 +1536,20 @@ export default function CentersPage({
                         <div className="center-card-info-item">
                           <Phone size={14} color="var(--ash-500)" />
                           <span style={{ fontFamily: 'monospace' }}>{center.phone}</span>
+                        </div>
+                      )}
+                      {(center.due_date || center.cash_collect_date) && (
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                          {center.due_date && (
+                            <span style={{ background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600 }}>
+                              📅 Due: {center.due_date}
+                            </span>
+                          )}
+                          {center.cash_collect_date && (
+                            <span style={{ background: '#DCFCE7', color: '#166534', padding: '2px 7px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600 }}>
+                              💵 Collect: {center.cash_collect_date}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1540,82 +1632,35 @@ export default function CentersPage({
       >
         <form onSubmit={handleAddCenter}>
           <div className="form-grid">
-            {/* Live Customer ID Prefix Card */}
-            <div className="form-group full-width">
-              <div
+            {/* Row 1: Center Code (Auto-generated) & Center Name */}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Center Code *</span>
+                <span className="validation-status-pill valid" style={{ background: 'var(--primary-tint)', color: 'var(--primary)', borderColor: 'var(--primary-border)' }}>
+                  ⚡ Auto-generated
+                </span>
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                readOnly
+                value={newCenter.center_code || getNextCenterCode(centers)}
                 style={{
-                  background: 'linear-gradient(135deg, var(--primary-tint) 0%, #FFFFFF 100%)',
-                  border: '1px solid var(--primary-border)',
-                  borderRadius: '12px',
-                  padding: '14px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  boxShadow: 'var(--shadow-sm)',
+                  backgroundColor: 'var(--ash-100)',
+                  cursor: 'not-allowed',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  fontSize: '0.95rem',
+                  letterSpacing: '0.05em',
+                  color: 'var(--primary)',
                 }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    <Sparkles size={14} /> Center Identity & ID Prefix
-                  </div>
-                  <div style={{ fontSize: '0.84rem', color: 'var(--ash-600)', marginTop: '2px' }}>
-                    Customer IDs issued by this center:
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: '#FFFFFF',
-                    border: '1px solid var(--primary)',
-                    borderRadius: '8px',
-                    padding: '6px 14px',
-                    fontFamily: 'monospace',
-                    fontWeight: 800,
-                    fontSize: '1rem',
-                    color: 'var(--primary)',
-                    letterSpacing: '0.05em',
-                  }}
-                >
-                  {newCenter.branch_code || 'BRANCH'} / {newCenter.center_code || 'CENTER'} / CONTRACT / ITEM
-                </div>
+                title="Center Code is automatically assigned in sequence (e.g. C001, C002, C003...)"
+              />
+              <div className="validation-hint" style={{ color: 'var(--ash-500)', fontSize: '0.74rem' }}>
+                Auto-sequenced based on existing centers (e.g. C001, C002, C003)
               </div>
             </div>
 
-            {/* Branch Code & Center Code */}
-            <div className="form-group">
-              <label className="form-label">Branch Code *</label>
-              <input
-                type="text"
-                className="form-input"
-                required
-                placeholder="e.g. MHG, MRT, CMB, NGB, DHW"
-                value={newCenter.branch_code}
-                onChange={(e) =>
-                  setNewCenter({
-                    ...newCenter,
-                    branch_code: e.target.value.replace(/\//g, '').toUpperCase(),
-                  })
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Center Code *</label>
-              <input
-                type="text"
-                className="form-input"
-                required
-                placeholder="e.g. C001, C002, C003"
-                value={newCenter.center_code}
-                onChange={(e) =>
-                  setNewCenter({
-                    ...newCenter,
-                    center_code: e.target.value.replace(/\//g, '').toUpperCase(),
-                  })
-                }
-              />
-            </div>
-
-            {/* Center Name & Secondary Name */}
             <div className="form-group">
               <label className="form-label">Center Name *</label>
               <input
@@ -1628,25 +1673,14 @@ export default function CentersPage({
               />
             </div>
 
+            {/* Row 2: City / Town & Operating Status */}
             <div className="form-group">
-              <label className="form-label">Secondary / Local Name</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="e.g. Maharagama Main Hub"
-                value={newCenter.name_si}
-                onChange={(e) => setNewCenter({ ...newCenter, name_si: e.target.value })}
-              />
-            </div>
-
-            {/* City & Status */}
-            <div className="form-group">
-              <label className="form-label">City / Town</label>
+              <label className="form-label">City / Town *</label>
               <input
                 type="text"
                 className="form-input"
                 required
-                placeholder="e.g. Maharagama, Moratuwa"
+                placeholder="e.g. Maharagama, Moratuwa, Colombo"
                 value={newCenter.city}
                 onChange={(e) => setNewCenter({ ...newCenter, city: e.target.value })}
               />
@@ -1664,7 +1698,40 @@ export default function CentersPage({
               </select>
             </div>
 
-            {/* Officer in charge & Phone */}
+            {/* Row 3: Center Due Date & Center Cash Collect Date */}
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Center Due Date</span>
+                <span style={{ fontSize: '0.74rem', color: 'var(--ash-500)' }}>Monthly / Weekly Due</span>
+              </label>
+              <input
+                type="date"
+                className="form-input"
+                value={newCenter.due_date || ''}
+                onChange={(e) => setNewCenter({ ...newCenter, due_date: e.target.value })}
+              />
+              <div className="validation-hint" style={{ color: 'var(--ash-500)', fontSize: '0.74rem' }}>
+                Payment due date for customers in this center
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Center Cash Collect Date</span>
+                <span style={{ fontSize: '0.74rem', color: 'var(--ash-500)' }}>Field Collection</span>
+              </label>
+              <input
+                type="date"
+                className="form-input"
+                value={newCenter.cash_collect_date || ''}
+                onChange={(e) => setNewCenter({ ...newCenter, cash_collect_date: e.target.value })}
+              />
+              <div className="validation-hint" style={{ color: 'var(--ash-500)', fontSize: '0.74rem' }}>
+                Officer cash collection / field visit date
+              </div>
+            </div>
+
+            {/* Row 4: Officer in charge & Contact Phone */}
             <div className="form-group">
               <label className="form-label">Officer in Charge</label>
               <input
@@ -1700,7 +1767,7 @@ export default function CentersPage({
               )}
             </div>
 
-            {/* Address */}
+            {/* Row 5: Location Address */}
             <div className="form-group full-width">
               <label className="form-label">Location Address</label>
               <input
@@ -1712,7 +1779,7 @@ export default function CentersPage({
               />
             </div>
 
-            {/* Notes */}
+            {/* Row 6: Description / Operating Notes */}
             <div className="form-group full-width">
               <label className="form-label">Description / Operating Notes</label>
               <textarea
@@ -1754,36 +1821,16 @@ export default function CentersPage({
         {editingCenter && (
           <form onSubmit={handleUpdateCenter}>
             <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Branch Code *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  required
-                  value={editingCenter.branch_code || ''}
-                  onChange={(e) =>
-                    setEditingCenter({
-                      ...editingCenter,
-                      branch_code: e.target.value.replace(/\//g, '').toUpperCase(),
-                    })
-                  }
-                />
-              </div>
-
+              {/* Row 1: Center Code & Center Name */}
               <div className="form-group">
                 <label className="form-label">Center Code *</label>
                 <input
                   type="text"
                   className="form-input"
                   required
-                  placeholder="e.g. C001, C002, C003"
+                  readOnly
                   value={editingCenter.center_code || ''}
-                  onChange={(e) =>
-                    setEditingCenter({
-                      ...editingCenter,
-                      center_code: e.target.value.replace(/\//g, '').toUpperCase(),
-                    })
-                  }
+                  style={{ backgroundColor: 'var(--ash-100)', cursor: 'not-allowed', fontWeight: 700, fontFamily: 'monospace' }}
                 />
               </div>
 
@@ -1798,21 +1845,13 @@ export default function CentersPage({
                 />
               </div>
 
+              {/* Row 2: City / Town & Operating Status */}
               <div className="form-group">
-                <label className="form-label">Secondary / Local Name</label>
+                <label className="form-label">City / Town *</label>
                 <input
                   type="text"
                   className="form-input"
-                  value={editingCenter.name_si || ''}
-                  onChange={(e) => setEditingCenter({ ...editingCenter, name_si: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">City / Town</label>
-                <input
-                  type="text"
-                  className="form-input"
+                  required
                   value={editingCenter.city || ''}
                   onChange={(e) => setEditingCenter({ ...editingCenter, city: e.target.value })}
                 />
@@ -1830,6 +1869,28 @@ export default function CentersPage({
                 </select>
               </div>
 
+              {/* Row 3: Center Due Date & Center Cash Collect Date */}
+              <div className="form-group">
+                <label className="form-label">Center Due Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={editingCenter.due_date || ''}
+                  onChange={(e) => setEditingCenter({ ...editingCenter, due_date: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Center Cash Collect Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={editingCenter.cash_collect_date || ''}
+                  onChange={(e) => setEditingCenter({ ...editingCenter, cash_collect_date: e.target.value })}
+                />
+              </div>
+
+              {/* Row 4: Officer in Charge & Contact Phone */}
               <div className="form-group">
                 <label className="form-label">Officer in Charge</label>
                 <input
@@ -1928,11 +1989,15 @@ export default function CentersPage({
                   width: '56px',
                   height: '56px',
                   fontSize: '1rem',
-                  ...getBranchTheme(selectedCenter.branch_code),
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 800,
+                  fontFamily: 'monospace',
+                  ...getCenterTheme(selectedCenter.center_code),
                 }}
               >
-                <span>{selectedCenter.branch_code}</span>
-                <small>{selectedCenter.center_code}</small>
+                <span>{selectedCenter.center_code}</span>
               </div>
 
               <div>
@@ -1955,19 +2020,6 @@ export default function CentersPage({
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
-                  <span
-                    style={{
-                      background: '#E0F2FE',
-                      color: '#0369A1',
-                      padding: '2px 8px',
-                      borderRadius: '5px',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      fontFamily: 'monospace',
-                    }}
-                  >
-                    Branch: {selectedCenter.branch_code}
-                  </span>
                   <span
                     style={{
                       background: 'var(--primary-tint)',
@@ -2016,6 +2068,29 @@ export default function CentersPage({
               </div>
             </div>
 
+            {/* Center Due Date & Cash Collect Date Info */}
+            {(selectedCenter.due_date || selectedCenter.cash_collect_date) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div style={{ padding: '12px 14px', background: '#FEF3C7', borderRadius: '10px', border: '1px solid #FDE68A' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#92400E', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                    📅 Center Due Date
+                  </span>
+                  <p style={{ margin: '4px 0 0', fontWeight: 700, fontSize: '0.92rem', color: '#78350F' }}>
+                    {selectedCenter.due_date || 'Not Set'}
+                  </p>
+                </div>
+
+                <div style={{ padding: '12px 14px', background: '#DCFCE7', borderRadius: '10px', border: '1px solid #BBF7D0' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#166534', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                    💵 Cash Collect Date
+                  </span>
+                  <p style={{ margin: '4px 0 0', fontWeight: 700, fontSize: '0.92rem', color: '#14532D' }}>
+                    {selectedCenter.cash_collect_date || 'Not Set'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Linked Customers List under this Center */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -2051,7 +2126,7 @@ export default function CentersPage({
 
               {getCustomersForCenter(selectedCenter).length === 0 ? (
                 <div style={{ padding: '24px', background: 'var(--ash-50)', borderRadius: '10px', textAlign: 'center', color: 'var(--ash-500)', fontSize: '0.85rem' }}>
-                  No customer records currently registered with code {selectedCenter.branch_code}/{selectedCenter.center_code}.
+                  No customer records currently registered with code {selectedCenter.center_code}.
                 </div>
               ) : (
                 <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--ash-200)', borderRadius: '10px' }}>
@@ -2142,13 +2217,12 @@ export default function CentersPage({
             >
               {centers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.branch_code}/{c.center_code} — {c.name} ({c.city})
+                  {c.center_code} — {c.name} ({c.city})
                 </option>
               ))}
             </select>
             {targetCenterForClient && (
               <div style={{ marginTop: '10px', fontSize: '0.8rem', color: 'var(--ash-600)', display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span>📍 Branch: <strong style={{ color: 'var(--ash-800)' }}>{targetCenterForClient.branch_code}</strong></span>
                 <span>🏛️ Center Code: <strong style={{ color: 'var(--ash-800)' }}>{targetCenterForClient.center_code}</strong></span>
                 <span>👤 Officer: <strong style={{ color: 'var(--ash-800)' }}>{targetCenterForClient.contact_person || 'N/A'}</strong></span>
                 <span style={{ background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
@@ -2302,7 +2376,7 @@ export default function CentersPage({
                     style={{ padding: '4px 12px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '5px' }}
                     onClick={handleBatchAssignClients}
                   >
-                    <UserPlus size={14} /> Assign Selected ({selectedClientIds.length}) to {targetCenterForClient?.branch_code}/{targetCenterForClient?.center_code}
+                    <UserPlus size={14} /> Assign Selected ({selectedClientIds.length}) to Center {targetCenterForClient?.center_code}
                   </button>
                 </div>
               </div>
@@ -2344,12 +2418,9 @@ export default function CentersPage({
                   filteredClientsForModal.map((c) => {
                     const clientKey = c.id || c.nic || c.customer_id;
                     const isSelected = selectedClientIds.includes(clientKey) || (c.id && selectedClientIds.includes(c.id)) || (c.nic && selectedClientIds.includes(c.nic));
-                    const targetBranch = String(targetCenterForClient?.branch_code || '').trim().toUpperCase();
                     const targetCenter = formatCenterCode(targetCenterForClient?.center_code);
-
-                    const cBranch = String(c.branch_code || '').trim().toUpperCase();
                     const cCenter = formatCenterCode(c.center_code);
-                    const isCurrentCenter = targetCenterForClient && cBranch === targetBranch && cCenter === targetCenter;
+                    const isCurrentCenter = targetCenterForClient && cCenter === targetCenter;
 
                     return (
                       <tr
@@ -2397,13 +2468,13 @@ export default function CentersPage({
                               padding: '3px 8px',
                               borderRadius: '6px',
                               fontSize: '0.74rem',
-                              background: isCurrentCenter ? '#DCFCE7' : c.branch_code && c.center_code ? '#FEF3C7' : '#F1F5F9',
-                              color: isCurrentCenter ? '#15803D' : c.branch_code && c.center_code ? '#B45309' : '#64748B',
+                              background: isCurrentCenter ? '#DCFCE7' : c.center_code ? '#FEF3C7' : '#F1F5F9',
+                              color: isCurrentCenter ? '#15803D' : c.center_code ? '#B45309' : '#64748B',
                               fontWeight: 700,
                               display: 'inline-block',
                             }}
                           >
-                            {c.branch_code && c.center_code ? `${c.branch_code}/${c.center_code}` : 'Unassigned'}
+                            {c.center_code ? c.center_code : 'Unassigned'}
                           </span>
                         </td>
                         <td style={{ textAlign: 'right' }}>

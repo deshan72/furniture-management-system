@@ -169,8 +169,8 @@ export default function Header({
 
   // Find active center object if selected
   const activeCenter = centers.find((c) => {
-    const key = `${c.branch_code?.toUpperCase()}/${formatCenterCode(c.center_code)}`;
-    return key === selectedCenter || c.id === selectedCenter;
+    const key = formatCenterCode(c.center_code);
+    return key === formatCenterCode(selectedCenter) || c.id === selectedCenter || c.center_code === selectedCenter;
   });
 
   // Icon selector based on notification type
@@ -621,7 +621,7 @@ export default function Header({
                   {selectedCenter === 'all'
                     ? 'All Centers'
                     : activeCenter
-                    ? `${activeCenter.branch_code} / ${formatCenterCode(activeCenter.center_code)}`
+                    ? `${formatCenterCode(activeCenter.center_code)}`
                     : selectedCenter}
                 </span>
               </div>
@@ -629,7 +629,7 @@ export default function Header({
 
             {selectedCenter !== 'all' && (
               <span className="header-center-tag">
-                {activeCenter?.city || 'Active'}
+                {activeCenter?.name || activeCenter?.city || 'Active'}
               </span>
             )}
 
@@ -644,10 +644,10 @@ export default function Header({
             >
               <option value="all">🌐 All Centers — All Regional Hubs</option>
               {centers.map((cntr) => {
-                const centerKey = `${cntr.branch_code?.toUpperCase()}/${formatCenterCode(cntr.center_code)}`;
+                const centerKey = formatCenterCode(cntr.center_code);
                 return (
                   <option key={cntr.id || centerKey} value={centerKey}>
-                    📍 {cntr.branch_code} / {formatCenterCode(cntr.center_code)} — {cntr.name} ({cntr.city})
+                    📍 {centerKey} — {cntr.name} ({cntr.city})
                   </option>
                 );
               })}

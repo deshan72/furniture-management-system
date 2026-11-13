@@ -11,6 +11,52 @@ export const formatCenterCode = (val) => {
   return clean.startsWith('C') ? clean : `C${clean}`;
 };
 
+// Serialize center metadata (due_date, cash_collect_date) into notes comment
+export const serializeCenterToDb = (raw) => {
+  let baseNotes = (raw.notes || '').replace(/\s*<!--DNS_META:\{.*?\}-->/g, '').trim();
+  const meta = {};
+  if (raw.due_date) meta.dd = raw.due_date;
+  if (raw.cash_collect_date) meta.cd = raw.cash_collect_date;
+  const combinedNotes = Object.keys(meta).length > 0
+    ? `${baseNotes} <!--DNS_META:${JSON.stringify(meta)}-->`.trim()
+    : baseNotes;
+
+  return {
+    center_code: formatCenterCode(raw.center_code),
+    branch_code: String(raw.branch_code || 'MHG').trim().toUpperCase(),
+    name: String(raw.name || '').trim(),
+    name_si: raw.name_si || null,
+    city: raw.city || null,
+    address: raw.address || null,
+    contact_person: raw.contact_person || null,
+    phone: raw.phone || null,
+    status: raw.status || 'active',
+    notes: combinedNotes || null,
+  };
+};
+
+// Deserialize center metadata from notes
+export const deserializeCenterFromDb = (row) => {
+  if (!row) return row;
+  let dd = row.due_date || '';
+  let cd = row.cash_collect_date || '';
+  if (row.notes && row.notes.includes('<!--DNS_META:')) {
+    try {
+      const match = row.notes.match(/<!--DNS_META:(\{.*?\})-->/);
+      if (match) {
+        const meta = JSON.parse(match[1]);
+        if (meta.dd && !dd) dd = meta.dd;
+        if (meta.cd && !cd) cd = meta.cd;
+      }
+    } catch (_) {}
+  }
+  return {
+    ...row,
+    due_date: dd,
+    cash_collect_date: cd,
+  };
+};
+
 // @desc    Get all regional distribution centers
 // @route   GET /api/centers
 export const getCenters = async (req, res, next) => {
@@ -40,10 +86,12 @@ export const getCenters = async (req, res, next) => {
     const { data, error } = await query;
     if (error) throw error;
 
+    const list = (data || []).map(deserializeCenterFromDb);
+
     res.json({
       success: true,
-      count: data ? data.length : 0,
-      data: data || [],
+      count: list.length,
+      data: list,
     });
   } catch (error) {
     next(error);
@@ -66,7 +114,7 @@ export const getCenterById = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: center,
+      data: deserializeCenterFromDb(center),
     });
   } catch (error) {
     next(error);
@@ -77,31 +125,7 @@ export const getCenterById = async (req, res, next) => {
 // @route   POST /api/centers
 export const createCenter = async (req, res, next) => {
   try {
-    const {
-      center_code,
-      branch_code,
-      name,
-      name_si,
-      city,
-      address,
-      contact_person,
-      phone,
-      status,
-      notes,
-    } = req.body;
-
-    const insertPayload = {
-      center_code: formatCenterCode(center_code),
-      branch_code: String(branch_code || '').trim().toUpperCase(),
-      name: String(name || '').trim(),
-      name_si: name_si || null,
-      city: city || null,
-      address: address || null,
-      contact_person: contact_person || null,
-      phone: phone || null,
-      status: status || 'active',
-      notes: notes || null,
-    };
+    const insertPayload = serializeCenterToDb(req.body);
 
     const { data, error } = await supabase
       .from('centers')
@@ -114,7 +138,7 @@ export const createCenter = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Center created successfully',
-      data,
+      data: deserializeCenterFromDb(data),
     });
   } catch (error) {
     next(error);
@@ -126,13 +150,7 @@ export const createCenter = async (req, res, next) => {
 export const updateCenter = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const updates = { ...req.body };
-    if (updates.center_code) {
-      updates.center_code = formatCenterCode(updates.center_code);
-    }
-    if (updates.branch_code) {
-      updates.branch_code = String(updates.branch_code).trim().toUpperCase();
-    }
+    const updates = serializeCenterToDb(req.body);
 
     const { data, error } = await supabase
       .from('centers')
@@ -146,7 +164,7 @@ export const updateCenter = async (req, res, next) => {
     res.json({
       success: true,
       message: 'Center updated successfully',
-      data,
+      data: deserializeCenterFromDb(data),
     });
   } catch (error) {
     next(error);
