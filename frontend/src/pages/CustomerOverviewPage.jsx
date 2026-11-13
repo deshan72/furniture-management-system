@@ -86,6 +86,38 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
+  // Helper to match all orders belonging to any customer record
+  const getOrdersForCustomer = (customer, allOrders = []) => {
+    if (!customer || !Array.isArray(allOrders)) return [];
+    const cId = String(customer.id || '');
+    const cCustId = String(customer.customer_id || '');
+    const cNic = customer.nic ? String(customer.nic).trim().toLowerCase() : '';
+    const cName = customer.name ? String(customer.name).trim().toLowerCase() : '';
+
+    return allOrders.filter((o) => {
+      const oCustId = String(o.customer_id || '');
+      const oNic = o.customer_nic ? String(o.customer_nic).trim().toLowerCase() : '';
+      const oName = o.customer_name ? String(o.customer_name).trim().toLowerCase() : '';
+
+      if (cId && oCustId === cId) return true;
+      if (cCustId && oCustId === cCustId) return true;
+      if (cNic && (oNic === cNic || oCustId.toLowerCase() === cNic)) return true;
+      if (cName && oName === cName) return true;
+      return false;
+    });
+  };
+
+  // Helper to calculate live remaining balance due for any customer
+  const getCustomerBalance = (customer, allOrders = []) => {
+    if (!customer) return 0;
+    const custOrders = getOrdersForCustomer(customer, allOrders);
+    if (custOrders.length > 0) {
+      const sumOrdersBalance = custOrders.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0);
+      return Math.max(0, sumOrdersBalance);
+    }
+    return Math.max(0, Number(customer.outstanding_balance) || 0);
+  };
+
   // Filtered customer list for the search & selector strip
   const filteredCustomerList = useMemo(() => {
     return customers.filter((c) => {
@@ -101,28 +133,13 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
         }
       }
 
-      // Debt filter mode
-      if (clientFilterMode === 'with-loans') {
-        const custOrders = orders.filter(
-          (o) =>
-            o.customer_id === c.id ||
-            o.customer_id === c.nic ||
-            o.customer_nic === c.nic ||
-            (c.customer_id && o.customer_id === c.customer_id)
-        );
-        const hasDebt = custOrders.some((o) => Number(o.balance_due) > 0) || Number(c.outstanding_balance) > 0;
-        if (!hasDebt) return false;
+      // Debt filter mode: based on real live balance
+      const custDebt = getCustomerBalance(c, orders);
+      if (clientFilterMode === 'with-loans' && custDebt <= 0) {
+        return false;
       }
-      if (clientFilterMode === 'settled') {
-        const custOrders = orders.filter(
-          (o) =>
-            o.customer_id === c.id ||
-            o.customer_id === c.nic ||
-            o.customer_nic === c.nic ||
-            (c.customer_id && o.customer_id === c.customer_id)
-        );
-        const hasDebt = custOrders.some((o) => Number(o.balance_due) > 0) || Number(c.outstanding_balance) > 0;
-        if (hasDebt) return false;
+      if (clientFilterMode === 'settled' && custDebt > 0) {
+        return false;
       }
 
       // Search query
@@ -139,25 +156,31 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
     });
   }, [customers, orders, selectedCenter, clientFilterMode, searchQuery]);
 
-  // The actively selected customer object
+  // The actively selected customer object (restricted to currently filtered list if available)
   const activeCustomer = useMemo(() => {
-    if (!selectedCustomerId) return filteredCustomerList[0] || customers[0] || null;
-    return (
-      customers.find((c) => c.id === selectedCustomerId || c.nic === selectedCustomerId || c.customer_id === selectedCustomerId) ||
-      customers[0] ||
-      null
+    if (filteredCustomerList.length === 0) return null;
+    const foundInFiltered = filteredCustomerList.find(
+      (c) => c.id === selectedCustomerId || c.nic === selectedCustomerId || c.customer_id === selectedCustomerId
     );
-  }, [customers, selectedCustomerId, filteredCustomerList]);
+    return foundInFiltered || filteredCustomerList[0] || null;
+  }, [selectedCustomerId, filteredCustomerList]);
+
+  // Auto-sync selectedCustomerId when filter mode changes
+  useEffect(() => {
+    if (filteredCustomerList.length > 0) {
+      const isCurrentInList = filteredCustomerList.some(
+        (c) => c.id === selectedCustomerId || c.nic === selectedCustomerId || c.customer_id === selectedCustomerId
+      );
+      if (!isCurrentInList) {
+        setSelectedCustomerId(filteredCustomerList[0].id);
+      }
+    }
+  }, [clientFilterMode, filteredCustomerList, selectedCustomerId]);
 
   // All orders belonging to the active customer
   const customerOrders = useMemo(() => {
     if (!activeCustomer) return [];
-    return orders.filter((o) => {
-      const matchId = o.customer_id === activeCustomer.id || o.customer_id === activeCustomer.customer_id;
-      const matchNic = o.customer_nic && activeCustomer.nic && o.customer_nic === activeCustomer.nic;
-      const matchName = o.customer_name && activeCustomer.name && o.customer_name.trim().toLowerCase() === activeCustomer.name.trim().toLowerCase();
-      return matchId || matchNic || matchName;
-    });
+    return getOrdersForCustomer(activeCustomer, orders);
   }, [orders, activeCustomer]);
 
   // All payments logged for the active customer
@@ -184,11 +207,13 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
 
     const totalGross = customerOrders.reduce((acc, o) => acc + (Number(o.gross_amount) || 0), 0);
     const totalAdvance = customerOrders.reduce((acc, o) => acc + (Number(o.advance_paid) || 0), 0);
-    const totalBalance = customerOrders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
+    const ordersBalance = customerOrders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
+    const initialBalance = Number(activeCustomer.outstanding_balance) || 0;
+    const totalBalance = customerOrders.length > 0 ? ordersBalance : initialBalance;
     const activeLoans = customerOrders.filter((o) => Number(o.balance_due) > 0).length;
     const settledLoans = customerOrders.filter((o) => Number(o.balance_due) <= 0).length;
 
-    const progressPct = totalGross > 0 ? Math.min(100, Math.round((totalAdvance / totalGross) * 100)) : 100;
+    const progressPct = totalGross > 0 ? Math.min(100, Math.round((totalAdvance / totalGross) * 100)) : (totalBalance <= 0 ? 100 : 0);
 
     return {
       totalGross,
@@ -200,19 +225,28 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
     };
   }, [customerOrders, activeCustomer]);
 
-  // Overall Global Stats for the top ribbon
+  // Overall Global Stats for the top ribbon & filter tabs
   const globalStats = useMemo(() => {
     const totalClients = customers.length;
-    const clientsWithDebt = customers.filter((c) => {
-      const custOrders = orders.filter((o) => o.customer_nic === c.nic || o.customer_id === c.id);
-      return custOrders.some((o) => Number(o.balance_due) > 0) || Number(c.outstanding_balance) > 0;
-    }).length;
+    let clientsWithDebt = 0;
+    let settledClients = 0;
+
+    customers.forEach((c) => {
+      const debt = getCustomerBalance(c, orders);
+      if (debt > 0) {
+        clientsWithDebt++;
+      } else {
+        settledClients++;
+      }
+    });
+
     const totalPortfolioOutstanding = orders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
     const totalAdvancesCollected = orders.reduce((acc, o) => acc + (Number(o.advance_paid) || 0), 0);
 
     return {
       totalClients,
       clientsWithDebt,
+      settledClients,
       totalPortfolioOutstanding,
       totalAdvancesCollected,
     };
@@ -550,12 +584,17 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
           <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--ash-900)', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Users size={24} color="var(--primary)" /> Customer Overview & Loan Portfolio
           </h2>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)', flexWrap: 'wrap' }}>
             <span>Total Registered Clients: <strong style={{ color: 'var(--ash-900)' }}>{globalStats.totalClients}</strong></span>
             <span>•</span>
             <span style={{ color: '#D97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#D97706' }}></span>
               Active Borrowers: <strong>{globalStats.clientsWithDebt}</strong>
+            </span>
+            <span>•</span>
+            <span style={{ color: '#16A34A', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16A34A' }}></span>
+              Zero Debt / Settled: <strong>{globalStats.settledClients}</strong>
             </span>
             <span>•</span>
             <span style={{ color: '#DC2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -636,7 +675,7 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
               style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
               onClick={() => setClientFilterMode('all')}
             >
-              All Clients ({customers.length})
+              All Clients ({globalStats.totalClients})
             </button>
             <button
               type="button"
@@ -652,75 +691,92 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
               style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
               onClick={() => setClientFilterMode('settled')}
             >
-              Zero Debt / Settled
+              Zero Debt / Settled ({globalStats.settledClients})
             </button>
           </div>
         </div>
 
         {/* Customer Select Strip (Horizontal Quick Pick Pills) */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'thin' }}>
-          {filteredCustomerList.map((cust) => {
-            const isSelected = activeCustomer?.id === cust.id;
-            const debt = Number(cust.outstanding_balance) || 0;
+          {filteredCustomerList.length === 0 ? (
+            <div
+              style={{
+                padding: '14px 20px',
+                color: 'var(--ash-600)',
+                fontSize: '0.84rem',
+                background: '#F8FAFC',
+                borderRadius: '10px',
+                width: '100%',
+                textAlign: 'center',
+                border: '1px dashed var(--ash-300)',
+              }}
+            >
+              No clients found matching <strong>{clientFilterMode === 'settled' ? 'Zero Debt / Settled' : clientFilterMode === 'with-loans' ? 'Pending Balances' : 'Current Filters'}</strong>.
+            </div>
+          ) : (
+            filteredCustomerList.map((cust) => {
+              const isSelected = activeCustomer?.id === cust.id;
+              const debt = getCustomerBalance(cust, orders);
 
-            return (
-              <button
-                key={cust.id}
-                type="button"
-                onClick={() => setSelectedCustomerId(cust.id)}
-                style={{
-                  background: isSelected ? 'var(--primary-tint)' : '#F8FAFC',
-                  border: isSelected ? '2px solid var(--primary)' : '1px solid var(--ash-200)',
-                  borderRadius: '10px',
-                  padding: '8px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                  transition: 'all 0.15s ease',
-                  textAlign: 'left',
-                }}
-              >
-                {/* Photo / Avatar */}
-                <div
+              return (
+                <button
+                  key={cust.id}
+                  type="button"
+                  onClick={() => setSelectedCustomerId(cust.id)}
                   style={{
-                    width: '34px',
-                    height: '34px',
-                    borderRadius: '50%',
-                    background: isSelected ? 'var(--primary)' : '#E2E8F0',
-                    color: isSelected ? '#fff' : 'var(--ash-700)',
+                    background: isSelected ? 'var(--primary-tint)' : '#F8FAFC',
+                    border: isSelected ? '2px solid var(--primary)' : '1px solid var(--ash-200)',
+                    borderRadius: '10px',
+                    padding: '8px 12px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 800,
-                    fontSize: '0.8rem',
-                    overflow: 'hidden',
+                    gap: '10px',
+                    cursor: 'pointer',
                     flexShrink: 0,
+                    transition: 'all 0.15s ease',
+                    textAlign: 'left',
                   }}
                 >
-                  {cust.photo || cust.image_url ? (
-                    <img src={cust.photo || cust.image_url} alt={cust.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span>{(cust.name || 'C').charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
+                  {/* Photo / Avatar */}
+                  <div
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '50%',
+                      background: isSelected ? 'var(--primary)' : '#E2E8F0',
+                      color: isSelected ? '#fff' : 'var(--ash-700)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 800,
+                      fontSize: '0.8rem',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {cust.photo || cust.image_url ? (
+                      <img src={cust.photo || cust.image_url} alt={cust.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <span>{(cust.name || 'C').charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
 
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '0.82rem', color: isSelected ? 'var(--primary)' : 'var(--ash-900)', whiteSpace: 'nowrap' }}>
-                    {cust.name}
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.82rem', color: isSelected ? 'var(--primary)' : 'var(--ash-900)', whiteSpace: 'nowrap' }}>
+                      {cust.name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--ash-500)', whiteSpace: 'nowrap' }}>
+                      <span>NIC: {cust.nic || cust.customer_id}</span>
+                      <span>•</span>
+                      <span style={{ fontWeight: 700, color: debt > 0 ? '#DC2626' : '#16A34A' }}>
+                        {debt > 0 ? `Due: ${formatLKR(debt)}` : '✓ Settled'}
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--ash-500)', whiteSpace: 'nowrap' }}>
-                    <span>NIC: {cust.nic || cust.customer_id}</span>
-                    <span>•</span>
-                    <span style={{ fontWeight: 700, color: debt > 0 ? '#DC2626' : '#16A34A' }}>
-                      {debt > 0 ? `Due: ${formatLKR(debt)}` : '✓ Settled'}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -1287,9 +1343,31 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
           </div>
         </>
       ) : (
-        <div style={{ padding: '60px', textAlign: 'center', background: '#fff', borderRadius: '12px', border: '1px dashed var(--ash-300)' }}>
-          <User size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
-          <div style={{ fontSize: '1rem', fontWeight: 700 }}>Please select a customer from above to view their overview</div>
+        <div style={{ padding: '60px 24px', textAlign: 'center', background: '#fff', borderRadius: '12px', border: '1px dashed var(--ash-300)' }}>
+          <CheckCircle size={44} color={clientFilterMode === 'settled' ? 'var(--success)' : 'var(--primary)'} style={{ opacity: 0.7, marginBottom: '14px' }} />
+          <div style={{ fontSize: '1.08rem', fontWeight: 800, color: 'var(--ash-900)' }}>
+            {clientFilterMode === 'settled'
+              ? 'No Zero-Debt / Fully Settled Clients Found'
+              : clientFilterMode === 'with-loans'
+              ? 'No Clients with Pending Balances Found'
+              : 'No matching clients found'}
+          </div>
+          <p style={{ color: 'var(--ash-500)', fontSize: '0.86rem', marginTop: '6px', maxWidth: '480px', margin: '6px auto 0' }}>
+            {clientFilterMode === 'settled'
+              ? 'All registered clients currently have active installment loans or pending balances.'
+              : 'Try clearing your search query or switching to All Clients.'}
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ marginTop: '16px', padding: '7px 18px', fontSize: '0.82rem', fontWeight: 700 }}
+            onClick={() => {
+              setClientFilterMode('all');
+              setSearchQuery('');
+            }}
+          >
+            Show All Clients ({customers.length})
+          </button>
         </div>
       )}
 

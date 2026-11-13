@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ShieldAlert, ArrowLeft, Lock, Crown } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -158,11 +158,27 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  // Live badge counts
-  const badges = {
-    lowStock: 2,
-    outstanding: 1,
-  };
+  // Live dynamic badge counts
+  const badges = useMemo(() => {
+    let lowStock = 2;
+    try {
+      const saved = localStorage.getItem('dnd_products_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          lowStock = parsed.filter(
+            (p) => (Number(p.stock_quantity) || 0) <= (Number(p.reorder_level) || 2)
+          ).length;
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return {
+      lowStock,
+      outstanding: 1,
+    };
+  }, [activeTab]);
 
   const getPageInfo = () => {
     switch (activeTab) {
@@ -494,14 +510,14 @@ export default function App() {
               )}
 
               {/* Inventory */}
-              {activeTab === 'products' && <ProductsPage />}
+              {activeTab === 'products' && <ProductsPage mode="products" onNavigate={setActiveTab} />}
               {activeTab === 'categories' &&
                 renderGenericPlaceholder(
                   'Product Categories Directory',
                   'Organize products into Wood, Melamine, and Electrical Items lines.'
                 )}
-              {activeTab === 'stock' && <ProductsPage initialStockFilter="all" />}
-              {activeTab === 'low-stock' && <ProductsPage initialStockFilter="low_stock" />}
+              {activeTab === 'stock' && <ProductsPage mode="stock" onNavigate={setActiveTab} />}
+              {activeTab === 'low-stock' && <ProductsPage mode="low-stock" onNavigate={setActiveTab} />}
 
               {/* Customers */}
               {activeTab === 'customers' && (

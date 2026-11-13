@@ -25,11 +25,17 @@ import {
   Zap,
   Upload,
   Image as ImageIcon,
+  Boxes,
+  Hammer,
+  Sparkles,
+  TrendingUp,
+  Layers,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { apiRequest, uploadImageToSupabaseStorage } from '../services/api';
 import { generateNextItemCode, getCategoryPrefix } from '../utils/productUtils';
+import { addLiveNotification } from '../utils/notificationsData';
 
 // Helper to compress and convert image File to optimized Base64 Data URL (~50-80 KB for fast database storage)
 const compressImageFile = (file, maxDim = 900, quality = 0.8) => {
@@ -173,7 +179,14 @@ const INITIAL_PRODUCTS = [
   },
 ];
 
-export default function ProductsPage({ initialStockFilter = 'all' }) {
+export default function ProductsPage({ initialStockFilter = 'all', mode = 'products', onNavigate }) {
+  // Active operational mode: 'products' (Catalog) | 'stock' (Stock Ledger) | 'low-stock' (Alerts)
+  const [activeMode, setActiveMode] = useState(() => {
+    if (mode) return mode;
+    if (initialStockFilter === 'low_stock') return 'low-stock';
+    return 'products';
+  });
+
   // Products state with local storage persistence and legacy category/code normalization
   const [products, setProducts] = useState(() => {
     try {
@@ -244,9 +257,9 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all', 'wood', 'melamine', 'electrical_item'
   const [woodFilter, setWoodFilter] = useState('all');
-  const [stockFilter, setStockFilter] = useState(initialStockFilter); // 'all', 'in_stock', 'low_stock', 'out_of_stock'
+  const [stockFilter, setStockFilter] = useState(() => (mode === 'low-stock' || initialStockFilter === 'low_stock' ? 'low_stock' : 'all'));
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'price_desc', 'price_asc', 'stock_asc', 'stock_desc', 'name_asc'
-  const [viewMode, setViewMode] = useState('table'); // 'table' | 'cards'
+  const [viewMode, setViewMode] = useState(() => (mode === 'products' ? 'cards' : 'table')); // 'table' | 'cards'
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -332,6 +345,23 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     }
   }, [products]);
 
+  // Sync activeMode and filters when mode prop changes from App sidebar navigation
+  useEffect(() => {
+    if (mode) {
+      setActiveMode(mode);
+      if (mode === 'low-stock') {
+        setStockFilter('low_stock');
+        setViewMode('table');
+      } else if (mode === 'stock') {
+        setStockFilter('all');
+        setViewMode('table');
+      } else {
+        setStockFilter('all');
+        setViewMode('cards');
+      }
+    }
+  }, [mode]);
+
   // Sync initialStockFilter prop if changed
   useEffect(() => {
     if (initialStockFilter) {
@@ -374,25 +404,67 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     return Array.from(woods).sort();
   }, [products]);
 
-  // KPI Statistics
+  // KPI Statistics tailored for all 3 views
   const stats = useMemo(() => {
-    const total = products.length;
-    const inStock = products.filter((p) => Number(p.stock_quantity) > 0);
-    const lowStock = products.filter(
-      (p) => Number(p.stock_quantity) > 0 && Number(p.stock_quantity) <= Number(p.reorder_level || 2)
-    );
-    const outOfStock = products.filter((p) => Number(p.stock_quantity) <= 0);
-    const totalValue = inStock.reduce(
-      (sum, p) => sum + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
-      0
-    );
+    const totalModels = products.length;
+    let totalUnits = 0;
+    let totalStockValue = 0;
+    let totalCostValue = 0;
+    let woodCount = 0;
+    let melamineCount = 0;
+    let electricalCount = 0;
+    let outOfStockCount = 0;
+    let lowStockCount = 0;
+    let adequateStockCount = 0;
+    let totalDeficitUnits = 0;
+    let estimatedRestockCost = 0;
+
+    products.forEach((p) => {
+      const qty = Number(p.stock_quantity) || 0;
+      const reorder = Number(p.reorder_level || 2);
+      const price = Number(p.selling_price) || 0;
+      const cost = Number(p.cost_price) || Math.round(price * 0.65);
+      const cat = (p.category || '').toLowerCase();
+
+      totalUnits += qty;
+      totalStockValue += qty * price;
+      totalCostValue += qty * cost;
+
+      if (cat === 'wood') woodCount++;
+      else if (cat === 'melamine') melamineCount++;
+      else if (cat === 'electrical_item' || cat.includes('elect')) electricalCount++;
+
+      if (qty <= 0) {
+        outOfStockCount++;
+        const deficit = reorder;
+        totalDeficitUnits += deficit;
+        estimatedRestockCost += deficit * cost;
+      } else if (qty <= reorder) {
+        lowStockCount++;
+        const deficit = reorder - qty + 1;
+        totalDeficitUnits += deficit;
+        estimatedRestockCost += deficit * cost;
+      } else {
+        adequateStockCount++;
+      }
+    });
 
     return {
-      total,
-      inStockCount: inStock.length,
-      lowStockCount: lowStock.length,
-      outOfStockCount: outOfStock.length,
-      totalValue,
+      total: totalModels,
+      totalModels,
+      totalUnits,
+      totalStockValue,
+      totalCostValue,
+      inStockCount: products.filter((p) => Number(p.stock_quantity) > 0).length,
+      woodCount,
+      melamineCount,
+      electricalCount,
+      outOfStockCount,
+      lowStockCount,
+      adequateStockCount,
+      totalAlertsCount: outOfStockCount + lowStockCount,
+      totalDeficitUnits,
+      estimatedRestockCost,
     };
   }, [products]);
 
@@ -432,16 +504,22 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           return false;
         }
 
-        // 4. Stock Level Filter
+        // 4. Stock Level Filter (In low_stock mode, includes both 0 and <= reorder)
         const qty = Number(prod.stock_quantity) || 0;
         const reorder = Number(prod.reorder_level || 2);
         if (stockFilter === 'in_stock' && qty <= 0) return false;
-        if (stockFilter === 'low_stock' && (qty <= 0 || qty > reorder)) return false;
+        if (stockFilter === 'low_stock' && qty > reorder) return false;
         if (stockFilter === 'out_of_stock' && qty > 0) return false;
 
         return true;
       })
       .sort((a, b) => {
+        // In Low Stock mode, prioritize zero-stock (critical) items first
+        if (activeMode === 'low-stock' && sortBy === 'recent') {
+          const stockDiff = (Number(a.stock_quantity) || 0) - (Number(b.stock_quantity) || 0);
+          if (stockDiff !== 0) return stockDiff;
+        }
+
         if (sortBy === 'price_desc') {
           return (Number(b.selling_price) || 0) - (Number(a.selling_price) || 0);
         }
@@ -460,7 +538,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
         // 'recent' by default
         return new Date(b.created_at || 0) - new Date(a.created_at || 0);
       });
-  }, [products, searchQuery, categoryFilter, woodFilter, stockFilter, sortBy]);
+  }, [products, searchQuery, categoryFilter, woodFilter, stockFilter, sortBy, activeMode]);
 
   // Reset all filters
   const handleResetFilters = () => {
@@ -673,6 +751,43 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
     setIsAdjustModalOpen(true);
   };
 
+  // Quick 1-click stock stepper for Stock Management view (+1 / -1)
+  const handleQuickIncrement = (productId, delta) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId) {
+          const current = Number(p.stock_quantity) || 0;
+          const newQty = Math.max(0, current + delta);
+          if (newQty === current) return p;
+
+          const reorder = Number(p.reorder_level) || 2;
+          addLiveNotification({
+            type: newQty <= reorder ? 'stock_alert' : 'order_created',
+            title: `Stock Updated: ${p.item_code} (${delta > 0 ? '+' : ''}${delta})`,
+            message: `${p.name} stock level changed from ${current} to ${newQty} units.`,
+            badge: newQty <= reorder ? 'Low Stock' : 'Stock Ledger',
+            linkTab: newQty <= reorder ? 'low-stock' : 'stock',
+          });
+
+          return { ...p, stock_quantity: newQty };
+        }
+        return p;
+      })
+    );
+  };
+
+  // Open Workshop Restock Modal prefilled with needed deficit
+  const handleOpenRestockWorkshop = (product) => {
+    setSelectedProduct(product);
+    const qty = Number(product.stock_quantity) || 0;
+    const reorder = Number(product.reorder_level) || 2;
+    const deficit = Math.max(1, reorder - qty + 1);
+    setAdjustQuantity(deficit);
+    setAdjustType('add');
+    setAdjustReason('Workshop production batch replenishment');
+    setIsAdjustModalOpen(true);
+  };
+
   // Confirm Stock Adjust
   const handleConfirmAdjust = (e) => {
     e.preventDefault();
@@ -688,6 +803,15 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
         if (p.id === selectedProduct.id) {
           const current = Number(p.stock_quantity) || 0;
           const newQty = adjustType === 'add' ? current + qty : Math.max(0, current - qty);
+
+          addLiveNotification({
+            type: newQty <= (Number(p.reorder_level) || 2) ? 'stock_alert' : 'order_created',
+            title: `Stock Adjustment: ${p.item_code} (${adjustType === 'add' ? '+' : '-'}${qty})`,
+            message: `${p.name} stock updated to ${newQty} units. Reason: ${adjustReason || 'General inventory adjust'}.`,
+            badge: 'Inventory',
+            linkTab: newQty <= (Number(p.reorder_level) || 2) ? 'low-stock' : 'stock',
+          });
+
           return {
             ...p,
             stock_quantity: newQty,
@@ -1001,42 +1125,361 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
   return (
     <div className="products-page-container">
       {/* =========================================================
-          1. STATS OVERVIEW CARDS
+          0. INVENTORY MODULE SUB-VIEW RIBBON SWITCHER
+          ========================================================= */}
+      <div
+        className="panel"
+        style={{
+          padding: '10px 16px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          borderRadius: '12px',
+          flexWrap: 'wrap',
+          border: '1.5px solid var(--border-subtle)',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {/* Sub-tab 1: Products Catalog */}
+          <button
+            type="button"
+            className={`btn ${activeMode === 'products' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.86rem',
+              fontWeight: 600,
+              gap: '8px',
+              borderRadius: '8px',
+            }}
+            onClick={() => {
+              setActiveMode('products');
+              setStockFilter('all');
+              setViewMode('cards');
+              onNavigate?.('products');
+            }}
+          >
+            <Armchair size={16} /> Products Catalog
+            <span
+              style={{
+                background: activeMode === 'products' ? 'rgba(255,255,255,0.28)' : 'var(--ash-200)',
+                color: activeMode === 'products' ? '#FFFFFF' : 'var(--ash-800)',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              {stats.totalModels} Models
+            </span>
+          </button>
+
+          {/* Sub-tab 2: Stock Management */}
+          <button
+            type="button"
+            className={`btn ${activeMode === 'stock' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.86rem',
+              fontWeight: 600,
+              gap: '8px',
+              borderRadius: '8px',
+            }}
+            onClick={() => {
+              setActiveMode('stock');
+              setStockFilter('all');
+              setViewMode('table');
+              onNavigate?.('stock');
+            }}
+          >
+            <Boxes size={16} /> Stock Management
+            <span
+              style={{
+                background: activeMode === 'stock' ? 'rgba(255,255,255,0.28)' : 'var(--ash-200)',
+                color: activeMode === 'stock' ? '#FFFFFF' : 'var(--ash-800)',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              {stats.totalUnits} Units
+            </span>
+          </button>
+
+          {/* Sub-tab 3: Low Stock Alerts */}
+          <button
+            type="button"
+            className={`btn ${activeMode === 'low-stock' ? 'btn-danger' : 'btn-secondary'}`}
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.86rem',
+              fontWeight: 600,
+              gap: '8px',
+              borderRadius: '8px',
+              background: activeMode === 'low-stock' ? '#DC2626' : undefined,
+              color: activeMode === 'low-stock' ? '#FFFFFF' : undefined,
+              borderColor: activeMode === 'low-stock' ? '#DC2626' : undefined,
+            }}
+            onClick={() => {
+              setActiveMode('low-stock');
+              setStockFilter('low_stock');
+              setViewMode('table');
+              onNavigate?.('low-stock');
+            }}
+          >
+            <AlertTriangle size={16} color={activeMode === 'low-stock' ? '#FFFFFF' : '#DC2626'} /> Low Stock Alerts
+            <span
+              style={{
+                background:
+                  activeMode === 'low-stock'
+                    ? 'rgba(255,255,255,0.32)'
+                    : stats.totalAlertsCount > 0
+                    ? '#FEE2E2'
+                    : 'var(--ash-200)',
+                color:
+                  activeMode === 'low-stock'
+                    ? '#FFFFFF'
+                    : stats.totalAlertsCount > 0
+                    ? '#DC2626'
+                    : 'var(--ash-800)',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              {stats.totalAlertsCount}
+            </span>
+          </button>
+        </div>
+
+        {/* Live sync badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '12px',
+              fontSize: '0.74rem',
+              fontWeight: 600,
+              background: dbConnected ? '#ECFDF5' : '#FEF3C7',
+              color: dbConnected ? '#059669' : '#D97706',
+              border: `1px solid ${dbConnected ? '#A7F3D0' : '#FDE68A'}`,
+            }}
+            title={dbConnected ? 'Live database connected to Supabase' : 'Offline / Local cache mode'}
+          >
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dbConnected ? '#10B981' : '#F59E0B' }}></span>
+            {dbConnected ? 'Database Connected' : 'Local Cache'}
+          </span>
+        </div>
+      </div>
+
+      {/* =========================================================
+          1. STATS OVERVIEW CARDS (TAILORED BY OPERATIONAL MODE)
           ========================================================= */}
       <div className="stats-grid">
-        <StatCard
-          title="Total Furniture Models"
-          value={stats.total}
-          subtitle="Catalog models in system"
-          icon={Armchair}
-          color="var(--primary)"
-          bg="var(--primary-tint)"
-        />
-        <StatCard
-          title="Available In Stock"
-          value={stats.inStockCount}
-          subtitle="Ready for showroom sale"
-          icon={CheckCircle}
-          color="var(--success)"
-          bg="var(--success-tint)"
-        />
-        <StatCard
-          title="Low Stock Reorders"
-          value={stats.lowStockCount}
-          subtitle="Needs workshop carpentry"
-          icon={AlertTriangle}
-          color="var(--warning)"
-          bg="var(--warning-tint)"
-        />
-        <StatCard
-          title="Total Stock Valuation"
-          value={formatLKR(stats.totalValue)}
-          subtitle="Current physical inventory"
-          icon={DollarSign}
-          color="var(--accent)"
-          bg="var(--accent-tint)"
-        />
+        {activeMode === 'products' ? (
+          <>
+            <StatCard
+              title="Total Furniture Models"
+              value={stats.totalModels}
+              subtitle="Showroom catalog portfolio"
+              icon={Armchair}
+              color="var(--primary)"
+              bg="var(--primary-tint)"
+            />
+            <StatCard
+              title="Solid Wood Collection"
+              value={stats.woodCount}
+              subtitle="Teak, Mahogany, Nadun, Mara"
+              icon={Sparkles}
+              color="#B45309"
+              bg="#FEF3C7"
+            />
+            <StatCard
+              title="Melamine Series"
+              value={stats.melamineCount}
+              subtitle="Pantry & executive office units"
+              icon={Layers}
+              color="#2563EB"
+              bg="#EFF6FF"
+            />
+            <StatCard
+              title="Electrical & Smart Items"
+              value={stats.electricalCount}
+              subtitle="LED mirrors & smart fixtures"
+              icon={Zap}
+              color="#7C3AED"
+              bg="#F5F3FF"
+            />
+          </>
+        ) : activeMode === 'stock' ? (
+          <>
+            <StatCard
+              title="Total Warehouse Stock"
+              value={`${stats.totalUnits} Units`}
+              subtitle="Physical units across all models"
+              icon={Boxes}
+              color="var(--primary)"
+              bg="var(--primary-tint)"
+            />
+            <StatCard
+              title="Total Stock Valuation"
+              value={formatLKR(stats.totalStockValue)}
+              subtitle="At retail showroom selling value"
+              icon={DollarSign}
+              color="var(--accent)"
+              bg="var(--accent-tint)"
+            />
+            <StatCard
+              title="Adequate Stock Models"
+              value={stats.adequateStockCount}
+              subtitle="Above reorder safety limits"
+              icon={CheckCircle}
+              color="var(--success)"
+              bg="var(--success-tint)"
+            />
+            <StatCard
+              title="Zero Stock Models"
+              value={stats.outOfStockCount}
+              subtitle="Depleted inventory items"
+              icon={AlertCircle}
+              color="var(--error)"
+              bg="var(--error-tint)"
+            />
+          </>
+        ) : (
+          /* low-stock mode */
+          <>
+            <StatCard
+              title="Critical Zero Stock"
+              value={stats.outOfStockCount}
+              subtitle="Models completely out of stock"
+              icon={AlertCircle}
+              color="#DC2626"
+              bg="#FEF2F2"
+            />
+            <StatCard
+              title="Low Stock Warnings"
+              value={stats.lowStockCount}
+              subtitle="Models below safety limit"
+              icon={AlertTriangle}
+              color="#D97706"
+              bg="#FEF3C7"
+            />
+            <StatCard
+              title="Replenishment Deficit"
+              value={`${stats.totalDeficitUnits} Units`}
+              subtitle="Total units needed from workshop"
+              icon={Hammer}
+              color="#2563EB"
+              bg="#EFF6FF"
+            />
+            <StatCard
+              title="Est. Restock Investment"
+              value={formatLKR(stats.estimatedRestockCost)}
+              subtitle="Estimated carpentry workshop cost"
+              icon={TrendingUp}
+              color="#059669"
+              bg="#ECFDF5"
+            />
+          </>
+        )}
       </div>
+
+      {/* =========================================================
+          1.1 LOW STOCK COMMAND NOTIFICATION BANNER
+          ========================================================= */}
+      {activeMode === 'low-stock' && (
+        stats.totalAlertsCount > 0 ? (
+          <div
+            style={{
+              background: 'linear-gradient(90deg, rgba(239, 68, 68, 0.08) 0%, rgba(245, 158, 11, 0.08) 100%)',
+              border: '1.5px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '12px',
+              padding: '14px 20px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: '#FEE2E2',
+                  color: '#DC2626',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#991B1B' }}>
+                  Workshop Procurement Notice: {stats.totalAlertsCount} Furniture Model{stats.totalAlertsCount > 1 ? 's' : ''} Under Reorder Threshold
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#B91C1C', marginTop: '3px' }}>
+                  {stats.outOfStockCount > 0 && <strong>{stats.outOfStockCount} model(s) are completely DEPLETED (0 units). </strong>}
+                  A total of <strong>{stats.totalDeficitUnits} units</strong> must be crafted to bring workshop inventory back to safety stock.
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{
+                background: '#DC2626',
+                borderColor: '#DC2626',
+                padding: '9px 16px',
+                fontSize: '0.84rem',
+                gap: '8px',
+                whiteSpace: 'nowrap',
+              }}
+              onClick={() => {
+                const firstDepleted = products.find((p) => (Number(p.stock_quantity) || 0) <= (Number(p.reorder_level) || 2));
+                if (firstDepleted) handleOpenRestockWorkshop(firstDepleted);
+              }}
+            >
+              <Hammer size={16} /> Restock Depleted Items
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              background: '#ECFDF5',
+              border: '1px solid #A7F3D0',
+              borderRadius: '12px',
+              padding: '14px 20px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              color: '#065F46',
+            }}
+          >
+            <CheckCircle size={22} color="#10B981" />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.94rem' }}>All Furniture Inventory Levels Are Healthy!</div>
+              <div style={{ fontSize: '0.82rem', color: '#047857' }}>
+                There are currently no furniture models below reorder levels. All items are stocked to showroom requirements.
+              </div>
+            </div>
+          </div>
+        )
+      )}
 
       {/* =========================================================
           2. ADVANCED FILTER & SEARCH PANEL
@@ -1049,7 +1492,13 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             <input
               type="text"
               className="filter-search-input"
-              placeholder="Search by Code (WD-001, MEL-001, ELC-001), Name, Material..."
+              placeholder={
+                activeMode === 'products'
+                  ? 'Search Catalog by Model Name, Code (WD-001, MEL-001), Wood, Finish...'
+                  : activeMode === 'stock'
+                  ? 'Search Warehouse Stock by Item SKU, Furniture Name, Category...'
+                  : 'Search Low Stock Items needing urgent workshop replenishment...'
+              }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -1083,7 +1532,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                title="Export or Print Product Catalog"
+                title="Export or Print Inventory Catalog"
                 style={{ padding: '9px 14px', fontSize: '0.84rem', gap: '6px' }}
               >
                 <Download size={15} /> Export <ChevronDown size={14} />
@@ -1099,7 +1548,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                     }}
                   >
                     <FileSpreadsheet size={16} color="var(--success)" />
-                    <span>Export Catalog as CSV (Excel)</span>
+                    <span>Export {activeMode === 'products' ? 'Catalog' : activeMode === 'stock' ? 'Stock Ledger' : 'Low Stock Alerts'} as CSV (Excel)</span>
                   </button>
                   <button
                     type="button"
@@ -1110,20 +1559,64 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                     }}
                   >
                     <Printer size={16} color="var(--primary)" />
-                    <span>Print Catalog Report (PDF)</span>
+                    <span>Print Printable Report (PDF)</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* + Add New Product Button */}
-            <button
-              className="btn btn-primary"
-              onClick={handleOpenAddModal}
-              style={{ padding: '9px 16px', fontSize: '0.86rem' }}
-            >
-              <Plus size={16} /> Add Product
-            </button>
+            {/* Mode-Specific Primary Action */}
+            {activeMode === 'products' && (
+              <button
+                className="btn btn-primary"
+                onClick={handleOpenAddModal}
+                style={{ padding: '9px 16px', fontSize: '0.86rem' }}
+              >
+                <Plus size={16} /> Add Furniture Model
+              </button>
+            )}
+
+            {activeMode === 'stock' && (
+              <>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const firstProduct = products[0];
+                    if (firstProduct) handleOpenAdjust(firstProduct);
+                  }}
+                  style={{ padding: '9px 16px', fontSize: '0.86rem', gap: '6px' }}
+                >
+                  <Zap size={16} /> Quick Stock Adjustment
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleOpenAddModal}
+                  style={{ padding: '9px 14px', fontSize: '0.86rem' }}
+                  title="Add new furniture item"
+                >
+                  <Plus size={16} /> New Model
+                </button>
+              </>
+            )}
+
+            {activeMode === 'low-stock' && (
+              <button
+                className="btn btn-primary"
+                style={{
+                  padding: '9px 16px',
+                  fontSize: '0.86rem',
+                  gap: '6px',
+                  background: '#DC2626',
+                  borderColor: '#DC2626',
+                }}
+                onClick={() => {
+                  const firstLow = products.find((p) => (Number(p.stock_quantity) || 0) <= (Number(p.reorder_level) || 2));
+                  if (firstLow) handleOpenRestockWorkshop(firstLow);
+                }}
+              >
+                <Hammer size={16} /> Batch Restock Workshop
+              </button>
+            )}
           </div>
         </div>
 
@@ -1187,56 +1680,99 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           <div className="filter-chips-list">
             <span className="filter-chips-label">Quick Filters:</span>
 
-            <button
-              className={`filter-chip-btn ${stockFilter === 'all' && categoryFilter === 'all' && woodFilter === 'all' ? 'active' : ''}`}
-              onClick={handleResetFilters}
-            >
-              All Items <span className="filter-count-badge">{stats.total}</span>
-            </button>
-
-            <button
-              className={`filter-chip-btn ${categoryFilter === 'wood' ? 'active' : ''}`}
-              onClick={() => setCategoryFilter(categoryFilter === 'wood' ? 'all' : 'wood')}
-            >
-              🪵 Wood
-            </button>
-
-            <button
-              className={`filter-chip-btn ${categoryFilter === 'melamine' ? 'active' : ''}`}
-              onClick={() => setCategoryFilter(categoryFilter === 'melamine' ? 'all' : 'melamine')}
-            >
-              📋 Melamine
-            </button>
-
-            <button
-              className={`filter-chip-btn ${categoryFilter === 'electrical_item' ? 'active' : ''}`}
-              onClick={() => setCategoryFilter(categoryFilter === 'electrical_item' ? 'all' : 'electrical_item')}
-            >
-              ⚡ Electrical Items
-            </button>
-
-            <button
-              className={`filter-chip-btn ${stockFilter === 'in_stock' ? 'active' : ''}`}
-              onClick={() => setStockFilter(stockFilter === 'in_stock' ? 'all' : 'in_stock')}
-            >
-              <CheckCircle size={12} color="var(--success)" /> In Stock{' '}
-              <span className="filter-count-badge">{stats.inStockCount}</span>
-            </button>
-
-            <button
-              className={`filter-chip-btn ${stockFilter === 'low_stock' ? 'active' : ''}`}
-              onClick={() => setStockFilter(stockFilter === 'low_stock' ? 'all' : 'low_stock')}
-            >
-              <AlertTriangle size={12} color="var(--warning)" /> Low Stock Alerts{' '}
-              <span className="filter-count-badge">{stats.lowStockCount}</span>
-            </button>
-
-            <button
-              className={`filter-chip-btn ${woodFilter.toLowerCase().includes('teak') ? 'active' : ''}`}
-              onClick={() => setWoodFilter(woodFilter.toLowerCase().includes('teak') ? 'all' : 'Teak')}
-            >
-              🪵 Teak Wood
-            </button>
+            {activeMode === 'products' ? (
+              <>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'all' && categoryFilter === 'all' && woodFilter === 'all' ? 'active' : ''}`}
+                  onClick={handleResetFilters}
+                >
+                  All Items <span className="filter-count-badge">{stats.total}</span>
+                </button>
+                <button
+                  className={`filter-chip-btn ${categoryFilter === 'wood' ? 'active' : ''}`}
+                  onClick={() => setCategoryFilter(categoryFilter === 'wood' ? 'all' : 'wood')}
+                >
+                  🪵 Wood ({stats.woodCount})
+                </button>
+                <button
+                  className={`filter-chip-btn ${categoryFilter === 'melamine' ? 'active' : ''}`}
+                  onClick={() => setCategoryFilter(categoryFilter === 'melamine' ? 'all' : 'melamine')}
+                >
+                  📋 Melamine ({stats.melamineCount})
+                </button>
+                <button
+                  className={`filter-chip-btn ${categoryFilter === 'electrical_item' ? 'active' : ''}`}
+                  onClick={() => setCategoryFilter(categoryFilter === 'electrical_item' ? 'all' : 'electrical_item')}
+                >
+                  ⚡ Electrical ({stats.electricalCount})
+                </button>
+                <button
+                  className={`filter-chip-btn ${woodFilter.toLowerCase().includes('teak') ? 'active' : ''}`}
+                  onClick={() => setWoodFilter(woodFilter.toLowerCase().includes('teak') ? 'all' : 'Teak')}
+                >
+                  🪵 Teak Wood
+                </button>
+              </>
+            ) : activeMode === 'stock' ? (
+              <>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setStockFilter('all')}
+                >
+                  All Stock Items <span className="filter-count-badge">{stats.total}</span>
+                </button>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'in_stock' ? 'active' : ''}`}
+                  onClick={() => setStockFilter(stockFilter === 'in_stock' ? 'all' : 'in_stock')}
+                >
+                  <CheckCircle size={12} color="var(--success)" /> Adequate Stock{' '}
+                  <span className="filter-count-badge">{stats.adequateStockCount}</span>
+                </button>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'low_stock' ? 'active' : ''}`}
+                  onClick={() => setStockFilter(stockFilter === 'low_stock' ? 'all' : 'low_stock')}
+                >
+                  <AlertTriangle size={12} color="var(--warning)" /> Reorder Warning{' '}
+                  <span className="filter-count-badge">{stats.lowStockCount}</span>
+                </button>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'out_of_stock' ? 'active' : ''}`}
+                  onClick={() => setStockFilter(stockFilter === 'out_of_stock' ? 'all' : 'out_of_stock')}
+                >
+                  <AlertCircle size={12} color="var(--error)" /> Zero Stock (0){' '}
+                  <span className="filter-count-badge">{stats.outOfStockCount}</span>
+                </button>
+              </>
+            ) : (
+              /* low-stock mode */
+              <>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'low_stock' ? 'active' : ''}`}
+                  onClick={() => setStockFilter('low_stock')}
+                >
+                  All Low Stock Items <span className="filter-count-badge">{stats.totalAlertsCount}</span>
+                </button>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'out_of_stock' ? 'active' : ''}`}
+                  onClick={() => setStockFilter(stockFilter === 'out_of_stock' ? 'low_stock' : 'out_of_stock')}
+                >
+                  <AlertCircle size={12} color="#DC2626" /> Critical 0-Stock{' '}
+                  <span className="filter-count-badge">{stats.outOfStockCount}</span>
+                </button>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'low_stock' && woodFilter === 'all' && categoryFilter === 'wood' ? 'active' : ''}`}
+                  onClick={() => setCategoryFilter(categoryFilter === 'wood' ? 'all' : 'wood')}
+                >
+                  🪵 Wood Reorders
+                </button>
+                <button
+                  className={`filter-chip-btn ${stockFilter === 'low_stock' && categoryFilter === 'melamine' ? 'active' : ''}`}
+                  onClick={() => setCategoryFilter(categoryFilter === 'melamine' ? 'all' : 'melamine')}
+                >
+                  📋 Melamine Reorders
+                </button>
+              </>
+            )}
           </div>
 
           <div style={{ fontSize: '0.82rem', color: 'var(--ash-500)', fontWeight: 500 }}>
@@ -1251,27 +1787,29 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
       <div className="table-wrapper">
         <div className="table-header-bar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Armchair size={19} color="var(--primary)" />
+            {activeMode === 'products' ? (
+              <Armchair size={19} color="var(--primary)" />
+            ) : activeMode === 'stock' ? (
+              <Boxes size={19} color="var(--primary)" />
+            ) : (
+              <AlertTriangle size={19} color="#DC2626" />
+            )}
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--ash-900)' }}>
-              Furniture Catalog & Stock Ledger
+              {activeMode === 'products'
+                ? 'Furniture Catalog & Showroom Specifications'
+                : activeMode === 'stock'
+                ? 'Warehouse Stock Ledger & Quantity Control'
+                : 'Urgent Replenishment & Low Stock Register'}
             </h3>
             <span
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                background: dbConnected ? '#ECFDF5' : '#FEF3C7',
-                color: dbConnected ? '#059669' : '#D97706',
-                border: `1px solid ${dbConnected ? '#A7F3D0' : '#FDE68A'}`,
+                fontSize: '0.78rem',
+                color: 'var(--ash-500)',
+                fontWeight: 500,
+                marginLeft: '4px',
               }}
-              title={dbConnected ? 'Live database connected to Supabase' : 'Offline / Local cache mode'}
             >
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dbConnected ? '#10B981' : '#F59E0B' }}></span>
-              {dbConnected ? 'Database Connected' : 'Local Cache'}
+              ({filteredProducts.length} items)
             </span>
           </div>
 
@@ -1280,14 +1818,14 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
             <button
               className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
-              title="Table Grid View with Horizontal Scroll"
+              title="Table View"
             >
               <List size={14} /> Table View
             </button>
             <button
               className={`view-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
               onClick={() => setViewMode('cards')}
-              title="Card Tiles View"
+              title="Cards Grid View"
             >
               <LayoutGrid size={14} /> Cards View
             </button>
@@ -1298,38 +1836,400 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
         {viewMode === 'table' ? (
           <div className="table-responsive">
             <table className="custom-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '280px' }}>Product Details</th>
-                  <th>Category</th>
-                  <th>Wood Type & Finish</th>
-                  <th>Dimensions (Size)</th>
-                  <th style={{ textAlign: 'right' }}>Selling Price</th>
-                  <th style={{ textAlign: 'center' }}>Stock Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
+              {/* Specialized headers by mode */}
+              {activeMode === 'products' && (
+                <thead>
+                  <tr>
+                    <th style={{ width: '280px' }}>Product Details</th>
+                    <th>Category</th>
+                    <th>Wood Type & Finish</th>
+                    <th>Dimensions (Size)</th>
+                    <th style={{ textAlign: 'right' }}>Selling Price</th>
+                    <th style={{ textAlign: 'center' }}>Stock Status</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+              )}
+
+              {activeMode === 'stock' && (
+                <thead>
+                  <tr>
+                    <th style={{ width: '260px' }}>Item Code & Product</th>
+                    <th>Category</th>
+                    <th style={{ textAlign: 'right' }}>Unit Selling Price</th>
+                    <th style={{ textAlign: 'center', minWidth: '170px' }}>Warehouse Stock Units</th>
+                    <th style={{ textAlign: 'center' }}>Safety Limit</th>
+                    <th style={{ textAlign: 'right' }}>Stock Valuation</th>
+                    <th style={{ textAlign: 'center' }}>Stock Health</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+              )}
+
+              {activeMode === 'low-stock' && (
+                <thead>
+                  <tr>
+                    <th style={{ width: '170px' }}>Replenishment Urgency</th>
+                    <th style={{ width: '260px' }}>Furniture Model & Code</th>
+                    <th>Category & Material</th>
+                    <th style={{ textAlign: 'center' }}>Current Stock</th>
+                    <th style={{ textAlign: 'center' }}>Safe Min Threshold</th>
+                    <th style={{ textAlign: 'center' }}>Required Deficit</th>
+                    <th style={{ textAlign: 'right' }}>Est. Restock Cost</th>
+                    <th style={{ textAlign: 'right' }}>Replenishment Action</th>
+                  </tr>
+                </thead>
+              )}
+
               <tbody>
                 {filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="table-empty-state">
-                        <Armchair size={42} color="var(--ash-400)" />
-                        <h4 style={{ color: 'var(--ash-900)' }}>No matching furniture items found</h4>
-                        <p style={{ color: 'var(--ash-500)', fontSize: '0.84rem' }}>
-                          Try adjusting your search terms or reset the filters.
-                        </p>
-                        <button className="btn btn-secondary" onClick={handleResetFilters}>
-                          Reset All Filters
-                        </button>
+                        {activeMode === 'low-stock' ? (
+                          <>
+                            <CheckCircle size={42} color="var(--success)" />
+                            <h4 style={{ color: 'var(--ash-900)' }}>No Low Stock Items!</h4>
+                            <p style={{ color: 'var(--ash-500)', fontSize: '0.84rem' }}>
+                              All furniture models are currently stocked well above their reorder safety levels.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <Armchair size={42} color="var(--ash-400)" />
+                            <h4 style={{ color: 'var(--ash-900)' }}>No matching furniture items found</h4>
+                            <p style={{ color: 'var(--ash-500)', fontSize: '0.84rem' }}>
+                              Try adjusting your search terms or reset the filters.
+                            </p>
+                            <button className="btn btn-secondary" onClick={handleResetFilters}>
+                              Reset All Filters
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
                 ) : (
                   filteredProducts.map((prod) => {
+                    const qty = Number(prod.stock_quantity) || 0;
+                    const reorder = Number(prod.reorder_level) || 2;
+                    const isCritical = qty <= 0;
+                    const deficitUnits = isCritical ? reorder : Math.max(1, reorder - qty + 1);
+                    const unitCost = Number(prod.cost_price) || Math.round((Number(prod.selling_price) || 0) * 0.65);
+                    const restockCost = deficitUnits * unitCost;
+
+                    /* -------------------------------------------
+                       1. MODE: PRODUCTS CATALOG ROW
+                       ------------------------------------------- */
+                    if (activeMode === 'products') {
+                      return (
+                        <tr key={prod.id}>
+                          <td>
+                            <div className="table-user-cell">
+                              {prod.image_url ? (
+                                <img
+                                  src={prod.image_url}
+                                  alt={prod.name}
+                                  className="product-table-thumb"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              ) : null}
+                              <div
+                                className="user-avatar"
+                                style={{
+                                  background: 'var(--primary-tint)',
+                                  color: 'var(--primary)',
+                                  borderRadius: '10px',
+                                  display: prod.image_url ? 'none' : 'flex',
+                                }}
+                              >
+                                <Armchair size={18} />
+                              </div>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span className="customer-name">{prod.name}</span>
+                                  <span
+                                    style={{
+                                      background: 'var(--primary-tint)',
+                                      color: 'var(--primary)',
+                                      padding: '1px 7px',
+                                      borderRadius: '5px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: '700',
+                                      fontFamily: 'monospace',
+                                      border: '1px solid var(--primary-border)',
+                                    }}
+                                  >
+                                    {prod.item_code}
+                                  </span>
+                                </div>
+                                <div className="customer-meta">
+                                  <span>{prod.finish || 'Polished Finish'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{renderCategoryBadge(prod.category)}</td>
+                          <td>
+                            <span
+                              style={{
+                                background: 'var(--ash-100)',
+                                border: '1px solid var(--ash-300)',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                color: 'var(--ash-900)',
+                              }}
+                            >
+                              🪵 {prod.wood_type}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Ruler size={13} color="var(--ash-500)" />
+                              <span style={{ fontSize: '0.84rem', color: 'var(--ash-700)' }}>
+                                {prod.dimensions || 'Standard Dimension'}
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--ash-900)' }}>
+                              {formatLKR(prod.selling_price)}
+                            </span>
+                            {prod.cost_price > 0 && (
+                              <span
+                                style={{
+                                  display: 'block',
+                                  fontSize: '0.72rem',
+                                  color: 'var(--ash-500)',
+                                  marginTop: '2px',
+                                }}
+                              >
+                                Cost: {formatLKR(prod.cost_price)}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {renderStockBadge(prod.stock_quantity, prod.reorder_level)}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="action-btn-group" style={{ justifyContent: 'flex-end' }}>
+                              <button
+                                className="icon-btn-action"
+                                title="View Furniture Specs & History"
+                                onClick={() => {
+                                  setSelectedProduct(prod);
+                                  setIsViewModalOpen(true);
+                                }}
+                              >
+                                <Eye size={15} />
+                              </button>
+                              <button
+                                className="icon-btn-action"
+                                title="Edit Furniture Details"
+                                onClick={() => handleOpenEdit(prod)}
+                              >
+                                <Edit2 size={15} />
+                              </button>
+                              <button
+                                className="icon-btn-action icon-btn-delete"
+                                title="Delete Product"
+                                onClick={() => handleDeleteProduct(prod.id, prod.name)}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    /* -------------------------------------------
+                       2. MODE: STOCK MANAGEMENT ROW
+                       ------------------------------------------- */
+                    if (activeMode === 'stock') {
+                      return (
+                        <tr key={prod.id}>
+                          <td>
+                            <div className="table-user-cell">
+                              {prod.image_url ? (
+                                <img
+                                  src={prod.image_url}
+                                  alt={prod.name}
+                                  className="product-table-thumb"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              ) : null}
+                              <div
+                                className="user-avatar"
+                                style={{
+                                  background: 'var(--primary-tint)',
+                                  color: 'var(--primary)',
+                                  borderRadius: '10px',
+                                  display: prod.image_url ? 'none' : 'flex',
+                                }}
+                              >
+                                <Boxes size={18} />
+                              </div>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span className="customer-name">{prod.name}</span>
+                                  <span
+                                    style={{
+                                      background: 'var(--primary-tint)',
+                                      color: 'var(--primary)',
+                                      padding: '1px 7px',
+                                      borderRadius: '5px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: '700',
+                                      fontFamily: 'monospace',
+                                      border: '1px solid var(--primary-border)',
+                                    }}
+                                  >
+                                    {prod.item_code}
+                                  </span>
+                                </div>
+                                <div className="customer-meta">
+                                  <span>🪵 {prod.wood_type}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>{renderCategoryBadge(prod.category)}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--ash-900)' }}>
+                              {formatLKR(prod.selling_price)}
+                            </span>
+                          </td>
+                          {/* Interactive In-line Stepper */}
+                          <td style={{ textAlign: 'center' }}>
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                background: 'var(--ash-50)',
+                                padding: '3px 8px',
+                                borderRadius: '8px',
+                                border: '1px solid var(--border-subtle)',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className="icon-btn-action"
+                                style={{ width: '26px', height: '26px', padding: 0 }}
+                                disabled={qty <= 0}
+                                onClick={() => handleQuickIncrement(prod.id, -1)}
+                                title="Deduct 1 unit (-1)"
+                              >
+                                <PackageMinus size={14} color="var(--error)" />
+                              </button>
+                              <span
+                                style={{
+                                  minWidth: '55px',
+                                  textAlign: 'center',
+                                  fontWeight: 800,
+                                  fontSize: '0.92rem',
+                                  color: qty === 0 ? 'var(--error)' : 'var(--ash-900)',
+                                }}
+                              >
+                                {qty} Unit{qty === 1 ? '' : 's'}
+                              </span>
+                              <button
+                                type="button"
+                                className="icon-btn-action"
+                                style={{ width: '26px', height: '26px', padding: 0 }}
+                                onClick={() => handleQuickIncrement(prod.id, 1)}
+                                title="Add 1 unit (+1)"
+                              >
+                                <PackagePlus size={14} color="var(--success)" />
+                              </button>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--ash-600)', fontSize: '0.84rem' }}>
+                              {reorder} Units
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.94rem' }}>
+                              {formatLKR(qty * (Number(prod.selling_price) || 0))}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {renderStockBadge(prod.stock_quantity, prod.reorder_level)}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="action-btn-group" style={{ justifyContent: 'flex-end' }}>
+                              <button
+                                className="btn btn-secondary"
+                                style={{
+                                  padding: '4px 10px',
+                                  fontSize: '0.74rem',
+                                  gap: '4px',
+                                  borderColor: 'var(--ash-300)',
+                                }}
+                                onClick={() => handleOpenAdjust(prod)}
+                                title="Adjust Stock Quantity with Reason"
+                              >
+                                <Zap size={13} color="var(--primary)" /> Adjust
+                              </button>
+                              <button
+                                className="icon-btn-action"
+                                title="Edit Product"
+                                onClick={() => handleOpenEdit(prod)}
+                              >
+                                <Edit2 size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    /* -------------------------------------------
+                       3. MODE: LOW STOCK ALERTS ROW
+                       ------------------------------------------- */
                     return (
-                      <tr key={prod.id}>
-                        {/* Product Info */}
+                      <tr key={prod.id} style={{ background: isCritical ? 'rgba(239, 68, 68, 0.03)' : undefined }}>
+                        <td>
+                          {isCritical ? (
+                            <span
+                              className="status-badge"
+                              style={{
+                                background: '#FEF2F2',
+                                color: '#DC2626',
+                                border: '1px solid #FECACA',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <AlertCircle size={13} /> CRITICAL (0 Stock)
+                            </span>
+                          ) : (
+                            <span
+                              className="status-badge"
+                              style={{
+                                background: '#FFFBEB',
+                                color: '#D97706',
+                                border: '1px solid #FDE68A',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              <AlertTriangle size={13} /> Low Stock ({qty} left)
+                            </span>
+                          )}
+                        </td>
                         <td>
                           <div className="table-user-cell">
                             {prod.image_url ? (
@@ -1342,17 +2242,6 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                                 }}
                               />
                             ) : null}
-                            <div
-                              className="user-avatar"
-                              style={{
-                                background: 'var(--primary-tint)',
-                                color: 'var(--primary)',
-                                borderRadius: '10px',
-                                display: prod.image_url ? 'none' : 'flex',
-                              }}
-                            >
-                              <Armchair size={18} />
-                            </div>
                             <div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span className="customer-name">{prod.name}</span>
@@ -1372,112 +2261,83 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                                 </span>
                               </div>
                               <div className="customer-meta">
-                                <span>{prod.finish || 'Polished Finish'}</span>
+                                <span>{prod.dimensions || 'Standard'}</span>
                               </div>
                             </div>
                           </div>
                         </td>
-
-                        {/* Category */}
-                        <td>{renderCategoryBadge(prod.category)}</td>
-
-                        {/* Wood Type */}
                         <td>
-                          <span
-                            style={{
-                              background: 'var(--ash-100)',
-                              border: '1px solid var(--ash-300)',
-                              padding: '2px 8px',
-                              borderRadius: '6px',
-                              fontSize: '0.78rem',
-                              fontWeight: 600,
-                              color: 'var(--ash-900)',
-                            }}
-                          >
-                            🪵 {prod.wood_type}
-                          </span>
-                        </td>
-
-                        {/* Dimensions */}
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Ruler size={13} color="var(--ash-500)" />
-                            <span style={{ fontSize: '0.84rem', color: 'var(--ash-700)' }}>
-                              {prod.dimensions || 'Standard Dimension'}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            {renderCategoryBadge(prod.category)}
+                            <span style={{ fontSize: '0.74rem', color: 'var(--ash-600)', marginTop: '2px' }}>
+                              🪵 {prod.wood_type}
                             </span>
                           </div>
                         </td>
-
-                        {/* Selling Price */}
-                        <td style={{ textAlign: 'right' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--ash-900)' }}>
-                            {formatLKR(prod.selling_price)}
-                          </span>
-                          {prod.cost_price > 0 && (
-                            <span
-                              style={{
-                                display: 'block',
-                                fontSize: '0.72rem',
-                                color: 'var(--ash-500)',
-                                marginTop: '2px',
-                              }}
-                            >
-                              Cost: {formatLKR(prod.cost_price)}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Stock Status & Quantity */}
                         <td style={{ textAlign: 'center' }}>
-                          {renderStockBadge(prod.stock_quantity, prod.reorder_level)}
+                          <span
+                            style={{
+                              fontWeight: 800,
+                              fontSize: '0.94rem',
+                              color: isCritical ? '#DC2626' : '#D97706',
+                            }}
+                          >
+                            {qty} Unit{qty === 1 ? '' : 's'}
+                          </span>
                         </td>
-
-                        {/* Actions */}
+                        <td style={{ textAlign: 'center' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--ash-600)', fontSize: '0.84rem' }}>
+                            {reorder} Units
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span
+                            style={{
+                              background: '#EFF6FF',
+                              color: '#1D4ED8',
+                              border: '1px solid #BFDBFE',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontWeight: 700,
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            Needs +{deficitUnits} Units
+                          </span>
+                        </td>
                         <td style={{ textAlign: 'right' }}>
-                          <div className="action-btn-group" style={{ justifyContent: 'flex-end' }}>
-                            {/* Quick Adjust Button */}
+                          <span style={{ fontWeight: 700, color: 'var(--ash-900)', fontSize: '0.92rem' }}>
+                            {formatLKR(restockCost)}
+                          </span>
+                          <span style={{ display: 'block', fontSize: '0.70rem', color: 'var(--ash-500)' }}>
+                            @ {formatLKR(unitCost)}/unit
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
                             <button
-                              className="btn btn-secondary"
+                              className="btn btn-primary"
                               style={{
-                                padding: '4px 9px',
-                                fontSize: '0.74rem',
-                                gap: '4px',
-                                borderColor: 'var(--ash-300)',
+                                padding: '5px 12px',
+                                fontSize: '0.78rem',
+                                gap: '6px',
+                                background: '#DC2626',
+                                borderColor: '#DC2626',
                               }}
-                              onClick={() => handleOpenAdjust(prod)}
-                              title="Adjust Stock Quantity (+ / -)"
+                              onClick={() => handleOpenRestockWorkshop(prod)}
+                              title="Restock this item from workshop batch"
                             >
-                              <Package size={13} color="var(--primary)" /> Stock
+                              <Hammer size={14} /> Restock Workshop
                             </button>
-
-                            {/* Edit Product */}
                             <button
                               className="icon-btn-action"
-                              title="Edit Furniture Details"
-                              onClick={() => handleOpenEdit(prod)}
-                            >
-                              <Edit2 size={15} />
-                            </button>
-
-                            {/* View Specs */}
-                            <button
-                              className="icon-btn-action"
-                              title="View Furniture Specs & History"
+                              title="View Details"
                               onClick={() => {
                                 setSelectedProduct(prod);
                                 setIsViewModalOpen(true);
                               }}
                             >
                               <Eye size={15} />
-                            </button>
-
-                            {/* Delete Product */}
-                            <button
-                              className="icon-btn-action icon-btn-delete"
-                              title="Delete Product"
-                              onClick={() => handleDeleteProduct(prod.id, prod.name)}
-                            >
-                              <Trash2 size={15} />
                             </button>
                           </div>
                         </td>
@@ -1492,13 +2352,41 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
           /* View Mode 2: Cards Grid View */
           <div className="customer-cards-grid">
             {filteredProducts.map((prod) => {
+              const qty = Number(prod.stock_quantity) || 0;
+              const reorder = Number(prod.reorder_level) || 2;
+              const isCritical = qty <= 0;
+              const deficitUnits = isCritical ? reorder : Math.max(1, reorder - qty + 1);
+
               return (
                 <div key={prod.id} className="customer-card-item" style={{ overflow: 'hidden' }}>
+                  {/* Low Stock Alert Flag for low-stock mode */}
+                  {activeMode === 'low-stock' && (
+                    <div
+                      style={{
+                        background: isCritical ? '#DC2626' : '#D97706',
+                        color: '#FFFFFF',
+                        padding: '5px 12px',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        {isCritical ? <AlertCircle size={14} /> : <AlertTriangle size={14} />}
+                        {isCritical ? 'CRITICAL: OUT OF STOCK' : 'LOW STOCK REORDER'}
+                      </span>
+                      <span>Needs +{deficitUnits} Units</span>
+                    </div>
+                  )}
+
                   {prod.image_url ? (
                     <div className="product-card-cover">
                       <img src={prod.image_url} alt={prod.name} />
                     </div>
                   ) : null}
+
                   <div className="customer-card-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       {prod.image_url ? null : (
@@ -1510,7 +2398,7 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                             borderRadius: '10px',
                           }}
                         >
-                          <Armchair size={18} />
+                          {activeMode === 'stock' ? <Boxes size={18} /> : <Armchair size={18} />}
                         </div>
                       )}
                       <div>
@@ -1542,17 +2430,49 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                   </div>
 
                   <div className="customer-card-body">
-                    {/* Size */}
-                    <div className="customer-card-row">
-                      <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Dimensions:</span>
-                      <span style={{ fontWeight: 600, color: 'var(--ash-900)' }}>{prod.dimensions || 'Standard'}</span>
-                    </div>
+                    {/* Size & Finish for products mode */}
+                    {activeMode === 'products' && (
+                      <>
+                        <div className="customer-card-row">
+                          <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Dimensions:</span>
+                          <span style={{ fontWeight: 600, color: 'var(--ash-900)' }}>{prod.dimensions || 'Standard'}</span>
+                        </div>
+                        <div className="customer-card-row">
+                          <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Finish:</span>
+                          <span style={{ color: 'var(--ash-700)' }}>{prod.finish || 'Polished'}</span>
+                        </div>
+                      </>
+                    )}
 
-                    {/* Finish */}
-                    <div className="customer-card-row">
-                      <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Finish:</span>
-                      <span style={{ color: 'var(--ash-700)' }}>{prod.finish || 'Polished'}</span>
-                    </div>
+                    {/* Stock Valuation for stock mode */}
+                    {activeMode === 'stock' && (
+                      <>
+                        <div className="customer-card-row">
+                          <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Stock Value:</span>
+                          <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.92rem' }}>
+                            {formatLKR(qty * (Number(prod.selling_price) || 0))}
+                          </span>
+                        </div>
+                        <div className="customer-card-row">
+                          <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Safety Level:</span>
+                          <span style={{ fontWeight: 600, color: 'var(--ash-700)' }}>{reorder} Units</span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Low Stock Deficit for low-stock mode */}
+                    {activeMode === 'low-stock' && (
+                      <>
+                        <div className="customer-card-row">
+                          <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Safe Threshold:</span>
+                          <span style={{ fontWeight: 600, color: 'var(--ash-700)' }}>{reorder} Units</span>
+                        </div>
+                        <div className="customer-card-row">
+                          <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Required Deficit:</span>
+                          <span style={{ fontWeight: 800, color: '#DC2626' }}>+{deficitUnits} Units</span>
+                        </div>
+                      </>
+                    )}
 
                     {/* Price */}
                     <div className="customer-card-row">
@@ -1562,22 +2482,81 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                       </span>
                     </div>
 
-                    {/* Stock Status */}
+                    {/* Current Stock */}
                     <div className="customer-card-row">
                       <span style={{ color: 'var(--ash-500)', fontSize: '0.78rem' }}>Current Stock:</span>
                       {renderStockBadge(prod.stock_quantity, prod.reorder_level)}
                     </div>
+
+                    {/* Inline Quick Stepper in Stock Mode */}
+                    {activeMode === 'stock' && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 10px',
+                          background: 'var(--ash-50)',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-subtle)',
+                          marginTop: '6px',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--ash-700)' }}>Quick Adjust:</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="icon-btn-action"
+                            style={{ width: '26px', height: '26px', padding: 0 }}
+                            disabled={qty <= 0}
+                            onClick={() => handleQuickIncrement(prod.id, -1)}
+                            title="Deduct 1 unit"
+                          >
+                            <PackageMinus size={14} color="var(--error)" />
+                          </button>
+                          <span style={{ minWidth: '40px', textAlign: 'center', fontWeight: 800, fontSize: '0.88rem' }}>
+                            {qty}
+                          </span>
+                          <button
+                            type="button"
+                            className="icon-btn-action"
+                            style={{ width: '26px', height: '26px', padding: 0 }}
+                            onClick={() => handleQuickIncrement(prod.id, 1)}
+                            title="Add 1 unit"
+                          >
+                            <PackagePlus size={14} color="var(--success)" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions Footer */}
                   <div className="customer-card-footer">
-                    <button
-                      className="btn btn-secondary"
-                      style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px' }}
-                      onClick={() => handleOpenAdjust(prod)}
-                    >
-                      <Package size={13} color="var(--primary)" /> Adjust Stock
-                    </button>
+                    {activeMode === 'low-stock' ? (
+                      <button
+                        className="btn btn-primary"
+                        style={{
+                          padding: '5px 12px',
+                          fontSize: '0.78rem',
+                          gap: '6px',
+                          background: '#DC2626',
+                          borderColor: '#DC2626',
+                          flex: 1,
+                        }}
+                        onClick={() => handleOpenRestockWorkshop(prod)}
+                      >
+                        <Hammer size={14} /> Restock Workshop
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ padding: '5px 12px', fontSize: '0.76rem', gap: '5px' }}
+                        onClick={() => handleOpenAdjust(prod)}
+                      >
+                        <Package size={13} color="var(--primary)" /> Adjust Stock
+                      </button>
+                    )}
 
                     <div className="action-btn-group">
                       <button
@@ -1597,13 +2576,15 @@ export default function ProductsPage({ initialStockFilter = 'all' }) {
                       >
                         <Eye size={15} />
                       </button>
-                      <button
-                        className="icon-btn-action icon-btn-delete"
-                        title="Delete Product"
-                        onClick={() => handleDeleteProduct(prod.id, prod.name)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {activeMode === 'products' && (
+                        <button
+                          className="icon-btn-action icon-btn-delete"
+                          title="Delete Product"
+                          onClick={() => handleDeleteProduct(prod.id, prod.name)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
