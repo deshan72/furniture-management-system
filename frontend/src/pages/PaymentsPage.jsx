@@ -24,6 +24,9 @@ import {
   ChevronRight,
   ShieldCheck,
   AlertTriangle,
+  LayoutGrid,
+  List,
+  MapPin,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import {
@@ -44,6 +47,9 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
   // Active Sub-view: 'accounts' (Active Loan Accounts & Advances) vs 'ledger' (Payment Receipts Ledger)
   const [activeSubView, setActiveSubView] = useState('accounts');
+
+  // View Mode toggle: 'table' | 'cards' (Cards View vs Table View)
+  const [viewMode, setViewMode] = useState('table');
 
   // Filter & Search State for Accounts Tab (The requested table view)
   const [accountSearchQuery, setAccountSearchQuery] = useState('');
@@ -1309,36 +1315,84 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               )}
             </div>
 
-            {/* Quick Filter Buttons */}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                type="button"
-                className={`btn ${accountStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-                onClick={() => setAccountStatusFilter('all')}
-              >
-                All Accounts ({orders.length})
-              </button>
-              <button
-                type="button"
-                className={`btn ${accountStatusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-                onClick={() => setAccountStatusFilter('active')}
-              >
-                Active Loans ({activeLoansCount})
-              </button>
-              <button
-                type="button"
-                className={`btn ${accountStatusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-                onClick={() => setAccountStatusFilter('paid')}
-              >
-                Fully Settled ({settledCount})
-              </button>
+            {/* Quick Filter Buttons & View Mode Toggle */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`btn ${accountStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+                  onClick={() => setAccountStatusFilter('all')}
+                >
+                  All Accounts ({orders.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${accountStatusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+                  onClick={() => setAccountStatusFilter('active')}
+                >
+                  Active Loans ({activeLoansCount})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${accountStatusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+                  onClick={() => setAccountStatusFilter('paid')}
+                >
+                  Fully Settled ({settledCount})
+                </button>
+              </div>
+
+              {/* View Switcher: Cards View vs Table View */}
+              <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  style={{
+                    border: 'none',
+                    background: viewMode === 'cards' ? '#fff' : 'transparent',
+                    color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <LayoutGrid size={14} /> Cards View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  style={{
+                    border: 'none',
+                    background: viewMode === 'table' ? '#fff' : 'transparent',
+                    color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <List size={14} /> Table View
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Accounts Table */}
+          {/* Accounts Content: Empty / Cards / Table */}
           {filteredAccounts.length === 0 ? (
             <div
               style={{
@@ -1355,6 +1409,322 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               <p style={{ fontSize: '0.82rem', color: 'var(--ash-400)', marginTop: '4px' }}>
                 All clients are fully paid up or search query had no match.
               </p>
+            </div>
+          ) : viewMode === 'cards' ? (
+            /* =======================================================
+               CARDS VIEW: RESPONSIVE CARDS GRID FOR ACTIVE LOANS
+               ======================================================= */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                {filteredAccounts.map((order) => {
+                  const isPaid = Number(order.balance_due) <= 0;
+                  const grossVal = Number(order.gross_amount) || 0;
+                  const balanceVal = Number(order.balance_due) || 0;
+                  const advanceVal = Number(order.advance_paid) || 0;
+                  const paidVal = Math.max(0, grossVal - balanceVal);
+                  const progressPercent = grossVal > 0 ? Math.min(100, Math.round((paidVal / grossVal) * 100)) : 100;
+
+                  return (
+                    <div
+                      key={order.id}
+                      style={{
+                        background: '#fff',
+                        borderRadius: '12px',
+                        border: '1px solid var(--ash-200)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                        padding: '16px 18px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <div>
+                        {/* Header: Contract Code & Status Badge */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span
+                            style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.8rem',
+                              color: 'var(--primary)',
+                              background: '#EFF6FF',
+                              padding: '3px 8px',
+                              borderRadius: '5px',
+                              border: '1px solid #BFDBFE',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            📜 {order.contract_no}
+                          </span>
+
+                          <span
+                            style={{
+                              padding: '3px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              background: isPaid ? '#DCFCE7' : '#FEF3C7',
+                              color: isPaid ? '#15803D' : '#B45309',
+                              border: isPaid ? '1px solid #86EFAC' : '1px solid #FDE68A',
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: isPaid ? '#16A34A' : '#D97706',
+                              }}
+                            />
+                            {isPaid ? 'Fully Paid' : 'Active Loan'}
+                          </span>
+                        </div>
+
+                        {/* Date & Invoice */}
+                        <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginBottom: '8px' }}>
+                          📅 {formatDate(order.date)} • Ref: {order.invoice_no}
+                        </div>
+
+                        {/* Customer Info */}
+                        <div style={{ fontWeight: 800, fontSize: '0.98rem', color: 'var(--ash-900)' }}>
+                          {order.customer_name}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontSize: '0.78rem', color: 'var(--ash-600)', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                            🆔 {order.customer_nic || order.customer_id}
+                          </span>
+                          <span>•</span>
+                          <span>📞 {order.customer_phone}</span>
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                          📍 Center: {order.branch_code}/{order.center_code}
+                        </div>
+
+                        {/* Furniture Item Box */}
+                        <div
+                          style={{
+                            background: 'var(--ash-50)',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            marginTop: '10px',
+                            border: '1px solid var(--ash-200)',
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-900)' }}>
+                            🛋️ {order.item_name}
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--ash-600)', marginTop: '3px' }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Code: {order.item_code}</span>
+                            <span>Qty: <strong>{order.quantity || 1} Unit(s)</strong></span>
+                          </div>
+                        </div>
+
+                        {/* Financial Metrics 3-Column Box */}
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gap: '6px',
+                            marginTop: '10px',
+                            padding: '10px',
+                            borderRadius: '8px',
+                            background: '#F8FAFC',
+                            border: '1px solid #E2E8F0',
+                            textAlign: 'center',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: '0.66rem', color: 'var(--ash-500)', fontWeight: 700, textTransform: 'uppercase' }}>
+                              Order Value
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: '0.84rem', color: 'var(--ash-900)', marginTop: '2px' }}>
+                              {formatLKR(order.gross_amount)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.66rem', color: 'var(--ash-500)', fontWeight: 700, textTransform: 'uppercase' }}>
+                              Advance Paid
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: '0.84rem', color: '#16A34A', marginTop: '2px' }}>
+                              {formatLKR(order.advance_paid)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.66rem', color: 'var(--ash-500)', fontWeight: 700, textTransform: 'uppercase' }}>
+                              Balance Due
+                            </div>
+                            <div style={{ fontWeight: 900, fontSize: '0.84rem', color: isPaid ? '#16A34A' : '#DC2626', marginTop: '2px' }}>
+                              {formatLKR(order.balance_due)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Repayment Progress Bar */}
+                        <div style={{ marginTop: '10px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--ash-600)', marginBottom: '3px' }}>
+                            <span>Settlement Progress</span>
+                            <strong style={{ color: isPaid ? '#16A34A' : 'var(--primary)' }}>{progressPercent}% Paid</strong>
+                          </div>
+                          <div style={{ height: '6px', width: '100%', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${progressPercent}%`,
+                                background: isPaid ? '#16A34A' : 'linear-gradient(90deg, #3B82F6 0%, #2563EB 100%)',
+                                borderRadius: '999px',
+                                transition: 'width 0.3s ease',
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Repayment Plan Info */}
+                        <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--ash-600)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          {order.payment_type === 'installment' ? (
+                            <>
+                              <span>Repayment Plan:</span>
+                              <span style={{ fontWeight: 800, color: '#A16207' }}>
+                                {formatLKR(order.installment_value)} <span style={{ fontSize: '0.68rem', fontWeight: 600 }}>/{order.loan_frequency === 'weekly' ? 'wk' : 'mo'}</span> ({order.loan_terms} {order.loan_frequency === 'weekly' ? 'wks' : 'mos'})
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Plan:</span>
+                              <span style={{ fontWeight: 700, color: 'var(--ash-700)' }}>Full Cash Sale</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Actions Footer */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--ash-100)', paddingTop: '10px', marginTop: '6px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 10px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            title="View Contract Details & History"
+                            onClick={() => {
+                              setSelectedContractForView(order);
+                              setIsContractViewModalOpen(true);
+                            }}
+                          >
+                            <Eye size={12} /> View
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 8px', fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            title="Print Passbook / Agreement Statement"
+                            onClick={() => {
+                              setSelectedContractForStatement(order);
+                              setIsStatementModalOpen(true);
+                            }}
+                          >
+                            <Printer size={12} /> Print
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          {Number(order.balance_due) > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{
+                                padding: '5px 12px',
+                                fontSize: '0.76rem',
+                                fontWeight: 800,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 2px 4px rgba(37,99,235,0.2)',
+                              }}
+                              title="Record Installment or Advance Payment"
+                              onClick={() => handleOpenRecordPaymentModal(order)}
+                            >
+                              <CreditCard size={12} /> Pay
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            style={{
+                              border: '1px solid var(--ash-200)',
+                              background: '#fff',
+                              color: 'var(--ash-400)',
+                              cursor: 'pointer',
+                              padding: '5px 7px',
+                              borderRadius: '5px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.15s ease',
+                            }}
+                            title="Remove Contract Entry"
+                            onClick={() => handleDeleteContract(order.id, order.contract_no)}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = '#DC2626';
+                              e.currentTarget.style.borderColor = '#FCA5A5';
+                              e.currentTarget.style.background = '#FEF2F2';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--ash-400)';
+                              e.currentTarget.style.borderColor = 'var(--ash-200)';
+                              e.currentTarget.style.background = '#fff';
+                            }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Cards View Summary Bar */}
+              <div
+                style={{
+                  padding: '12px 18px',
+                  background: '#F8FAFC',
+                  borderRadius: '10px',
+                  border: '1px solid var(--ash-200)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  fontSize: '0.8rem',
+                  color: 'var(--ash-600)',
+                }}
+              >
+                <div>
+                  Showing <strong>{filteredAccounts.length}</strong> of <strong>{orders.length}</strong> loan accounts
+                </div>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <span>
+                    Advances Collected: <strong style={{ color: '#16A34A' }}>{formatLKR(totalFilteredAccountsAdvances)}</strong>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Active Balance Due: <strong style={{ color: '#DC2626', fontSize: '0.9rem' }}>{formatLKR(totalFilteredAccountsBalance)}</strong>
+                  </span>
+                </div>
+              </div>
             </div>
           ) : (
             <div
@@ -1769,10 +2139,56 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                 <option value="Order Advance">Order Advances</option>
                 <option value="Full Settlement">Full Settlements</option>
               </select>
+
+              {/* View Switcher: Cards View vs Table View */}
+              <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  style={{
+                    border: 'none',
+                    background: viewMode === 'cards' ? '#fff' : 'transparent',
+                    color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <LayoutGrid size={14} /> Cards View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  style={{
+                    border: 'none',
+                    background: viewMode === 'table' ? '#fff' : 'transparent',
+                    color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <List size={14} /> Table View
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Transactions Ledger Table */}
+          {/* Transactions Ledger Content: Empty / Cards / Table */}
           {filteredPayments.length === 0 ? (
             <div
               style={{
@@ -1789,6 +2205,205 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               <p style={{ fontSize: '0.82rem', color: 'var(--ash-400)', marginTop: '4px' }}>
                 Click "+ Record New Payment" above to record an advance or installment payment.
               </p>
+            </div>
+          ) : viewMode === 'cards' ? (
+            /* =======================================================
+               CARDS VIEW: RESPONSIVE CARDS GRID FOR PAYMENT RECEIPTS
+               ======================================================= */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+                {filteredPayments.map((pay) => (
+                  <div
+                    key={pay.id}
+                    style={{
+                      background: '#fff',
+                      borderRadius: '12px',
+                      border: '1px solid var(--ash-200)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                      padding: '16px 18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.03)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div>
+                      {/* Top Bar: Receipt Number & Payment Type */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span
+                          style={{
+                            fontFamily: 'monospace',
+                            fontWeight: 800,
+                            fontSize: '0.8rem',
+                            color: '#2563EB',
+                            background: '#EFF6FF',
+                            padding: '3px 8px',
+                            borderRadius: '5px',
+                            border: '1px solid #BFDBFE',
+                          }}
+                        >
+                          🧾 {pay.receipt_no}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: pay.payment_type === 'Installment Loan' ? '#FEF3C7' : pay.payment_type === 'Full Settlement' ? '#DCFCE7' : '#EFF6FF',
+                            color: pay.payment_type === 'Installment Loan' ? '#B45309' : pay.payment_type === 'Full Settlement' ? '#15803D' : '#1D4ED8',
+                            border: `1px solid ${pay.payment_type === 'Installment Loan' ? '#FDE68A' : pay.payment_type === 'Full Settlement' ? '#86EFAC' : '#BFDBFE'}`,
+                          }}
+                        >
+                          {pay.payment_type}
+                        </span>
+                      </div>
+
+                      {/* Date & Ref */}
+                      <div style={{ fontSize: '0.74rem', color: 'var(--ash-500)', marginBottom: '8px' }}>
+                        📅 {formatDate(pay.date)} • Ref: {pay.reference_no || 'N/A'}
+                      </div>
+
+                      {/* Client Profile */}
+                      <div style={{ fontWeight: 800, fontSize: '0.96rem', color: 'var(--ash-900)' }}>
+                        {pay.customer_name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontSize: '0.78rem', color: 'var(--ash-600)' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                          🆔 {pay.customer_nic || pay.customer_id}
+                        </span>
+                        {pay.customer_phone && <span>• 📞 {pay.customer_phone}</span>}
+                      </div>
+
+                      {/* Contract & Center Info */}
+                      <div style={{ marginTop: '8px', fontSize: '0.74rem', color: 'var(--ash-600)', background: '#F8FAFC', padding: '6px 10px', borderRadius: '6px', border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>
+                          📜 {pay.contract_no}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)' }}>
+                          Center: {pay.branch_code}/{pay.center_code}
+                        </span>
+                      </div>
+
+                      {/* Collection Metrics */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, 1fr)',
+                          gap: '8px',
+                          marginTop: '10px',
+                          padding: '10px',
+                          borderRadius: '8px',
+                          background: '#F0FDF4',
+                          border: '1px solid #BBF7D0',
+                          textAlign: 'center',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '0.66rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Amount Collected
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: '1rem', color: '#15803D', marginTop: '2px' }}>
+                            +{formatLKR(pay.amount)}
+                          </div>
+                          <div style={{ fontSize: '0.66rem', color: '#166534', marginTop: '1px' }}>
+                            via {pay.payment_method}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.66rem', color: 'var(--ash-600)', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Remaining Balance
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: '1rem', color: Number(pay.new_balance) <= 0 ? '#16A34A' : '#DC2626', marginTop: '2px' }}>
+                            {formatLKR(pay.new_balance)}
+                          </div>
+                          <div style={{ fontSize: '0.66rem', color: 'var(--ash-500)', marginTop: '1px' }}>
+                            Prev: {formatLKR(pay.previous_balance)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Actions Footer */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--ash-100)', paddingTop: '10px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => {
+                          setActiveReceiptPayment(pay);
+                          setIsReceiptModalOpen(true);
+                        }}
+                      >
+                        <Printer size={13} /> View Receipt Slip
+                      </button>
+
+                      <button
+                        type="button"
+                        style={{
+                          border: '1px solid var(--ash-200)',
+                          background: '#fff',
+                          color: 'var(--ash-400)',
+                          cursor: 'pointer',
+                          padding: '6px 8px',
+                          borderRadius: '5px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.15s ease',
+                        }}
+                        title="Delete Payment Entry"
+                        onClick={() => handleDeletePayment(pay.id, pay.receipt_no)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = '#DC2626';
+                          e.currentTarget.style.borderColor = '#FCA5A5';
+                          e.currentTarget.style.background = '#FEF2F2';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--ash-400)';
+                          e.currentTarget.style.borderColor = 'var(--ash-200)';
+                          e.currentTarget.style.background = '#fff';
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Cards View Summary Bar */}
+              <div
+                style={{
+                  padding: '12px 18px',
+                  background: '#F8FAFC',
+                  borderRadius: '10px',
+                  border: '1px solid var(--ash-200)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  fontSize: '0.8rem',
+                  color: 'var(--ash-600)',
+                }}
+              >
+                <div>
+                  Showing <strong>{filteredPayments.length}</strong> of <strong>{payments.length}</strong> recorded payment transactions
+                </div>
+                <div>
+                  Total Filtered Collections: <strong style={{ color: '#16A34A', fontSize: '0.9rem' }}>{formatLKR(filteredPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0))}</strong>
+                </div>
+              </div>
             </div>
           ) : (
             <div
