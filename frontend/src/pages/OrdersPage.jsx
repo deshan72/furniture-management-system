@@ -245,8 +245,23 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       );
       if (byCode) return byCode;
     }
+    if (nameSearchText.trim()) {
+      const byName = products.find(
+        (p) => p.name && p.name.trim().toLowerCase() === nameSearchText.trim().toLowerCase()
+      );
+      if (byName) return byName;
+    }
+    if (codeSearchText.trim() || nameSearchText.trim()) {
+      return {
+        id: `prod-${Date.now()}`,
+        item_code: codeSearchText.trim().toUpperCase() || 'WD-101',
+        name: nameSearchText.trim() || 'Custom Furniture Item',
+        category: 'wood',
+        selling_price: Number(formUnitPrice) || 0,
+      };
+    }
     return null;
-  }, [selectedProductObj, products, formProductId, codeSearchText]);
+  }, [selectedProductObj, products, formProductId, codeSearchText, nameSearchText, formUnitPrice]);
 
   // Form: Auto-calculated Furniture Item Total (Qty * UnitPrice)
   const formItemTotal = useMemo(() => {
@@ -310,19 +325,19 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     if (prod) {
       setSelectedProductObj(prod);
       setFormProductId(prod.id || prod.item_code || '');
-      const price = Number(prod.selling_price) || 0;
-      setFormUnitPrice(price);
+      const price = Number(prod.selling_price ?? prod.price) || 0;
+      setFormUnitPrice(price > 0 ? price : '');
       setCodeSearchText(prod.item_code || '');
       setNameSearchText(prod.name || '');
       const total = (Number(formQuantity) || 1) * price;
-      setFormDownPayment(Math.round(total * 0.2));
+      setFormDownPayment(price > 0 ? Math.round(total * 0.2) : 0);
     } else {
       setSelectedProductObj(null);
       setFormProductId('');
-      setFormUnitPrice(0);
+      setFormUnitPrice('');
       setCodeSearchText('');
       setNameSearchText('');
-      setFormDownPayment(0);
+      setFormDownPayment('');
     }
     setIsCodeDropdownOpen(false);
     setIsNameDropdownOpen(false);
@@ -347,11 +362,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     if (exactMatch) {
       setSelectedProductObj(exactMatch);
       setFormProductId(exactMatch.id || exactMatch.item_code || '');
-      const price = Number(exactMatch.selling_price) || 0;
-      setFormUnitPrice(price);
+      const price = Number(exactMatch.selling_price ?? exactMatch.price) || 0;
+      setFormUnitPrice(price > 0 ? price : '');
       setNameSearchText(exactMatch.name || '');
       const total = (Number(formQuantity) || 1) * price;
-      setFormDownPayment(Math.round(total * 0.2));
+      setFormDownPayment(price > 0 ? Math.round(total * 0.2) : 0);
     }
   };
 
@@ -374,11 +389,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     if (exactMatch) {
       setSelectedProductObj(exactMatch);
       setFormProductId(exactMatch.id || exactMatch.item_code || '');
-      const price = Number(exactMatch.selling_price) || 0;
-      setFormUnitPrice(price);
+      const price = Number(exactMatch.selling_price ?? exactMatch.price) || 0;
+      setFormUnitPrice(price > 0 ? price : '');
       setCodeSearchText(exactMatch.item_code || '');
       const total = (Number(formQuantity) || 1) * price;
-      setFormDownPayment(Math.round(total * 0.2));
+      setFormDownPayment(price > 0 ? Math.round(total * 0.2) : 0);
     }
   };
 
@@ -404,16 +419,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       setFormProductId(firstProd.id || firstProd.item_code || '');
       setCodeSearchText(firstProd.item_code || '');
       setNameSearchText(firstProd.name || '');
-      const price = Number(firstProd.selling_price) || 0;
-      setFormUnitPrice(price);
+      const price = Number(firstProd.selling_price ?? firstProd.price) || 0;
+      setFormUnitPrice(price > 0 ? price : '');
       setFormQuantity(1);
-      setFormDownPayment(Math.round(price * 0.2));
+      setFormDownPayment(price > 0 ? Math.round(price * 0.2) : 0);
     } else {
       setSelectedProductObj(null);
       setFormProductId('');
       setCodeSearchText('');
       setNameSearchText('');
-      setFormUnitPrice(0);
+      setFormUnitPrice('');
       setFormQuantity(1);
       setFormDownPayment(0);
     }
@@ -2395,8 +2410,33 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   <input
                     type="number"
                     className="form-input"
-                    value={formUnitPrice}
-                    onChange={(e) => setFormUnitPrice(Number(e.target.value))}
+                    value={formUnitPrice === '' ? '' : formUnitPrice}
+                    onFocus={(e) => {
+                      if (formUnitPrice === 0 || formUnitPrice === '0') {
+                        setFormUnitPrice('');
+                      } else {
+                        e.target.select();
+                      }
+                    }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormUnitPrice(val);
+                      if (val !== '' && !isNaN(Number(val))) {
+                        const num = Number(val);
+                        const q = Number(formQuantity) || 1;
+                        setFormDownPayment(Math.round(num * q * 0.2));
+                      }
+                    }}
+                    onBlur={() => {
+                      if (formUnitPrice === '' || isNaN(Number(formUnitPrice))) {
+                        setFormUnitPrice(0);
+                      } else {
+                        setFormUnitPrice(Number(formUnitPrice));
+                      }
+                    }}
+                    placeholder="Enter item price"
+                    min="0"
+                    step="any"
                     style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.95rem' }}
                   />
                 </div>
@@ -2409,8 +2449,22 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     type="number"
                     className="form-input"
                     min="1"
-                    value={formQuantity}
-                    onChange={(e) => setFormQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    step="1"
+                    value={formQuantity === '' ? '' : formQuantity}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormQuantity(val);
+                      if (val !== '' && !isNaN(Number(val))) {
+                        const q = Number(val);
+                        const u = Number(formUnitPrice) || 0;
+                        setFormDownPayment(Math.round(u * q * 0.2));
+                      }
+                    }}
+                    onBlur={() => {
+                      const num = parseInt(formQuantity, 10);
+                      setFormQuantity(isNaN(num) || num < 1 ? 1 : num);
+                    }}
                     style={{ fontWeight: 800, fontSize: '0.95rem' }}
                   />
                 </div>
@@ -2574,8 +2628,23 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                       type="number"
                       className="form-input"
                       min="0"
-                      value={formDocumentCharge}
-                      onChange={(e) => setFormDocumentCharge(Math.max(0, Number(e.target.value)))}
+                      step="any"
+                      value={formDocumentCharge === '' ? '' : formDocumentCharge}
+                      onFocus={(e) => {
+                        if (formDocumentCharge === 0 || formDocumentCharge === '0') {
+                          setFormDocumentCharge('');
+                        } else {
+                          e.target.select();
+                        }
+                      }}
+                      onChange={(e) => setFormDocumentCharge(e.target.value)}
+                      onBlur={() => {
+                        if (formDocumentCharge === '' || isNaN(Number(formDocumentCharge))) {
+                          setFormDocumentCharge(0);
+                        } else {
+                          setFormDocumentCharge(Math.max(0, Number(formDocumentCharge)));
+                        }
+                      }}
                       placeholder="e.g. 1000"
                       style={{ fontWeight: 800, color: '#1E40AF', fontSize: '0.92rem' }}
                     />
@@ -2615,8 +2684,25 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     <input
                       type="number"
                       className="form-input"
-                      value={formDownPayment}
-                      onChange={(e) => setFormDownPayment(Math.max(0, Number(e.target.value)))}
+                      min="0"
+                      step="any"
+                      value={formDownPayment === '' ? '' : formDownPayment}
+                      onFocus={(e) => {
+                        if (formDownPayment === 0 || formDownPayment === '0') {
+                          setFormDownPayment('');
+                        } else {
+                          e.target.select();
+                        }
+                      }}
+                      onChange={(e) => setFormDownPayment(e.target.value)}
+                      onBlur={() => {
+                        if (formDownPayment === '' || isNaN(Number(formDownPayment))) {
+                          setFormDownPayment(0);
+                        } else {
+                          setFormDownPayment(Math.max(0, Number(formDownPayment)));
+                        }
+                      }}
+                      placeholder="0"
                       style={{ fontWeight: 800, fontSize: '0.92rem' }}
                     />
                     <span style={{ fontSize: '0.66rem', color: 'var(--ash-500)', marginTop: '2px', display: 'block' }}>
@@ -2659,8 +2745,14 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                         type="number"
                         className="form-input"
                         min="1"
-                        value={formLoanTerms}
-                        onChange={(e) => setFormLoanTerms(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                        step="1"
+                        value={formLoanTerms === '' ? '' : formLoanTerms}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setFormLoanTerms(e.target.value)}
+                        onBlur={() => {
+                          const parsed = parseInt(formLoanTerms, 10);
+                          setFormLoanTerms(isNaN(parsed) || parsed < 1 ? 12 : parsed);
+                        }}
                         style={{ fontWeight: 800, width: '75px', fontSize: '0.92rem' }}
                       />
                       {[6, 12, 16, 24].map((t) => (
