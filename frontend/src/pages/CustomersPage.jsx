@@ -35,7 +35,7 @@ import Modal from '../components/Modal';
 import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
-import { INITIAL_CUSTOMERS } from '../utils/customersData';
+import { INITIAL_CUSTOMERS, loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
 import {
   validateNic,
@@ -107,24 +107,39 @@ const normalizeIdPart = (key, value) => {
 const normalizeDigits = (str) => String(str || '').replace(/\D/g, '');
 const normalizeNic = (str) => String(str || '').trim().toUpperCase();
 
-// Seed migration map for default mock customers (Identified primarily by NIC)
+// Seed migration map for default mock customers (Identified primarily by NIC or ID)
 const SAMPLE_MIGRATION_MAP = {
-  'cust-1': { customer_id: '197814502391', branch_code: 'MHG', center_code: 'C001', nic: '197814502391' },
-  'cust-2': { customer_id: '198578901234', branch_code: 'MHG', center_code: 'C002', nic: '198578901234' },
-  'cust-3': { customer_id: '196923405678', branch_code: 'MRT', center_code: 'C001', nic: '196923405678' },
-  'cust-4': { customer_id: '199412308976', branch_code: 'NGB', center_code: 'C001', nic: '199412308976' },
-  'cust-5': { customer_id: '199145607890', branch_code: 'DHW', center_code: 'C001', nic: '199145607890' },
-  'cust-6': { customer_id: '197234509812', branch_code: 'CMB', center_code: 'C003', nic: '197234509812' },
+  'cust-1': { customer_id: '197814502391', branch_code: 'MHG', center_code: 'C001', nic: '197814502391', city: 'Maharagama' },
+  'cust-2': { customer_id: '198578901234', branch_code: 'MHG', center_code: 'C002', nic: '198578901234', city: 'Kottawa' },
+  'cust-3': { customer_id: '196923405678', branch_code: 'MRT', center_code: 'C001', nic: '196923405678', city: 'Moratuwa' },
+  'cust-4': { customer_id: '199412308976', branch_code: 'NGB', center_code: 'C001', nic: '199412308976', city: 'Negombo' },
+  'cust-5': { customer_id: '199145607890', branch_code: 'DHW', center_code: 'C001', nic: '199145607890', city: 'Dehiwala' },
+  'cust-6': { customer_id: '197234509812', branch_code: 'CMB', center_code: 'C003', nic: '197234509812', city: 'Colombo' },
 };
 
-// Converts customer record to NIC-first identity
+const SAMPLE_MIGRATION_NIC_MAP = {
+  '197814502391': { branch_code: 'MHG', center_code: 'C001', city: 'Maharagama' },
+  '198578901234': { branch_code: 'MHG', center_code: 'C002', city: 'Kottawa' },
+  '196923405678': { branch_code: 'MRT', center_code: 'C001', city: 'Moratuwa' },
+  '199212345678': { branch_code: 'DHW', center_code: 'C001', city: 'Dehiwala' },
+  '199412308976': { branch_code: 'NGB', center_code: 'C001', city: 'Negombo' },
+  '199145607890': { branch_code: 'DHW', center_code: 'C001', city: 'Dehiwala' },
+  '197234509812': { branch_code: 'CMB', center_code: 'C003', city: 'Colombo' },
+  '196556781234': { branch_code: 'CMB', center_code: 'C003', city: 'Panadura' },
+};
+
+// Converts customer record to NIC-first identity with fallbacks for location
 const migrateCustomerRecord = (c) => {
-  const seed = SAMPLE_MIGRATION_MAP[c.id];
-  const cleanNic = c.nic ? String(c.nic).trim().toUpperCase() : (seed?.nic || '');
+  const cleanNic = c.nic ? String(c.nic).trim().toUpperCase() : '';
+  const seed = (c.id && SAMPLE_MIGRATION_MAP[c.id]) || (cleanNic && SAMPLE_MIGRATION_NIC_MAP[cleanNic]) || {};
   const customerId = cleanNic || c.customer_id || '';
+  const derivedCity = c.city || seed.city || (c.address ? c.address.split(',').pop().trim() : 'Maharagama');
+
   return {
     ...c,
-    ...(seed || {}),
+    branch_code: c.branch_code || seed.branch_code || 'MHG',
+    center_code: c.center_code || seed.center_code || 'C001',
+    city: derivedCity,
     customer_id: customerId,
     nic: cleanNic || c.nic || '',
     first_name: c.first_name || (c.name ? c.name.split(' ')[0] : ''),
@@ -179,24 +194,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
   // Customers List State (with local storage persistence & auto-migration to NIC-first identity)
   const [customers, setCustomers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('dnd_customers_list');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const migrated = parsed.map((c, idx) => migrateCustomerRecord(c, idx));
-          try {
-            localStorage.setItem('dnd_customers_list', JSON.stringify(migrated));
-          } catch {
-            // ignore
-          }
-          return migrated;
-        }
-      }
-    } catch {
-      // fallback
+    const saved = loadSavedCustomers();
+    if (Array.isArray(saved) && saved.length > 0) {
+      return saved.map((c, idx) => migrateCustomerRecord(c, idx));
     }
-    return INITIAL_CUSTOMERS;
+    return INITIAL_CUSTOMERS.map((c, idx) => migrateCustomerRecord(c, idx));
   });
 
   // Filter States
@@ -280,8 +282,13 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
   // Sync external customer changes (from Centers or Overview page)
   useEffect(() => {
-    const handleCustomerSync = () => {
-      setCustomers(loadSavedCustomers());
+    const handleCustomerSync = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setCustomers(e.detail.map((c, idx) => migrateCustomerRecord(c, idx)));
+      } else {
+        const fresh = loadSavedCustomers();
+        setCustomers(fresh.map((c, idx) => migrateCustomerRecord(c, idx)));
+      }
     };
     window.addEventListener('storage', handleCustomerSync);
     window.addEventListener('dnd_customers_updated', handleCustomerSync);
@@ -300,19 +307,28 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     }
   }, [customers]);
 
-  // Try fetching from backend API on mount
+  // Fetch from backend API / Supabase on mount and merge with local records
   useEffect(() => {
     let isMounted = true;
     apiRequest('/customers')
       .then((res) => {
         if (isMounted && res && res.data && res.data.length > 0) {
-          // Merge or set with migration if backend has records
-          const migrated = res.data.map((c, idx) => migrateCustomerRecord(c, idx));
-          setCustomers(migrated);
+          const dbCustomers = res.data.map((c, idx) => migrateCustomerRecord(c, idx));
+          setCustomers((prev) => {
+            const dbIds = new Set(dbCustomers.map((d) => d.id));
+            const dbNics = new Set(dbCustomers.map((d) => (d.nic || '').trim().toUpperCase()).filter(Boolean));
+            // Keep local records not yet present in db
+            const localOnly = prev.filter(
+              (p) => !dbIds.has(p.id) && !dbNics.has((p.nic || '').trim().toUpperCase())
+            );
+            const merged = [...dbCustomers, ...localOnly];
+            saveCustomersToStorage(merged);
+            return merged;
+          });
         }
       })
-      .catch(() => {
-        // Fallback already loaded
+      .catch((err) => {
+        console.warn('Customer fetch from DB notice:', err);
       });
     return () => {
       isMounted = false;
@@ -617,8 +633,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     const totalOrders = matchedCustomerAlert ? matchedCustomerAlert.previousCount + 1 : 1;
     const assignedCustomerId = cleanNic;
 
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+
     const createdRecord = {
-      id: `cust-${Date.now()}`,
+      id: newId,
       customer_id: assignedCustomerId,
       branch_code: normalizeIdPart('branch_code', newCustomer.branch_code || 'MHG'),
       center_code: normalizeIdPart('center_code', newCustomer.center_code || 'C001'),
@@ -644,17 +666,26 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       created_at: new Date().toISOString(),
     };
 
-    // Try sending to backend
+    // 1. Immediately update React state and localStorage so directory view updates instantaneously
+    const updatedList = [createdRecord, ...customers];
+    setCustomers(updatedList);
+    saveCustomersToStorage(updatedList);
+
+    // 2. Persist to database (Supabase REST direct fallback or Express API)
     try {
-      await apiRequest('/customers', {
+      const res = await apiRequest('/customers', {
         method: 'POST',
         body: JSON.stringify(createdRecord),
       });
-    } catch {
-      // Local state fallback continues
+      if (res && res.data && res.data.id) {
+        const merged = { ...createdRecord, ...res.data };
+        setCustomers((prev) => prev.map((c) => (c.id === createdRecord.id ? merged : c)));
+        const fresh = loadSavedCustomers().map((c) => (c.id === createdRecord.id ? merged : c));
+        saveCustomersToStorage(fresh);
+      }
+    } catch (dbErr) {
+      console.warn('Customer database sync warning:', dbErr);
     }
-
-    setCustomers((prev) => [createdRecord, ...prev]);
 
     addLiveNotification({
       title: `Client Registered`,
@@ -668,8 +699,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     setMatchedCustomerAlert(null);
     setNewCustomer({
       customer_id: '',
-      branch_code: '',
-      center_code: '',
+      branch_code: 'MHG',
+      center_code: 'C001',
       contract_no: '1',
       item_code: '',
       photo: '',
@@ -693,10 +724,16 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Delete customer
   const handleDeleteCustomer = (id, name) => {
     if (window.confirm(`Are you sure you want to remove customer "${name}" from directory?`)) {
-      setCustomers((prev) => prev.filter((c) => c.id !== id));
+      const updatedList = customers.filter((c) => c.id !== id);
+      setCustomers(updatedList);
+      saveCustomersToStorage(updatedList);
       if (selectedCustomer?.id === id) {
         setIsViewModalOpen(false);
       }
+
+      apiRequest(`/customers/${id}`, { method: 'DELETE' }).catch((err) => {
+        console.warn('Customer delete DB warning:', err);
+      });
 
       addLiveNotification({
         title: `Client Removed`,
@@ -725,19 +762,25 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       return;
     }
 
-    setCustomers((prev) =>
-      prev.map((c) => {
-        if (c.id === selectedCustomer.id) {
-          const newBal = Math.max(0, Number(c.outstanding_balance) - amount);
-          return {
-            ...c,
-            outstanding_balance: newBal,
-            total_spent: (Number(c.total_spent) || 0) + amount,
-          };
-        }
-        return c;
-      })
-    );
+    const updatedList = customers.map((c) => {
+      if (c.id === selectedCustomer.id) {
+        const newBal = Math.max(0, Number(c.outstanding_balance) - amount);
+        const updated = {
+          ...c,
+          outstanding_balance: newBal,
+          total_spent: (Number(c.total_spent) || 0) + amount,
+        };
+        apiRequest(`/customers/${c.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updated),
+        }).catch((err) => console.warn('Payment balance sync warning:', err));
+        return updated;
+      }
+      return c;
+    });
+
+    setCustomers(updatedList);
+    saveCustomersToStorage(updatedList);
 
     setSelectedCustomer((prev) =>
       prev ? { ...prev, outstanding_balance: Math.max(0, Number(prev.outstanding_balance) - amount) } : null
@@ -1028,23 +1071,23 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       outstanding_balance: Number(editingCustomer.outstanding_balance) || 0,
     };
 
-    // Update state immediately
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === updated.id ? updated : c))
-    );
+    // Update state and storage immediately
+    const updatedList = customers.map((c) => (c.id === updated.id ? updated : c));
+    setCustomers(updatedList);
+    saveCustomersToStorage(updatedList);
 
     if (selectedCustomer?.id === updated.id) {
       setSelectedCustomer(updated);
     }
 
-    // Try backend API update
+    // Try backend API / Supabase update
     try {
       await apiRequest(`/customers/${updated.id}`, {
         method: 'PUT',
         body: JSON.stringify(updated),
       });
-    } catch {
-      // Local storage and state persist
+    } catch (err) {
+      console.warn('Customer update database warning:', err);
     }
 
     setIsEditModalOpen(false);
