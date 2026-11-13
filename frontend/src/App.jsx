@@ -529,18 +529,20 @@ export default function App() {
       />
 
       <div className={`main-wrapper ${isCollapsed ? 'sidebar-collapsed' : ''}`}>
-        <Header
-          title={pageInfo.title}
-          subtitle={pageInfo.subtitle}
-          selectedCenter={selectedCenter}
-          onSelectCenter={handleSelectCenter}
-          centers={centers}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          currentUser={currentUser}
-          onLogout={handleLogout}
-          onNavigate={setActiveTab}
-        />
+        <ErrorBoundary key="header-boundary">
+          <Header
+            title={pageInfo.title}
+            subtitle={pageInfo.subtitle}
+            selectedCenter={selectedCenter}
+            onSelectCenter={handleSelectCenter}
+            centers={centers}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            onNavigate={setActiveTab}
+          />
+        </ErrorBoundary>
 
         <main className="content-area">
           {/* Access Control Enforcement: If page is restricted for current role, block and show friendly notification */}
@@ -641,6 +643,21 @@ export default function App() {
                 />
               )}
               {activeTab === 'backup' && <BackupPage />}
+
+              {/* Fallback to Dashboard if activeTab does not match any recognized route */}
+              {![
+                'dashboard', 'orders', 'orders-new', 'orders-installments', 'payments', 'returns',
+                'products', 'inventory', 'low-stock', 'customers', 'customer-overview',
+                'centers', 'centers-new', 'centers-assign', 'purchases', 'cash-handling',
+                'reports', 'reports-sales', 'reports-profit', 'settings', 'users', 'backup'
+              ].includes(activeTab) && (
+                <DashboardPage
+                  selectedCenter={selectedCenter}
+                  centers={centers}
+                  onNavigate={setActiveTab}
+                  currentUser={currentUser}
+                />
+              )}
             </ErrorBoundary>
           )}
         </main>

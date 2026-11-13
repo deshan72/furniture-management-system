@@ -19,6 +19,8 @@ import {
   Sparkles,
   RotateCcw,
   Trash2,
+  CheckCircle,
+  User,
 } from 'lucide-react';
 import { formatCenterCode } from '../utils/centersData';
 import {
