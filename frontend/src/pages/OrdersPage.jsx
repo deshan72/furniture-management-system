@@ -68,7 +68,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
   // Main Page Filters & View Controls
   const [searchQuery, setSearchQuery] = useState('');
-  const [orderStatusFilter, setOrderStatusFilter] = useState('all'); // 'all' | 'In Production' | 'Ready for Delivery' | 'Delivered'
   const [viewMode, setViewMode] = useState('table'); // Default to professional Table View
 
   // Modals
@@ -787,40 +786,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     }
   };
 
-  // Helper to determine order fulfillment status
-  const getOrderStatus = (o) => {
-    if (o.order_status) return o.order_status;
-    if (Number(o.balance_due) <= 0) return 'Delivered';
-    return 'In Production';
-  };
-
-  // Quick Order Status Updater
-  const handleUpdateOrderStatus = (orderId, newStatus) => {
-    let affectedOrder = null;
-    const updated = orders.map((o) => {
-      if (o.id === orderId) {
-        affectedOrder = { ...o, order_status: newStatus };
-        return affectedOrder;
-      }
-      return o;
-    });
-    setOrders(updated);
-    saveOrdersToStorage(updated);
-    if (activeSelectedOrder && activeSelectedOrder.id === orderId) {
-      setActiveSelectedOrder({ ...activeSelectedOrder, order_status: newStatus });
-    }
-
-    if (affectedOrder) {
-      addLiveNotification({
-        title: `Order Status: ${newStatus}`,
-        desc: `Order ${affectedOrder.invoice_no} (${affectedOrder.item_name}) for ${affectedOrder.customer_name} marked as "${newStatus}".`,
-        category: 'orders',
-        type: newStatus === 'Delivered' ? 'success' : 'order',
-        targetTab: 'orders',
-      });
-    }
-  };
-
   // Export CSV (Focused on Order & Production Details)
   const handleExportCSV = () => {
     if (!filteredOrders.length) {
@@ -841,7 +806,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       'Quantity',
       'Unit Price',
       'Total Amount',
-      'Order Status',
       'Notes',
     ];
     const rows = filteredOrders.map((o) => [
@@ -858,7 +822,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       o.quantity || 1,
       o.unit_price || o.gross_amount,
       o.gross_amount,
-      `"${getOrderStatus(o)}"`,
       `"${(o.notes || '').replace(/"/g, '""')}"`,
     ]);
     const csvContent =
@@ -883,16 +846,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
     const rowsHtml = filteredOrders
       .map((o, idx) => {
-        const status = getOrderStatus(o);
-        const statusColor =
-          status === 'Delivered'
-            ? '#16A34A'
-            : status === 'Ready for Delivery'
-            ? '#D97706'
-            : status === 'Confirmed'
-            ? '#2563EB'
-            : '#4F46E5';
-
         return `
           <tr style="background: ${idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};">
             <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: center; font-size: 10px;">${idx + 1}</td>
@@ -924,11 +877,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             </td>
             <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: right; font-weight: 800; font-size: 11px; color: #0F172A; white-space: nowrap;">
               Rs. ${(Number(o.gross_amount) || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
-            </td>
-            <td style="padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: center;">
-              <span style="display: inline-block; padding: 3px 8px; border-radius: 9999px; font-size: 9.5px; font-weight: 800; background: ${statusColor}18; color: ${statusColor}; border: 1px solid ${statusColor}33; white-space: nowrap;">
-                ${status}
-              </span>
             </td>
           </tr>
         `;
@@ -989,16 +937,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               <div class="summary-val">${filteredOrders.length}</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">In Production</div>
-              <div class="summary-val" style="color: #2563EB;">${filteredOrders.filter((o) => getOrderStatus(o) === 'In Production').length}</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Ready for Delivery</div>
-              <div class="summary-val" style="color: #D97706;">${filteredOrders.filter((o) => getOrderStatus(o) === 'Ready for Delivery').length}</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">Delivered</div>
-              <div class="summary-val" style="color: #16A34A;">${filteredOrders.filter((o) => getOrderStatus(o) === 'Delivered').length}</div>
+              <div class="summary-label">Total Furniture Units</div>
+              <div class="summary-val" style="color: #2563EB;">${totalUnits} Units</div>
             </div>
             <div class="summary-card">
               <div class="summary-label">Total Order Value</div>
@@ -1016,7 +956,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 <th>Furniture Item & Specs</th>
                 <th>Delivery Address & Notes</th>
                 <th style="text-align: right;">Total Amount</th>
-                <th style="text-align: center;">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -1028,7 +967,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 <td style="padding: 10px; text-align: right; font-size: 12px; color: #1E4D8C;">
                   Rs. ${totalTurnover.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                 </td>
-                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -1125,9 +1063,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               <div class="info-sub"><strong>Delivery Address:</strong> ${order.customer_address || 'Showroom Direct Collection'}</div>
             </div>
             <div class="info-col" style="text-align: right;">
-              <div class="info-title">Order Status & Dispatch</div>
-              <div class="info-val" style="color: #1E4D8C;">${getOrderStatus(order)}</div>
-              <div class="info-sub"><strong>Payment Mode:</strong> ${order.payment_type === 'installment' ? 'Installment Plan' : 'Cash / Settle Sale'}</div>
+              <div class="info-title">Payment Mode & Terms</div>
+              <div class="info-val" style="color: #1E4D8C;">${order.payment_type === 'installment' ? 'Installment Plan' : 'Cash / Full Payment'}</div>
+              <div class="info-sub"><strong>Center:</strong> ${order.branch_code}/${order.center_code}</div>
               ${order.notes ? `<div class="info-sub" style="color: #D97706; font-style: italic; margin-top: 4px;">"${order.notes}"</div>` : ''}
             </div>
           </div>
@@ -1237,11 +1175,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
         }
       }
 
-      // Order Status Filter
-      if (orderStatusFilter !== 'all') {
-        if (getOrderStatus(order) !== orderStatusFilter) return false;
-      }
-
       // Header Center filter
       if (headerCenter && headerCenter !== 'all') {
         const parts = headerCenter.split('/');
@@ -1252,12 +1185,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
       return true;
     });
-  }, [orders, searchQuery, orderStatusFilter, headerCenter]);
-
-  // Order Fulfillment Counts
-  const inProductionCount = orders.filter((o) => getOrderStatus(o) === 'In Production').length;
-  const readyCount = orders.filter((o) => getOrderStatus(o) === 'Ready for Delivery').length;
-  const deliveredCount = orders.filter((o) => getOrderStatus(o) === 'Delivered').length;
+  }, [orders, searchQuery, headerCenter]);
 
   // Cumulative totals for the order table view
   const filteredTotalValue = useMemo(() => {
@@ -1292,23 +1220,12 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
           <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--ash-900)', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <ShoppingCart size={24} color="var(--primary)" /> Orders & Invoices
           </h2>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)', flexWrap: 'wrap' }}>
             <span>Total Orders: <strong style={{ color: 'var(--ash-900)' }}>{orders.length}</strong></span>
             <span>•</span>
-            <span style={{ color: '#2563EB', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563EB' }}></span>
-              In Production: <strong>{inProductionCount}</strong>
-            </span>
+            <span>Total Turnover: <strong style={{ color: 'var(--primary)' }}>{formatLKR(filteredTotalValue)}</strong></span>
             <span>•</span>
-            <span style={{ color: '#D97706', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#D97706' }}></span>
-              Ready for Delivery: <strong>{readyCount}</strong>
-            </span>
-            <span>•</span>
-            <span style={{ color: '#16A34A', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16A34A' }}></span>
-              Delivered: <strong>{deliveredCount}</strong>
-            </span>
+            <span>Total Items: <strong style={{ color: 'var(--ash-900)' }}>{filteredTotalUnits} Units</strong></span>
           </div>
         </div>
 
@@ -1388,42 +1305,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
           )}
         </div>
 
-        {/* Status Filters */}
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            type="button"
-            className={`btn ${orderStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setOrderStatusFilter('all')}
-          >
-            All Orders ({orders.length})
-          </button>
-          <button
-            type="button"
-            className={`btn ${orderStatusFilter === 'In Production' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setOrderStatusFilter('In Production')}
-          >
-            In Production ({inProductionCount})
-          </button>
-          <button
-            type="button"
-            className={`btn ${orderStatusFilter === 'Ready for Delivery' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setOrderStatusFilter('Ready for Delivery')}
-          >
-            Ready for Delivery ({readyCount})
-          </button>
-          <button
-            type="button"
-            className={`btn ${orderStatusFilter === 'Delivered' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-            onClick={() => setOrderStatusFilter('Delivered')}
-          >
-            Delivered ({deliveredCount})
-          </button>
-        </div>
-
         {/* View Layout Switcher */}
         <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
           <button
@@ -1495,8 +1376,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
         /* CLIENT-FRIENDLY MODERN CARDS GRID (ORDER DETAILS ONLY) */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
           {filteredOrders.map((order) => {
-            const currentOrderStatus = getOrderStatus(order);
-
             return (
               <div
                 key={order.id}
@@ -1515,7 +1394,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 }}
               >
                 <div>
-                  {/* Top Bar: Invoice Number Badge & Order Fulfillment Status */}
+                  {/* Top Bar: Invoice Number Badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <span
                       style={{
@@ -1531,43 +1410,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     >
                       📄 {order.invoice_no}
                     </span>
-
-                    {/* Interactive Order Status Dropdown */}
-                    <select
-                      value={currentOrderStatus}
-                      onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
-                      style={{
-                        padding: '3px 8px',
-                        borderRadius: '9999px',
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        border: '1px solid',
-                        background:
-                          currentOrderStatus === 'Delivered'
-                            ? '#DCFCE7'
-                            : currentOrderStatus === 'Ready for Delivery'
-                            ? '#FEF3C7'
-                            : '#EFF6FF',
-                        color:
-                          currentOrderStatus === 'Delivered'
-                            ? '#15803D'
-                            : currentOrderStatus === 'Ready for Delivery'
-                            ? '#B45309'
-                            : '#1D4ED8',
-                        borderColor:
-                          currentOrderStatus === 'Delivered'
-                            ? '#86EFAC'
-                            : currentOrderStatus === 'Ready for Delivery'
-                            ? '#FDE68A'
-                            : '#BFDBFE',
-                      }}
-                    >
-                      <option value="In Production">⚙️ In Production</option>
-                      <option value="Ready for Delivery">📦 Ready for Delivery</option>
-                      <option value="Delivered">🚚 Delivered</option>
-                      <option value="Confirmed">✓ Confirmed</option>
-                    </select>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontFamily: 'monospace' }}>
+                      Ref: {order.contract_no}
+                    </span>
                   </div>
 
                   {/* Client Info */}
@@ -1691,20 +1536,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   <th style={{ width: '18%', minWidth: '175px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Delivery Address & Notes
                   </th>
-                  <th style={{ width: '12%', minWidth: '120px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '14%', minWidth: '130px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
                     Total Amount
                   </th>
-                  <th style={{ width: '13%', minWidth: '135px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                    Order Status
-                  </th>
-                  <th style={{ width: '11%', minWidth: '110px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <th style={{ width: '12%', minWidth: '110px', padding: '12px 10px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-700, #475569)', letterSpacing: '0.3px', textTransform: 'uppercase', textAlign: 'right', whiteSpace: 'nowrap' }}>
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredOrders.map((order, idx) => {
-                  const currentOrderStatus = getOrderStatus(order);
                   return (
                     <tr
                       key={order.id}
@@ -1817,46 +1658,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                         </div>
                       </td>
 
-                      {/* 6. Order Fulfillment Status (Interactive Dropdown) */}
-                      <td style={{ padding: '10px 10px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <select
-                          value={currentOrderStatus}
-                          onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: '9999px',
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            border: '1px solid',
-                            background:
-                              currentOrderStatus === 'Delivered'
-                                ? '#DCFCE7'
-                                : currentOrderStatus === 'Ready for Delivery'
-                                ? '#FEF3C7'
-                                : '#EFF6FF',
-                            color:
-                              currentOrderStatus === 'Delivered'
-                                ? '#15803D'
-                                : currentOrderStatus === 'Ready for Delivery'
-                                ? '#B45309'
-                                : '#1D4ED8',
-                            borderColor:
-                              currentOrderStatus === 'Delivered'
-                                ? '#86EFAC'
-                                : currentOrderStatus === 'Ready for Delivery'
-                                ? '#FDE68A'
-                                : '#BFDBFE',
-                          }}
-                        >
-                          <option value="In Production">⚙️ In Production</option>
-                          <option value="Ready for Delivery">📦 Ready for Delivery</option>
-                          <option value="Delivered">🚚 Delivered</option>
-                          <option value="Confirmed">✓ Confirmed</option>
-                        </select>
-                      </td>
-
-                      {/* 7. Actions (Order details & Invoice print only, no Pay button) */}
+                      {/* 6. Actions (Order details & Invoice print only, no Pay button) */}
                       <td style={{ padding: '10px 10px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center', whiteSpace: 'nowrap' }}>
                           <button
@@ -3262,29 +3064,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   Contract Ref: {activeSelectedOrder.contract_no} • Order Date: {formatDate(activeSelectedOrder.date)}
                 </div>
               </div>
-
-              {/* Status Selector */}
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 700, display: 'block', marginBottom: '2px' }}>ORDER STATUS</span>
-                <select
-                  value={getOrderStatus(activeSelectedOrder)}
-                  onChange={(e) => handleUpdateOrderStatus(activeSelectedOrder.id, e.target.value)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: '9999px',
-                    fontSize: '0.76rem',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    border: '1px solid #BFDBFE',
-                    background: '#fff',
-                    color: '#1D4ED8',
-                  }}
-                >
-                  <option value="In Production">⚙️ In Production</option>
-                  <option value="Ready for Delivery">📦 Ready for Delivery</option>
-                  <option value="Delivered">🚚 Delivered</option>
-                  <option value="Confirmed">✓ Confirmed</option>
-                </select>
+              <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#1E40AF' }}>
+                <div><strong>Center Hub:</strong> {activeSelectedOrder.branch_code}/{activeSelectedOrder.center_code}</div>
+                <div style={{ fontSize: '0.72rem', color: '#3B82F6', marginTop: '2px' }}>Status: Registered</div>
               </div>
             </div>
 
