@@ -32,6 +32,7 @@ import {
   Camera,
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import { printHtmlDocument } from '../utils/printUtils';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { loadSavedOrders, saveOrdersToStorage } from '../utils/ordersData';
 import { loadSavedPayments, savePaymentsToStorage, generateNextReceiptNo } from '../utils/paymentsData';
@@ -392,11 +393,6 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
   // Print Official Customer Statement & Loan Portfolio as PDF
   const handlePrintStatementPDF = () => {
     if (!activeCustomer) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
-      return;
-    }
 
     const contractsHtml = customerOrders
       .map(
@@ -547,18 +543,11 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
               <div class="sig-label">Authorized Manager (D N S Home Solutions)</div>
             </div>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: `DNS_Statement_${activeCustomer.name}` });
   };
 
   return (

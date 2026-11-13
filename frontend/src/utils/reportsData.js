@@ -1,5 +1,6 @@
 // Reports Data Service & Utilities for D&S Furniture Management System
 import { formatDateTime } from './formatters';
+import { printHtmlDocument } from './printUtils';
 
 export const REPORT_TYPES = [
   {
@@ -374,12 +375,6 @@ export const printReportToPDF = ({
   tableRows = [],
   summaryCells = [],
 }) => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Popup blocker prevented opening the print window. Please allow popups for this site.');
-    return;
-  }
-
   const kpisHtml = kpiCards.length
     ? `
     <div class="kpi-grid">
@@ -521,11 +516,7 @@ export const printReportToPDF = ({
     </html>
   `;
 
-  printWindow.document.open();
-  printWindow.document.write(docHtml);
-  printWindow.document.close();
-  setTimeout(() => {
-    printWindow.focus();
-    printWindow.print();
-  }, 400);
+  printHtmlDocument(docHtml, {
+    title: `DNS_${String(reportTitle || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+  });
 };

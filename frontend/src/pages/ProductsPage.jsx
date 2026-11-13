@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
+import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest, uploadImageToSupabaseStorage } from '../services/api';
 import { generateNextItemCode, getCategoryPrefix } from '../utils/productUtils';
 import { addLiveNotification } from '../utils/notificationsData';
@@ -900,12 +901,6 @@ export default function ProductsPage({ initialStockFilter = 'all', mode = 'produ
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
-      return;
-    }
-
     const totalStockUnits = filteredProducts.reduce((sum, p) => sum + (Number(p.stock_quantity) || 0), 0);
     const totalInventoryValue = filteredProducts.reduce(
       (sum, p) => sum + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
@@ -1016,19 +1011,11 @@ export default function ProductsPage({ initialStockFilter = 'all', mode = 'produ
             <span>D N S Home Solutions System • Automated Inventory Report</span>
             <span>Page 1 of 1</span>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: 'DNS_Product_Catalog' });
   };
 
   // Category badge helper

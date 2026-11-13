@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
+import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
 import { INITIAL_CUSTOMERS } from '../utils/customersData';
@@ -781,12 +782,6 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
-      return;
-    }
-
     const totalOutstanding = filteredCustomers.reduce(
       (sum, c) => sum + (Number(c.outstanding_balance) || 0),
       0
@@ -903,19 +898,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             <span>D N S Home Solutions System - Confidential Official Ledger</span>
             <span>Printed via Furniture Management System Web Application</span>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: 'DNS_Customers_Report' });
   };
 
   // Open Edit Customer Modal

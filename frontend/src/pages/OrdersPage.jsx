@@ -37,6 +37,7 @@ import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersDa
 import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
 import { addLiveNotification } from '../utils/notificationsData';
+import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest } from '../services/api';
 import {
   validateNic,
@@ -877,12 +878,6 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups for this site.');
-      return;
-    }
-
     const totalTurnover = filteredOrders.reduce((sum, o) => sum + (Number(o.gross_amount) || 0), 0);
     const totalUnits = filteredOrders.reduce((sum, o) => sum + (Number(o.quantity) || 1), 0);
 
@@ -1058,27 +1053,16 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             <span>Printed via Furniture Management System Web Application</span>
           </div>
 
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: 'DNS_Orders_Manifest' });
   };
 
   // Print Single Order Official Invoice / Agreement as PDF
   const handlePrintSingleInvoicePDF = (order) => {
     if (!order) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups for this site.');
-      return;
-    }
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -1228,17 +1212,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             </div>
           </div>
 
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: `DNS_Invoice_${order.invoice_no || order.id}` });
   };
 
   // Filtered orders list (Order Specifications focused)

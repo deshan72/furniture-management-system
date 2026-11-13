@@ -39,6 +39,7 @@ import {
   saveOrdersToStorage,
 } from '../utils/ordersData';
 import { addLiveNotification } from '../utils/notificationsData';
+import { printHtmlDocument } from '../utils/printUtils';
 import { formatLKR, formatDate } from '../utils/formatters';
 
 // Helper to calculate next payment due date, next installment amount, and repayment schedule
@@ -534,12 +535,6 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
-      return;
-    }
-
     const totalGross = filteredAccounts.reduce((sum, o) => sum + (Number(o.gross_amount) || 0), 0);
     const totalAdvances = filteredAccounts.reduce((sum, o) => sum + (Number(o.advance_paid) || 0), 0);
     const totalBalance = filteredAccounts.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0);
@@ -705,30 +700,17 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
             <span>D N S Home Solutions System • Official Client Loan & Advances Ledger</span>
             <span>Printed via Furniture Management System Web Application</span>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: 'DNS_Loan_Accounts_Report' });
   };
 
   // Export Payment Receipts Ledger to PDF
   const handleExportReceiptsPDF = () => {
     if (!filteredPayments.length) {
       alert('No payment records to export.');
-      return;
-    }
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
       return;
     }
 
@@ -886,28 +868,16 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
             <span>D N S Home Solutions System • Official Payment Audit Trail</span>
             <span>Printed via Furniture Management System Web Application</span>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: 'DNS_Receipts_Ledger' });
   };
 
   // Print Single Official Payment Receipt as PDF
   const handlePrintSingleReceiptPDF = (p) => {
     if (!p) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
-      return;
-    }
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -994,28 +964,16 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               </div>
             </div>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: `DNS_Receipt_${p.receipt_no}` });
   };
 
   // Print Contract Passbook Statement as PDF
   const handlePrintPassbookPDF = (contract) => {
     if (!contract) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window. Please allow popups.');
-      return;
-    }
 
     const receipts = payments.filter((p) => p.contract_no === contract.contract_no || p.order_id === contract.id);
 
@@ -1131,18 +1089,11 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               <div class="sig-label">Authorized Officer (D N S Home Solutions)</div>
             </div>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: `DNS_Passbook_${contract.contract_no}` });
   };
 
   // Filtered Payments List for Ledger

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
+import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest } from '../services/api';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
@@ -797,12 +798,6 @@ export default function CentersPage({
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Popup blocker prevented opening the print window.');
-      return;
-    }
-
     const rowsHtml = filteredCenters
       .map((c, idx) => {
         const custCount = getCustomersForCenter(c).length;
@@ -884,14 +879,11 @@ export default function CentersPage({
               ${rowsHtml}
             </tbody>
           </table>
-          <script>window.onload = function() { window.print(); };</script>
         </body>
       </html>
     `;
 
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    printHtmlDocument(htmlContent, { title: 'DNS_Centers_Directory' });
   };
 
   return (

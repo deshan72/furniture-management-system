@@ -41,6 +41,7 @@ import {
   PRESET_SUPPLIERS,
 } from '../utils/purchasesData';
 import { addLiveNotification } from '../utils/notificationsData';
+import { printHtmlDocument } from '../utils/printUtils';
 import { formatLKR, formatDate } from '../utils/formatters';
 
 export default function PurchasesPage({ onNavigate }) {
@@ -428,7 +429,72 @@ export default function PurchasesPage({ onNavigate }) {
 
   // Print Inward Goods / Purchases Report
   const handlePrintReport = () => {
-    window.print();
+    if (!filteredPurchases.length) {
+      alert('No purchases to print.');
+      return;
+    }
+
+    const rowsHtml = filteredPurchases.map((p, idx) => `
+      <tr>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1; text-align: center;">${idx + 1}</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-family: monospace; font-weight: 700; color: #1E4D8C;">${p.po_number}</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1;">${formatDate(p.purchase_date)}</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1;"><strong>${p.supplier_name}</strong></td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1;">${p.item_description}</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1; text-align: center;">${p.quantity} ${p.unit}</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1; text-align: right; font-weight: 700;">${formatLKR(p.total_amount)}</td>
+        <td style="padding: 8px 10px; border-bottom: 1px solid #CBD5E1; text-align: center;">${p.payment_status}</td>
+      </tr>
+    `).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>D N S Home Solutions - Stock Purchases Report</title>
+          <style>
+            @page { size: A4 landscape; margin: 12mm; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; color: #1E293B; margin: 0; padding: 20px; font-size: 11px; }
+            .header-box { display: flex; justify-content: space-between; border-bottom: 2px solid #1E4D8C; padding-bottom: 10px; margin-bottom: 16px; }
+            .company-title { font-size: 20px; font-weight: 900; color: #1E4D8C; margin: 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10.5px; }
+            th { background: #F1F5F9; border-bottom: 2px solid #94A3B8; padding: 8px; text-align: left; }
+          </style>
+        </head>
+        <body>
+          <div class="header-box">
+            <div>
+              <h1 class="company-title">D N S HOME SOLUTIONS</h1>
+              <div>Stock Purchases & Inward Goods (GRN) Manifest</div>
+            </div>
+            <div style="text-align: right; font-size: 10px; color: #64748B;">
+              <div>Date: ${new Date().toLocaleDateString('en-GB')}</div>
+              <div>Records: ${filteredPurchases.length} Purchase(s)</div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">#</th>
+                <th>PO Number</th>
+                <th>Date</th>
+                <th>Supplier</th>
+                <th>Materials / Description</th>
+                <th style="text-align: center;">Quantity</th>
+                <th style="text-align: right;">Total Cost</th>
+                <th style="text-align: center;">Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    printHtmlDocument(htmlContent, { title: 'DNS_Purchases_Report' });
   };
 
   // Category Badge Render Helper
@@ -1415,7 +1481,74 @@ export default function PurchasesPage({ onNavigate }) {
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  window.print();
+                  if (!selectedPurchase) return;
+                  const voucherHtml = `
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <meta charset="utf-8" />
+                        <title>Purchase Voucher - ${selectedPurchase.po_number}</title>
+                        <style>
+                          @page { size: A5 landscape; margin: 10mm; }
+                          body { font-family: 'Segoe UI', Arial, sans-serif; color: #1E293B; margin: 0; padding: 16px; font-size: 11px; }
+                          .v-box { border: 2px solid #1E4D8C; border-radius: 8px; padding: 14px; }
+                          .v-header { display: flex; justify-content: space-between; border-bottom: 2px solid #1E4D8C; padding-bottom: 8px; margin-bottom: 12px; }
+                          .v-title { font-size: 18px; font-weight: 900; color: #1E4D8C; margin: 0; }
+                          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+                          .card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; }
+                          .signatures { display: flex; justify-content: space-between; margin-top: 30px; }
+                          .sig-line { border-bottom: 1px solid #475569; width: 140px; height: 30px; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="v-box">
+                          <div class="v-header">
+                            <div>
+                              <h2 class="v-title">D N S HOME SOLUTIONS</h2>
+                              <div style="font-size: 10px; color: #64748B;">Official Inward Goods & Purchase Voucher</div>
+                            </div>
+                            <div style="text-align: right; font-size: 10px;">
+                              <div><strong>PO #:</strong> ${selectedPurchase.po_number}</div>
+                              <div><strong>GRN #:</strong> ${selectedPurchase.grn_number}</div>
+                              <div><strong>Date:</strong> ${formatDate(selectedPurchase.purchase_date)}</div>
+                            </div>
+                          </div>
+
+                          <div class="grid">
+                            <div class="card">
+                              <strong>Supplier:</strong> ${selectedPurchase.supplier_name}<br />
+                              <span>Contact: ${selectedPurchase.supplier_contact || 'N/A'}</span>
+                            </div>
+                            <div class="card" style="text-align: right;">
+                              <strong>Total Amount:</strong> ${formatLKR(selectedPurchase.total_amount)}<br />
+                              <span style="color: #10B981; font-weight: 700;">Paid: ${formatLKR(selectedPurchase.paid_amount)}</span>
+                            </div>
+                          </div>
+
+                          <div class="card" style="margin-bottom: 12px;">
+                            <strong>Description:</strong> ${selectedPurchase.item_description} (${selectedPurchase.quantity} ${selectedPurchase.unit} @ ${formatLKR(selectedPurchase.unit_cost)})
+                            ${selectedPurchase.notes ? `<div style="font-size: 9.5px; color: #64748B; margin-top: 4px;">Note: ${selectedPurchase.notes}</div>` : ''}
+                          </div>
+
+                          <div class="signatures">
+                            <div>
+                              <div class="sig-line"></div>
+                              <div style="font-size: 9px; margin-top: 4px;">Goods Received By</div>
+                            </div>
+                            <div>
+                              <div class="sig-line"></div>
+                              <div style="font-size: 9px; margin-top: 4px;">Workshop Supervisor</div>
+                            </div>
+                            <div>
+                              <div class="sig-line"></div>
+                              <div style="font-size: 9px; margin-top: 4px;">Authorized Manager</div>
+                            </div>
+                          </div>
+                        </div>
+                      </body>
+                    </html>
+                  `;
+                  printHtmlDocument(voucherHtml, { title: `DNS_Voucher_${selectedPurchase.po_number}` });
                 }}
                 style={{ gap: '6px' }}
               >

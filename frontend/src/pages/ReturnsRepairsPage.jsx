@@ -23,6 +23,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import { printHtmlDocument } from '../utils/printUtils';
 import {
   loadSavedRepairs,
   saveRepairsToStorage,
@@ -1540,7 +1541,77 @@ export default function ReturnsRepairsPage({ selectedCenter = 'all', onNavigate 
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => window.print()}
+                onClick={() => {
+                  if (!activeTicket) return;
+                  const jobCardHtml = `
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <meta charset="utf-8" />
+                        <title>Job Card - ${activeTicket.ticket_no}</title>
+                        <style>
+                          @page { size: A5 landscape; margin: 10mm; }
+                          body { font-family: 'Segoe UI', Arial, sans-serif; color: #1E293B; margin: 0; padding: 16px; font-size: 11px; }
+                          .box { border: 2px solid #1E4D8C; border-radius: 8px; padding: 14px; }
+                          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1E4D8C; padding-bottom: 8px; margin-bottom: 12px; }
+                          .title { font-size: 18px; font-weight: 900; color: #1E4D8C; margin: 0; }
+                          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+                          .card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 10px; }
+                          .signatures { display: flex; justify-content: space-between; margin-top: 30px; }
+                          .sig-line { border-bottom: 1px solid #475569; width: 140px; height: 30px; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="box">
+                          <div class="header">
+                            <div>
+                              <h2 class="title">D N S HOME SOLUTIONS</h2>
+                              <div style="font-size: 10px; color: #64748B;">Workshop Repair & Restoration Job Card</div>
+                            </div>
+                            <div style="text-align: right; font-size: 10px;">
+                              <div><strong>Ticket #:</strong> ${activeTicket.ticket_no}</div>
+                              <div><strong>Reported:</strong> ${formatDate(activeTicket.date_reported)}</div>
+                              <div><strong>Due:</strong> ${formatDate(activeTicket.expected_completion)}</div>
+                            </div>
+                          </div>
+
+                          <div class="grid">
+                            <div class="card">
+                              <strong>Client:</strong> ${activeTicket.customer_name}<br />
+                              <span>Phone: ${activeTicket.customer_phone || 'N/A'}</span><br />
+                              <span>Invoice Ref: ${activeTicket.invoice_no}</span>
+                            </div>
+                            <div class="card">
+                              <strong>Model:</strong> ${activeTicket.item_name} (${activeTicket.item_code})<br />
+                              <span>Category: ${activeTicket.category}</span><br />
+                              <span>Technician: ${activeTicket.assigned_technician}</span>
+                            </div>
+                          </div>
+
+                          <div class="card" style="margin-bottom: 12px;">
+                            <strong>Instructions:</strong> ${activeTicket.issue_description}
+                          </div>
+
+                          <div class="signatures">
+                            <div>
+                              <div class="sig-line"></div>
+                              <div style="font-size: 9px; margin-top: 4px;">Master Carpenter</div>
+                            </div>
+                            <div>
+                              <div class="sig-line"></div>
+                              <div style="font-size: 9px; margin-top: 4px;">Workshop Supervisor QA</div>
+                            </div>
+                            <div>
+                              <div class="sig-line"></div>
+                              <div style="font-size: 9px; margin-top: 4px;">Customer Acceptance</div>
+                            </div>
+                          </div>
+                        </div>
+                      </body>
+                    </html>
+                  `;
+                  printHtmlDocument(jobCardHtml, { title: `DNS_JobCard_${activeTicket.ticket_no}` });
+                }}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}
               >
                 <Printer size={15} /> Print Job Card
