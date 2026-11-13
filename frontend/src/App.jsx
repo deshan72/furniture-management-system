@@ -15,6 +15,7 @@ import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
 import BackupPage from './pages/BackupPage';
 import ReportsPage from './pages/ReportsPage';
+import PurchasesPage from './pages/PurchasesPage';
 import LoginPage from './pages/LoginPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { loadSavedCenters } from './utils/centersData';
@@ -606,11 +607,7 @@ export default function App() {
                   'Timber & Material Suppliers',
                   'Maintain vendor records for timber mills, paint dealers, and fabric suppliers.'
                 )}
-              {activeTab === 'purchases' &&
-                renderGenericPlaceholder(
-                  'Stock Purchases & Inward Goods',
-                  'Record timber cubic feet, plywood sheets, and hardware bought into workshop.'
-                )}
+              {activeTab === 'purchases' && <PurchasesPage onNavigate={setActiveTab} />}
 
               {/* Finance */}
               {activeTab === 'cashbook' && <CashHandlingPage />}
