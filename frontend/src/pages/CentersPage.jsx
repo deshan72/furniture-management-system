@@ -13,6 +13,8 @@ import {
   Phone,
   User,
   CheckCircle,
+  AlertCircle,
+  AlertTriangle,
   X,
   FileSpreadsheet,
   LayoutGrid,
@@ -29,6 +31,14 @@ import Modal from '../components/Modal';
 import { apiRequest } from '../services/api';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
+import {
+  validateNic,
+  validatePhone,
+  validateName,
+  validateAmount,
+  sanitizeNicInput,
+  sanitizePhoneInput,
+} from '../utils/validators';
 
 // Visual branch identity themes (Colors & Hub names)
 const BRANCH_THEMES = {
@@ -408,6 +418,14 @@ export default function CentersPage({
       return;
     }
 
+    if (newCenter.phone) {
+      const pCheck = validatePhone(newCenter.phone, false);
+      if (!pCheck.isValid) {
+        alert(`Center Contact Phone Error:\n${pCheck.message}`);
+        return;
+      }
+    }
+
     // Check duplicate center within same branch
     const exists = centers.some(
       (c) => c.branch_code?.toUpperCase() === bCode && formatCenterCode(c.center_code) === cCode
@@ -479,6 +497,14 @@ export default function CentersPage({
     if (!cCode || !bCode || !editingCenter.name.trim()) {
       alert('Please enter Center Code, Branch Code and Name.');
       return;
+    }
+
+    if (editingCenter.phone) {
+      const pCheck = validatePhone(editingCenter.phone, false);
+      if (!pCheck.isValid) {
+        alert(`Center Contact Phone Error:\n${pCheck.message}`);
+        return;
+      }
     }
 
     const exists = centers.some(
@@ -577,20 +603,48 @@ export default function CentersPage({
       alert('Please select a regional center first.');
       return;
     }
-    if (!newClientForm.first_name || !newClientForm.first_name.trim()) {
-      alert('Please enter First Name.');
+
+    // 1. Validate First Name
+    const fnCheck = validateName(newClientForm.first_name, 'First Name', true);
+    if (!fnCheck.isValid) {
+      alert(fnCheck.message);
       return;
     }
-    if (!newClientForm.nic || !newClientForm.nic.trim()) {
-      alert('Please enter NIC (National Identity Card) Number.');
-      return;
+    if (newClientForm.last_name) {
+      const lnCheck = validateName(newClientForm.last_name, 'Last Name', false);
+      if (!lnCheck.isValid) {
+        alert(lnCheck.message);
+        return;
+      }
     }
-    if (!newClientForm.phone || !newClientForm.phone.trim()) {
-      alert('Please enter Phone Number.');
+
+    // 2. Validate NIC (Sri Lankan 9 digits + V/X or 12 digits)
+    const nicCheck = validateNic(newClientForm.nic, true);
+    if (!nicCheck.isValid) {
+      alert(`NIC Validation Error:\n${nicCheck.message}`);
       return;
     }
 
-    const cleanNic = newClientForm.nic.trim().toUpperCase();
+    // 3. Validate Phone Number (10 digits starting with 0)
+    const phoneCheck = validatePhone(newClientForm.phone, true);
+    if (!phoneCheck.isValid) {
+      alert(`Phone Number Validation Error:\n${phoneCheck.message}`);
+      return;
+    }
+
+    // 4. Validate WhatsApp (if entered)
+    if (newClientForm.whatsapp) {
+      const waCheck = validatePhone(newClientForm.whatsapp, false);
+      if (!waCheck.isValid) {
+        alert(`WhatsApp Number Validation Error:\n${waCheck.message}`);
+        return;
+      }
+    }
+
+    const cleanNic = nicCheck.cleanNic;
+    const cleanPhone = phoneCheck.cleanPhone;
+    const cleanWa = newClientForm.whatsapp ? validatePhone(newClientForm.whatsapp, false).cleanPhone : cleanPhone;
+
     const existing = customers.find(
       (c) =>
         (c.nic && c.nic.trim().toUpperCase() === cleanNic) ||
@@ -634,8 +688,8 @@ export default function CentersPage({
       name: fullName,
       civil_status: newClientForm.civil_status || 'Single',
       dob: newClientForm.dob || '',
-      phone: newClientForm.phone.trim(),
-      whatsapp: (newClientForm.whatsapp || newClientForm.phone).trim(),
+      phone: cleanPhone,
+      whatsapp: cleanWa,
       nic: cleanNic,
       city: newClientForm.city || targetCenterForClient.city || 'Maharagama',
       address: newClientForm.address || '',
@@ -1618,14 +1672,27 @@ export default function CentersPage({
             </div>
 
             <div className="form-group">
-              <label className="form-label">Contact Phone</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Contact Phone</span>
+                {newCenter.phone && (
+                  <span className={`validation-status-pill ${validatePhone(newCenter.phone, false).isValid ? 'valid' : 'invalid'}`}>
+                    {validatePhone(newCenter.phone, false).isValid ? '✓ 10 Digits' : `${newCenter.phone.length}/10`}
+                  </span>
+                )}
+              </label>
               <input
-                type="text"
-                className="form-input"
-                placeholder="077XXXXXXX"
+                type="tel"
+                className={`form-input ${newCenter.phone ? (validatePhone(newCenter.phone, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                maxLength={10}
+                placeholder="07XXXXXXXX (10 digits)"
                 value={newCenter.phone}
-                onChange={(e) => setNewCenter({ ...newCenter, phone: e.target.value })}
+                onChange={(e) => setNewCenter({ ...newCenter, phone: sanitizePhoneInput(e.target.value) })}
               />
+              {newCenter.phone && !validatePhone(newCenter.phone, false).isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validatePhone(newCenter.phone, false).message}
+                </div>
+              )}
             </div>
 
             {/* Address */}
@@ -1769,13 +1836,27 @@ export default function CentersPage({
               </div>
 
               <div className="form-group">
-                <label className="form-label">Contact Phone</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Contact Phone</span>
+                  {editingCenter.phone && (
+                    <span className={`validation-status-pill ${validatePhone(editingCenter.phone, false).isValid ? 'valid' : 'invalid'}`}>
+                      {validatePhone(editingCenter.phone, false).isValid ? '✓ 10 Digits' : `${editingCenter.phone.length}/10`}
+                    </span>
+                  )}
+                </label>
                 <input
-                  type="text"
-                  className="form-input"
+                  type="tel"
+                  className={`form-input ${editingCenter.phone ? (validatePhone(editingCenter.phone, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                  maxLength={10}
+                  placeholder="07XXXXXXXX (10 digits)"
                   value={editingCenter.phone || ''}
-                  onChange={(e) => setEditingCenter({ ...editingCenter, phone: e.target.value })}
+                  onChange={(e) => setEditingCenter({ ...editingCenter, phone: sanitizePhoneInput(e.target.value) })}
                 />
+                {editingCenter.phone && !validatePhone(editingCenter.phone, false).isValid && (
+                  <div className="validation-hint error">
+                    <AlertCircle size={12} /> {validatePhone(editingCenter.phone, false).message}
+                  </div>
+                )}
               </div>
 
               <div className="form-group full-width">
@@ -2122,63 +2203,143 @@ export default function CentersPage({
             <form onSubmit={handleRegisterClientToCenter}>
               <div className="form-grid">
                 <div className="form-group">
-                  <label className="form-label">First Name *</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>First Name *</span>
+                    {newClientForm.first_name && (
+                      <span className={`validation-status-pill ${validateName(newClientForm.first_name, 'First Name').isValid ? 'valid' : 'invalid'}`}>
+                        {validateName(newClientForm.first_name, 'First Name').isValid ? '✓ Valid' : 'Invalid'}
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
-                    className="form-input"
+                    className={`form-input ${newClientForm.first_name ? (validateName(newClientForm.first_name, 'First Name').isValid ? 'is-valid' : 'is-invalid') : ''}`}
                     required
                     placeholder="e.g. Sunil"
                     value={newClientForm.first_name}
                     onChange={(e) => setNewClientForm({ ...newClientForm, first_name: e.target.value })}
                   />
+                  {newClientForm.first_name && !validateName(newClientForm.first_name, 'First Name').isValid && (
+                    <div className="validation-hint error">
+                      <AlertCircle size={12} /> {validateName(newClientForm.first_name, 'First Name').message}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Last Name</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Last Name</span>
+                    {newClientForm.last_name && (
+                      <span className={`validation-status-pill ${validateName(newClientForm.last_name, 'Last Name', false).isValid ? 'valid' : 'invalid'}`}>
+                        {validateName(newClientForm.last_name, 'Last Name', false).isValid ? '✓ Valid' : 'Invalid'}
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
-                    className="form-input"
+                    className={`form-input ${newClientForm.last_name ? (validateName(newClientForm.last_name, 'Last Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                     placeholder="e.g. Jayawardena"
                     value={newClientForm.last_name}
                     onChange={(e) => setNewClientForm({ ...newClientForm, last_name: e.target.value })}
                   />
+                  {newClientForm.last_name && !validateName(newClientForm.last_name, 'Last Name', false).isValid && (
+                    <div className="validation-hint error">
+                      <AlertCircle size={12} /> {validateName(newClientForm.last_name, 'Last Name', false).message}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">NIC (National Identity Card) *</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>NIC (National Identity Card) *</span>
+                    {newClientForm.nic && (
+                      <span className={`validation-status-pill ${validateNic(newClientForm.nic).isValid ? 'valid' : 'invalid'}`}>
+                        {validateNic(newClientForm.nic).isValid ? '✓ Valid NIC' : 'Invalid NIC'}
+                      </span>
+                    )}
+                  </label>
                   <input
                     type="text"
-                    className="form-input"
+                    className={`form-input ${newClientForm.nic ? (validateNic(newClientForm.nic).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                     required
+                    maxLength={12}
                     placeholder="e.g. 198512345678 or 851234567V"
                     value={newClientForm.nic}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, nic: e.target.value })}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, nic: sanitizeNicInput(e.target.value) })}
                   />
+                  <div
+                    className={`validation-hint ${newClientForm.nic ? (validateNic(newClientForm.nic).isValid ? 'success' : 'error') : ''}`}
+                    style={{ color: newClientForm.nic ? undefined : 'var(--text-muted)' }}
+                  >
+                    {newClientForm.nic ? (
+                      <>
+                        {validateNic(newClientForm.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                        <span>{validateNic(newClientForm.nic).message}</span>
+                      </>
+                    ) : (
+                      <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
+                    )}
+                  </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Phone Number *</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Phone Number *</span>
+                    {newClientForm.phone && (
+                      <span className={`validation-status-pill ${validatePhone(newClientForm.phone).isValid ? 'valid' : 'invalid'}`}>
+                        {validatePhone(newClientForm.phone).isValid ? '✓ 10 Digits' : `${newClientForm.phone.length}/10 Digits`}
+                      </span>
+                    )}
+                  </label>
                   <input
-                    type="text"
-                    className="form-input"
+                    type="tel"
+                    className={`form-input ${newClientForm.phone ? (validatePhone(newClientForm.phone).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                     required
-                    placeholder="077XXXXXXX"
+                    maxLength={10}
+                    placeholder="07XXXXXXXX (10 digits)"
                     value={newClientForm.phone}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, phone: e.target.value })}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, phone: sanitizePhoneInput(e.target.value) })}
                   />
+                  <div
+                    className={`validation-hint ${newClientForm.phone ? (validatePhone(newClientForm.phone).isValid ? 'success' : 'error') : ''}`}
+                    style={{ color: newClientForm.phone ? undefined : 'var(--text-muted)' }}
+                  >
+                    {newClientForm.phone ? (
+                      <>
+                        {validatePhone(newClientForm.phone).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                        <span>{validatePhone(newClientForm.phone).message}</span>
+                      </>
+                    ) : (
+                      <span>10 digits without letters, starting with 0</span>
+                    )}
+                  </div>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">WhatsApp Number</label>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>WhatsApp Number</span>
+                    {newClientForm.whatsapp && (
+                      <span className={`validation-status-pill ${validatePhone(newClientForm.whatsapp, false).isValid ? 'valid' : 'invalid'}`}>
+                        {validatePhone(newClientForm.whatsapp, false).isValid ? '✓ 10 Digits' : `${newClientForm.whatsapp.length}/10`}
+                      </span>
+                    )}
+                  </label>
                   <input
-                    type="text"
-                    className="form-input"
-                    placeholder="077XXXXXXX"
+                    type="tel"
+                    className={`form-input ${newClientForm.whatsapp ? (validatePhone(newClientForm.whatsapp, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                    maxLength={10}
+                    placeholder="07XXXXXXXX (Optional)"
                     value={newClientForm.whatsapp}
-                    onChange={(e) => setNewClientForm({ ...newClientForm, whatsapp: e.target.value })}
+                    onChange={(e) => setNewClientForm({ ...newClientForm, whatsapp: sanitizePhoneInput(e.target.value) })}
                   />
+                  {newClientForm.whatsapp && !validatePhone(newClientForm.whatsapp, false).isValid && (
+                    <div className="validation-hint error">
+                      <AlertTriangle size={12} /> {validatePhone(newClientForm.whatsapp, false).message}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group">
                   <label className="form-label">Date of Birth</label>
                   <input
                     type="date"
                     className="form-input"
+                    max={new Date().toISOString().split('T')[0]}
                     value={newClientForm.dob}
                     onChange={(e) => setNewClientForm({ ...newClientForm, dob: e.target.value })}
                   />

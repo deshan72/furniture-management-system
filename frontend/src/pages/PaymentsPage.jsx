@@ -3105,6 +3105,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                 <input
                   type="date"
                   className="form-input"
+                  max={new Date().toISOString().slice(0, 10)}
                   value={formPaymentDate}
                   onChange={(e) => setFormPaymentDate(e.target.value)}
                 />

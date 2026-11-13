@@ -85,6 +85,29 @@ export const createCustomer = async (req, res, next) => {
 
     const fullName = name || `${first_name || ''} ${last_name || ''}`.trim() || 'Valued Customer';
 
+    // Validation checks for phone and NIC
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      if (cleanPhone.length !== 10 || !cleanPhone.startsWith('0')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Phone number must be a 10-digit number starting with 0 (e.g. 077XXXXXXX)',
+        });
+      }
+    }
+
+    if (nic) {
+      const cleanNic = String(nic).trim().toUpperCase();
+      const isOldNic = /^[0-9]{9}[vVxX]$/.test(cleanNic);
+      const isNewNic = /^[0-9]{12}$/.test(cleanNic);
+      if (!isOldNic && !isNewNic) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid NIC format. Must be 9 digits + V/X (Old) or 12 digits (New).',
+        });
+      }
+    }
+
     const insertPayload = {
       name: fullName,
       phone,
@@ -137,6 +160,30 @@ export const updateCustomer = async (req, res, next) => {
     const updates = { ...req.body };
     if (updates.center_code) updates.center_code = formatCenterCode(updates.center_code);
     if (updates.branch_code) updates.branch_code = String(updates.branch_code).trim().toUpperCase();
+
+    if (updates.phone) {
+      const cleanPhone = String(updates.phone).replace(/\D/g, '');
+      if (cleanPhone.length !== 10 || !cleanPhone.startsWith('0')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Phone number must be a 10-digit number starting with 0 (e.g. 077XXXXXXX)',
+        });
+      }
+      updates.phone = cleanPhone;
+    }
+
+    if (updates.nic) {
+      const cleanNic = String(updates.nic).trim().toUpperCase();
+      const isOldNic = /^[0-9]{9}[vVxX]$/.test(cleanNic);
+      const isNewNic = /^[0-9]{12}$/.test(cleanNic);
+      if (!isOldNic && !isNewNic) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid NIC format. Must be 9 digits + V/X (Old) or 12 digits (New).',
+        });
+      }
+      updates.nic = cleanNic;
+    }
 
     const { data, error } = await supabase
       .from('customers')

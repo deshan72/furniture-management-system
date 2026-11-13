@@ -22,6 +22,8 @@ import {
   ArrowRight,
   Clock,
   RotateCcw,
+  AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { formatLKR, formatDate } from '../utils/formatters';
@@ -36,6 +38,14 @@ import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
 import { addLiveNotification } from '../utils/notificationsData';
 import { apiRequest } from '../services/api';
+import {
+  validateNic,
+  validatePhone,
+  validateName,
+  validateAmount,
+  sanitizeNicInput,
+  sanitizePhoneInput,
+} from '../utils/validators';
 
 export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   // Orders, customers, products and centers data
@@ -460,12 +470,34 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   // Quick Register Customer inside Modal
   const handleQuickRegisterClient = (e) => {
     e.preventDefault();
-    if (!quickClient.first_name || !quickClient.nic || !quickClient.phone) {
-      alert('Please fill in First Name, NIC, and Phone Number.');
+
+    const fnCheck = validateName(quickClient.first_name, 'First Name', true);
+    if (!fnCheck.isValid) {
+      alert(fnCheck.message);
+      return;
+    }
+    if (quickClient.last_name) {
+      const lnCheck = validateName(quickClient.last_name, 'Last Name', false);
+      if (!lnCheck.isValid) {
+        alert(lnCheck.message);
+        return;
+      }
+    }
+
+    const nicCheck = validateNic(quickClient.nic, true);
+    if (!nicCheck.isValid) {
+      alert(`NIC Validation Error:\n${nicCheck.message}`);
       return;
     }
 
-    const cleanNic = quickClient.nic.trim().toUpperCase();
+    const phoneCheck = validatePhone(quickClient.phone, true);
+    if (!phoneCheck.isValid) {
+      alert(`Phone Number Validation Error:\n${phoneCheck.message}`);
+      return;
+    }
+
+    const cleanNic = nicCheck.cleanNic;
+    const cleanPhone = phoneCheck.cleanPhone;
     const existing = customers.find(
       (c) => (c.nic && c.nic.trim().toUpperCase() === cleanNic) || c.customer_id === cleanNic
     );
@@ -489,8 +521,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       name: fullName,
       civil_status: 'Single',
       dob: '',
-      phone: quickClient.phone,
-      whatsapp: quickClient.phone,
+      phone: cleanPhone,
+      whatsapp: cleanPhone,
       nic: cleanNic,
       city: quickClient.city || 'Maharagama',
       address: quickClient.address || '',
@@ -548,10 +580,32 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     );
 
     const isInstallment = formPaymentType === 'installment';
-    const finalDocCharge = Number(formDocumentCharge) || 0;
-    const finalItemTotal = (Number(formQuantity) || 1) * (Number(formUnitPrice) || 0);
+    const finalDocCharge = Math.max(0, Number(formDocumentCharge) || 0);
+    const finalQty = Number(formQuantity) || 1;
+    if (finalQty <= 0) {
+      alert('Order quantity must be at least 1 unit.');
+      return;
+    }
+    const finalUnitPrice = Number(formUnitPrice) || 0;
+    if (finalUnitPrice <= 0) {
+      alert('Item unit price must be greater than 0.');
+      return;
+    }
+
+    const finalItemTotal = finalQty * finalUnitPrice;
     const finalGross = finalItemTotal + finalDocCharge;
-    const finalAdvance = isInstallment ? Math.min(Number(formDownPayment) || 0, finalGross) : finalGross;
+
+    const downPaymentVal = Number(formDownPayment) || 0;
+    if (downPaymentVal < 0) {
+      alert('Advance payment cannot be negative.');
+      return;
+    }
+    if (downPaymentVal > finalGross) {
+      alert(`Advance payment (${formatLKR(downPaymentVal)}) cannot exceed the total order value (${formatLKR(finalGross)}).`);
+      return;
+    }
+
+    const finalAdvance = isInstallment ? Math.min(downPaymentVal, finalGross) : finalGross;
     const finalBalanceDue = Math.max(0, finalGross - finalAdvance);
     const finalTerms = isInstallment ? Number(formLoanTerms) || 1 : 1;
     const finalInstallmentVal = isInstallment ? Math.ceil(finalBalanceDue / finalTerms) : 0;
@@ -2035,19 +2089,21 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="198512345678"
+                      maxLength={12}
+                      placeholder="198512345678 or 851234567V"
                       value={quickClient.nic}
-                      onChange={(e) => setQuickClient({ ...quickClient, nic: e.target.value })}
+                      onChange={(e) => setQuickClient({ ...quickClient, nic: sanitizeNicInput(e.target.value) })}
                     />
                   </div>
                   <div className="form-group">
                     <label className="form-label" style={{ fontSize: '0.72rem' }}>Phone *</label>
                     <input
-                      type="text"
+                      type="tel"
                       className="form-input"
-                      placeholder="077XXXXXXX"
+                      maxLength={10}
+                      placeholder="07XXXXXXXX (10 digits)"
                       value={quickClient.phone}
-                      onChange={(e) => setQuickClient({ ...quickClient, phone: e.target.value })}
+                      onChange={(e) => setQuickClient({ ...quickClient, phone: sanitizePhoneInput(e.target.value) })}
                     />
                   </div>
                 </div>

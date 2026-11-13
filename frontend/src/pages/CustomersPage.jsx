@@ -28,6 +28,7 @@ import {
   Camera,
   Upload,
   Image as ImageIcon,
+  AlertCircle,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
@@ -35,6 +36,14 @@ import { apiRequest } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
 import { INITIAL_CUSTOMERS } from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
+import {
+  validateNic,
+  validatePhone,
+  validateName,
+  validateAmount,
+  sanitizeNicInput,
+  sanitizePhoneInput,
+} from '../utils/validators';
 
 // Helper to compress and convert customer photo to optimized Base64 Data URL (~30-60 KB)
 const compressImageFile = (file, maxDim = 600, quality = 0.8) => {
@@ -528,21 +537,57 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Add new customer handler (Identified by NIC)
   const handleAddCustomer = async (e) => {
     e.preventDefault();
-    const fullName = `${newCustomer.first_name || ''} ${newCustomer.last_name || ''}`.trim() || newCustomer.name;
-    if (!newCustomer.first_name && !newCustomer.name) {
-      alert('Please fill in First Name.');
+
+    // 1. Validate First Name
+    const fnCheck = validateName(newCustomer.first_name || newCustomer.name, 'First Name', true);
+    if (!fnCheck.isValid) {
+      alert(fnCheck.message);
       return;
     }
-    if (!newCustomer.nic || !newCustomer.nic.trim()) {
-      alert('Please fill in NIC (National Identity Card) Number as the customer identification.');
-      return;
+    if (newCustomer.last_name) {
+      const lnCheck = validateName(newCustomer.last_name, 'Last Name', false);
+      if (!lnCheck.isValid) {
+        alert(lnCheck.message);
+        return;
+      }
     }
-    if (!newCustomer.phone) {
-      alert('Please fill in Phone Number.');
+
+    // 2. Validate NIC (Sri Lankan 9 digits + V/X or 12 digits)
+    const nicCheck = validateNic(newCustomer.nic, true);
+    if (!nicCheck.isValid) {
+      alert(`NIC Validation Error:\n${nicCheck.message}`);
       return;
     }
 
-    const cleanNic = newCustomer.nic.trim().toUpperCase();
+    // 3. Validate Phone Number (10 digits starting with 0)
+    const phoneCheck = validatePhone(newCustomer.phone, true);
+    if (!phoneCheck.isValid) {
+      alert(`Phone Number Validation Error:\n${phoneCheck.message}`);
+      return;
+    }
+
+    // 4. Validate WhatsApp Number (if entered)
+    if (newCustomer.whatsapp) {
+      const waCheck = validatePhone(newCustomer.whatsapp, false);
+      if (!waCheck.isValid) {
+        alert(`WhatsApp Number Validation Error:\n${waCheck.message}`);
+        return;
+      }
+    }
+
+    // 5. Validate Outstanding Balance
+    if (newCustomer.outstanding_balance) {
+      const balCheck = validateAmount(newCustomer.outstanding_balance, 'Initial Outstanding Balance');
+      if (!balCheck.isValid) {
+        alert(balCheck.message);
+        return;
+      }
+    }
+
+    const cleanNic = nicCheck.cleanNic;
+    const cleanPhone = phoneCheck.cleanPhone;
+    const cleanWa = newCustomer.whatsapp ? validatePhone(newCustomer.whatsapp, false).cleanPhone : cleanPhone;
+    const fullName = `${newCustomer.first_name || ''} ${newCustomer.last_name || ''}`.trim() || newCustomer.name;
 
     // Check if customer with this NIC already exists
     const existingWithNic = customers.find(
@@ -572,8 +617,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       name: fullName,
       civil_status: newCustomer.civil_status || 'Single',
       dob: newCustomer.dob || '',
-      phone: newCustomer.phone,
-      whatsapp: newCustomer.whatsapp || newCustomer.phone,
+      phone: cleanPhone,
+      whatsapp: cleanWa,
       nic: cleanNic,
       city: newCustomer.city || 'Maharagama',
       address: newCustomer.address || '',
@@ -653,12 +698,18 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   const handleRecordPayment = (e) => {
     e.preventDefault();
     const amount = Number(paymentAmount);
-    if (!amount || amount <= 0) {
-      alert('Please enter a valid payment amount.');
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid payment amount greater than 0.');
       return;
     }
 
     if (!selectedCustomer) return;
+
+    const currentBal = Number(selectedCustomer.outstanding_balance) || 0;
+    if (amount > currentBal) {
+      alert(`Payment amount (Rs. ${amount.toLocaleString()}) cannot exceed the customer's outstanding balance of Rs. ${currentBal.toLocaleString()}.`);
+      return;
+    }
 
     setCustomers((prev) =>
       prev.map((c) => {
@@ -897,21 +948,58 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Save Updated Customer Details (Identified by NIC)
   const handleUpdateCustomer = async (e) => {
     e.preventDefault();
-    const fullName = `${editingCustomer.first_name || ''} ${editingCustomer.last_name || ''}`.trim() || editingCustomer.name;
-    if (!editingCustomer?.first_name && !editingCustomer?.name) {
-      alert('Please fill in First Name.');
+
+    // 1. Validate First Name & Last Name
+    const fnCheck = validateName(editingCustomer.first_name || editingCustomer.name, 'First Name', true);
+    if (!fnCheck.isValid) {
+      alert(fnCheck.message);
       return;
     }
-    if (!editingCustomer?.nic || !editingCustomer?.nic.trim()) {
-      alert('Please fill in NIC (National Identity Card) Number as the customer identification.');
-      return;
+    if (editingCustomer.last_name) {
+      const lnCheck = validateName(editingCustomer.last_name, 'Last Name', false);
+      if (!lnCheck.isValid) {
+        alert(lnCheck.message);
+        return;
+      }
     }
-    if (!editingCustomer?.phone) {
-      alert('Please fill in Phone Number.');
+
+    // 2. Validate NIC (Sri Lankan 9 digits + V/X or 12 digits)
+    const nicCheck = validateNic(editingCustomer.nic, true);
+    if (!nicCheck.isValid) {
+      alert(`NIC Validation Error:\n${nicCheck.message}`);
       return;
     }
 
-    const cleanNic = editingCustomer.nic.trim().toUpperCase();
+    // 3. Validate Phone Number (10 digits starting with 0)
+    const phoneCheck = validatePhone(editingCustomer.phone, true);
+    if (!phoneCheck.isValid) {
+      alert(`Phone Number Validation Error:\n${phoneCheck.message}`);
+      return;
+    }
+
+    // 4. Validate WhatsApp Number (if entered)
+    if (editingCustomer.whatsapp) {
+      const waCheck = validatePhone(editingCustomer.whatsapp, false);
+      if (!waCheck.isValid) {
+        alert(`WhatsApp Number Validation Error:\n${waCheck.message}`);
+        return;
+      }
+    }
+
+    // 5. Validate Outstanding Balance
+    if (editingCustomer.outstanding_balance) {
+      const balCheck = validateAmount(editingCustomer.outstanding_balance, 'Outstanding Balance');
+      if (!balCheck.isValid) {
+        alert(balCheck.message);
+        return;
+      }
+    }
+
+    const cleanNic = nicCheck.cleanNic;
+    const cleanPhone = phoneCheck.cleanPhone;
+    const cleanWa = editingCustomer.whatsapp ? validatePhone(editingCustomer.whatsapp, false).cleanPhone : cleanPhone;
+    const fullName = `${editingCustomer.first_name || ''} ${editingCustomer.last_name || ''}`.trim() || editingCustomer.name;
+
     if (
       customers.some(
         (c) => c.id !== editingCustomer.id && normalizeNic(c.nic) === normalizeNic(cleanNic)
@@ -931,6 +1019,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       last_name: editingCustomer.last_name || '',
       customer_id: cleanNic,
       nic: cleanNic,
+      phone: cleanPhone,
+      whatsapp: cleanWa,
       branch_code: normalizeIdPart('branch_code', editingCustomer.branch_code || 'MHG'),
       center_code: normalizeIdPart('center_code', editingCustomer.center_code || 'C001'),
       civil_status: editingCustomer.civil_status || 'Single',
@@ -1837,10 +1927,17 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
             {/* Row 1: First Name & Last Name */}
             <div className="form-group">
-              <label className="form-label">First Name *</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>First Name *</span>
+                {newCustomer.first_name && (
+                  <span className={`validation-status-pill ${validateName(newCustomer.first_name, 'First Name').isValid ? 'valid' : 'invalid'}`}>
+                    {validateName(newCustomer.first_name, 'First Name').isValid ? '✓ Valid' : 'Invalid'}
+                  </span>
+                )}
+              </label>
               <input
                 type="text"
-                className="form-input"
+                className={`form-input ${newCustomer.first_name ? (validateName(newCustomer.first_name, 'First Name').isValid ? 'is-valid' : 'is-invalid') : ''}`}
                 required
                 placeholder="e.g. Sunil"
                 value={newCustomer.first_name || ''}
@@ -1853,13 +1950,25 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   });
                 }}
               />
+              {newCustomer.first_name && !validateName(newCustomer.first_name, 'First Name').isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validateName(newCustomer.first_name, 'First Name').message}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
-              <label className="form-label">Last Name</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Last Name</span>
+                {newCustomer.last_name && (
+                  <span className={`validation-status-pill ${validateName(newCustomer.last_name, 'Last Name', false).isValid ? 'valid' : 'invalid'}`}>
+                    {validateName(newCustomer.last_name, 'Last Name', false).isValid ? '✓ Valid' : 'Invalid'}
+                  </span>
+                )}
+              </label>
               <input
                 type="text"
-                className="form-input"
+                className={`form-input ${newCustomer.last_name ? (validateName(newCustomer.last_name, 'Last Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                 placeholder="e.g. Jayawardena"
                 value={newCustomer.last_name || ''}
                 onChange={(e) => {
@@ -1871,22 +1980,32 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   });
                 }}
               />
+              {newCustomer.last_name && !validateName(newCustomer.last_name, 'Last Name', false).isValid && (
+                <div className="validation-hint error">
+                  <AlertCircle size={12} /> {validateName(newCustomer.last_name, 'Last Name', false).message}
+                </div>
+              )}
             </div>
 
             {/* Row 2: NIC & Phone Number */}
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span>NIC (National Identity Card) *</span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600 }}>Primary Customer ID</span>
+                {newCustomer.nic && (
+                  <span className={`validation-status-pill ${validateNic(newCustomer.nic).isValid ? 'valid' : 'invalid'}`}>
+                    {validateNic(newCustomer.nic).isValid ? '✓ Valid NIC' : 'Invalid NIC'}
+                  </span>
+                )}
               </label>
               <input
                 type="text"
-                className="form-input"
+                className={`form-input ${newCustomer.nic ? (validateNic(newCustomer.nic).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                 required
+                maxLength={12}
                 placeholder="e.g. 198512345678 or 851234567V"
                 value={newCustomer.nic || ''}
                 onChange={(e) => {
-                  const val = e.target.value;
+                  const val = sanitizeNicInput(e.target.value);
                   setNewCustomer((prev) => {
                     const next = { ...prev, nic: val, customer_id: val.trim().toUpperCase() };
                     handleCheckExistingCustomer('nic', val, next);
@@ -1894,18 +2013,39 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   });
                 }}
               />
+              <div
+                className={`validation-hint ${newCustomer.nic ? (validateNic(newCustomer.nic).isValid ? 'success' : 'error') : ''}`}
+                style={{ color: newCustomer.nic ? undefined : 'var(--text-muted)' }}
+              >
+                {newCustomer.nic ? (
+                  <>
+                    {validateNic(newCustomer.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                    <span>{validateNic(newCustomer.nic).message}</span>
+                  </>
+                ) : (
+                  <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
+                )}
+              </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Phone Number *</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Phone Number *</span>
+                {newCustomer.phone && (
+                  <span className={`validation-status-pill ${validatePhone(newCustomer.phone).isValid ? 'valid' : 'invalid'}`}>
+                    {validatePhone(newCustomer.phone).isValid ? '✓ 10 Digits' : `${newCustomer.phone.length}/10 Digits`}
+                  </span>
+                )}
+              </label>
               <input
-                type="text"
-                className="form-input"
+                type="tel"
+                className={`form-input ${newCustomer.phone ? (validatePhone(newCustomer.phone).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                 required
-                placeholder="077XXXXXXX"
+                maxLength={10}
+                placeholder="07XXXXXXXX (10 digits)"
                 value={newCustomer.phone || ''}
                 onChange={(e) => {
-                  const val = e.target.value;
+                  const val = sanitizePhoneInput(e.target.value);
                   setNewCustomer((prev) => {
                     const next = {
                       ...prev,
@@ -1917,18 +2057,44 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   });
                 }}
               />
+              <div
+                className={`validation-hint ${newCustomer.phone ? (validatePhone(newCustomer.phone).isValid ? 'success' : 'error') : ''}`}
+                style={{ color: newCustomer.phone ? undefined : 'var(--text-muted)' }}
+              >
+                {newCustomer.phone ? (
+                  <>
+                    {validatePhone(newCustomer.phone).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                    <span>{validatePhone(newCustomer.phone).message}</span>
+                  </>
+                ) : (
+                  <span>10 digits without letters, starting with 0 (e.g. 077XXXXXXX)</span>
+                )}
+              </div>
             </div>
 
             {/* Row 3: WhatsApp Number & Date of Birth */}
             <div className="form-group">
-              <label className="form-label">WhatsApp Number</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>WhatsApp Number</span>
+                {newCustomer.whatsapp && (
+                  <span className={`validation-status-pill ${validatePhone(newCustomer.whatsapp, false).isValid ? 'valid' : 'invalid'}`}>
+                    {validatePhone(newCustomer.whatsapp, false).isValid ? '✓ 10 Digits' : `${newCustomer.whatsapp.length}/10`}
+                  </span>
+                )}
+              </label>
               <input
-                type="text"
-                className="form-input"
-                placeholder="077XXXXXXX"
+                type="tel"
+                className={`form-input ${newCustomer.whatsapp ? (validatePhone(newCustomer.whatsapp, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                maxLength={10}
+                placeholder="07XXXXXXXX (Optional)"
                 value={newCustomer.whatsapp || ''}
-                onChange={(e) => setNewCustomer({ ...newCustomer, whatsapp: e.target.value })}
+                onChange={(e) => setNewCustomer({ ...newCustomer, whatsapp: sanitizePhoneInput(e.target.value) })}
               />
+              {newCustomer.whatsapp && !validatePhone(newCustomer.whatsapp, false).isValid && (
+                <div className="validation-hint error">
+                  <AlertTriangle size={12} /> {validatePhone(newCustomer.whatsapp, false).message}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
@@ -1936,6 +2102,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               <input
                 type="date"
                 className="form-input"
+                max={new Date().toISOString().split('T')[0]}
                 value={newCustomer.dob || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
               />
@@ -2450,10 +2617,17 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
             {/* Row 1: First Name & Last Name */}
               <div className="form-group">
-                <label className="form-label">First Name *</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>First Name *</span>
+                  {editingCustomer.first_name && (
+                    <span className={`validation-status-pill ${validateName(editingCustomer.first_name, 'First Name').isValid ? 'valid' : 'invalid'}`}>
+                      {validateName(editingCustomer.first_name, 'First Name').isValid ? '✓ Valid' : 'Invalid'}
+                    </span>
+                  )}
+                </label>
                 <input
                   type="text"
-                  className="form-input"
+                  className={`form-input ${editingCustomer.first_name ? (validateName(editingCustomer.first_name, 'First Name').isValid ? 'is-valid' : 'is-invalid') : ''}`}
                   required
                   placeholder="e.g. Sunil"
                   value={editingCustomer.first_name || ''}
@@ -2466,13 +2640,25 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                     });
                   }}
                 />
+                {editingCustomer.first_name && !validateName(editingCustomer.first_name, 'First Name').isValid && (
+                  <div className="validation-hint error">
+                    <AlertCircle size={12} /> {validateName(editingCustomer.first_name, 'First Name').message}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Last Name</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Last Name</span>
+                  {editingCustomer.last_name && (
+                    <span className={`validation-status-pill ${validateName(editingCustomer.last_name, 'Last Name', false).isValid ? 'valid' : 'invalid'}`}>
+                      {validateName(editingCustomer.last_name, 'Last Name', false).isValid ? '✓ Valid' : 'Invalid'}
+                    </span>
+                  )}
+                </label>
                 <input
                   type="text"
-                  className="form-input"
+                  className={`form-input ${editingCustomer.last_name ? (validateName(editingCustomer.last_name, 'Last Name', false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                   placeholder="e.g. Jayawardena"
                   value={editingCustomer.last_name || ''}
                   onChange={(e) => {
@@ -2484,22 +2670,32 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                     });
                   }}
                 />
+                {editingCustomer.last_name && !validateName(editingCustomer.last_name, 'Last Name', false).isValid && (
+                  <div className="validation-hint error">
+                    <AlertCircle size={12} /> {validateName(editingCustomer.last_name, 'Last Name', false).message}
+                  </div>
+                )}
               </div>
 
               {/* Row 2: NIC & Phone Number */}
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>NIC (National Identity Card) *</span>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 600 }}>Primary Customer ID</span>
+                  {editingCustomer.nic && (
+                    <span className={`validation-status-pill ${validateNic(editingCustomer.nic).isValid ? 'valid' : 'invalid'}`}>
+                      {validateNic(editingCustomer.nic).isValid ? '✓ Valid NIC' : 'Invalid NIC'}
+                    </span>
+                  )}
                 </label>
                 <input
                   type="text"
-                  className="form-input"
+                  className={`form-input ${editingCustomer.nic ? (validateNic(editingCustomer.nic).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                   required
+                  maxLength={12}
                   placeholder="e.g. 198512345678 or 851234567V"
                   value={editingCustomer.nic || ''}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = sanitizeNicInput(e.target.value);
                     setEditingCustomer({
                       ...editingCustomer,
                       nic: val,
@@ -2507,30 +2703,87 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                     });
                   }}
                 />
+                <div
+                  className={`validation-hint ${editingCustomer.nic ? (validateNic(editingCustomer.nic).isValid ? 'success' : 'error') : ''}`}
+                  style={{ color: editingCustomer.nic ? undefined : 'var(--text-muted)' }}
+                >
+                  {editingCustomer.nic ? (
+                    <>
+                      {validateNic(editingCustomer.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                      <span>{validateNic(editingCustomer.nic).message}</span>
+                    </>
+                  ) : (
+                    <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
+                  )}
+                </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Phone Number *</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Phone Number *</span>
+                  {editingCustomer.phone && (
+                    <span className={`validation-status-pill ${validatePhone(editingCustomer.phone).isValid ? 'valid' : 'invalid'}`}>
+                      {validatePhone(editingCustomer.phone).isValid ? '✓ 10 Digits' : `${editingCustomer.phone.length}/10 Digits`}
+                    </span>
+                  )}
+                </label>
                 <input
-                  type="text"
-                  className="form-input"
+                  type="tel"
+                  className={`form-input ${editingCustomer.phone ? (validatePhone(editingCustomer.phone).isValid ? 'is-valid' : 'is-invalid') : ''}`}
                   required
-                  placeholder="077XXXXXXX"
+                  maxLength={10}
+                  placeholder="07XXXXXXXX (10 digits)"
                   value={editingCustomer.phone || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })}
+                  onChange={(e) =>
+                    setEditingCustomer({
+                      ...editingCustomer,
+                      phone: sanitizePhoneInput(e.target.value),
+                    })
+                  }
                 />
+                <div
+                  className={`validation-hint ${editingCustomer.phone ? (validatePhone(editingCustomer.phone).isValid ? 'success' : 'error') : ''}`}
+                  style={{ color: editingCustomer.phone ? undefined : 'var(--text-muted)' }}
+                >
+                  {editingCustomer.phone ? (
+                    <>
+                      {validatePhone(editingCustomer.phone).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                      <span>{validatePhone(editingCustomer.phone).message}</span>
+                    </>
+                  ) : (
+                    <span>10 digits without letters, starting with 0 (e.g. 077XXXXXXX)</span>
+                  )}
+                </div>
               </div>
 
               {/* Row 3: WhatsApp Number & Date of Birth */}
               <div className="form-group">
-                <label className="form-label">WhatsApp Number</label>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>WhatsApp Number</span>
+                  {editingCustomer.whatsapp && (
+                    <span className={`validation-status-pill ${validatePhone(editingCustomer.whatsapp, false).isValid ? 'valid' : 'invalid'}`}>
+                      {validatePhone(editingCustomer.whatsapp, false).isValid ? '✓ 10 Digits' : `${editingCustomer.whatsapp.length}/10`}
+                    </span>
+                  )}
+                </label>
                 <input
-                  type="text"
-                  className="form-input"
-                  placeholder="077XXXXXXX"
+                  type="tel"
+                  className={`form-input ${editingCustomer.whatsapp ? (validatePhone(editingCustomer.whatsapp, false).isValid ? 'is-valid' : 'is-invalid') : ''}`}
+                  maxLength={10}
+                  placeholder="07XXXXXXXX (Optional)"
                   value={editingCustomer.whatsapp || ''}
-                  onChange={(e) => setEditingCustomer({ ...editingCustomer, whatsapp: e.target.value })}
+                  onChange={(e) =>
+                    setEditingCustomer({
+                      ...editingCustomer,
+                      whatsapp: sanitizePhoneInput(e.target.value),
+                    })
+                  }
                 />
+                {editingCustomer.whatsapp && !validatePhone(editingCustomer.whatsapp, false).isValid && (
+                  <div className="validation-hint error">
+                    <AlertTriangle size={12} /> {validatePhone(editingCustomer.whatsapp, false).message}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -2538,6 +2791,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 <input
                   type="date"
                   className="form-input"
+                  max={new Date().toISOString().split('T')[0]}
                   value={editingCustomer.dob || ''}
                   onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
                 />
