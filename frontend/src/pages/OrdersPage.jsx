@@ -37,7 +37,7 @@ import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
 import { addLiveNotification } from '../utils/notificationsData';
 import { apiRequest } from '../services/api';
 
-export default function OrdersPage({ headerCenter = 'all' }) {
+export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   // Orders, customers, products and centers data
   const [orders, setOrders] = useState(() => loadSavedOrders());
   const [customers, setCustomers] = useState(() => loadSavedCustomers());

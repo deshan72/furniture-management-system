@@ -41,6 +41,112 @@ import {
 import { addLiveNotification } from '../utils/notificationsData';
 import { formatLKR, formatDate } from '../utils/formatters';
 
+// Helper to calculate next payment due date, next installment amount, and repayment schedule
+export const calculateNextPaymentDetails = (order, receipts = []) => {
+  if (!order) return null;
+  const balanceDue = Number(order.balance_due) || 0;
+  const isSettled = balanceDue <= 0;
+
+  if (isSettled) {
+    return {
+      isSettled: true,
+      nextDueAmount: 0,
+      nextDueDate: null,
+      installmentNumber: Number(order.loan_terms) || receipts.length,
+      totalTerms: Number(order.loan_terms) || receipts.length,
+      remainingInstallments: 0,
+      statusLabel: 'Fully Settled',
+      statusType: 'settled',
+      frequencyLabel: order.loan_frequency === 'weekly' ? 'Weekly' : 'Monthly',
+    };
+  }
+
+  // Installment value agreed upon
+  const installmentVal = Number(order.installment_value) || 0;
+  const nextDueAmount = installmentVal > 0 ? Math.min(installmentVal, balanceDue) : balanceDue;
+
+  // Count how many installment payments were already made
+  const installmentsPaid = Number(order.installments_paid) || receipts.length;
+  const nextInstallmentNumber = installmentsPaid + 1;
+  const totalTerms = Number(order.loan_terms) || Math.max(nextInstallmentNumber, 12);
+  const isWeekly = order.loan_frequency === 'weekly';
+
+  // Base date: find the latest receipt date or first_due_date or order.date
+  let baseDate = null;
+  if (receipts && receipts.length > 0) {
+    const dates = receipts
+      .map((r) => (r.date ? new Date(r.date) : null))
+      .filter((d) => d && !isNaN(d.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime());
+    if (dates.length > 0) {
+      baseDate = new Date(dates[0]);
+    }
+  }
+
+  let nextDueDate = null;
+  if (baseDate) {
+    nextDueDate = new Date(baseDate.getTime());
+    if (isWeekly) {
+      nextDueDate.setDate(nextDueDate.getDate() + 7);
+    } else {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    }
+  } else if (order.first_due_date) {
+    nextDueDate = new Date(order.first_due_date);
+  } else if (order.date) {
+    nextDueDate = new Date(order.date);
+    if (isWeekly) {
+      nextDueDate.setDate(nextDueDate.getDate() + 7);
+    } else {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    }
+  } else {
+    nextDueDate = new Date();
+    nextDueDate.setDate(nextDueDate.getDate() + (isWeekly ? 7 : 30));
+  }
+
+  // Calculate days difference from today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const compareDueDate = new Date(nextDueDate);
+  compareDueDate.setHours(0, 0, 0, 0);
+
+  const diffTime = compareDueDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  let statusLabel = '';
+  let statusType = 'upcoming';
+
+  if (diffDays < 0) {
+    statusLabel = `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) > 1 ? 's' : ''}`;
+    statusType = 'overdue';
+  } else if (diffDays === 0) {
+    statusLabel = 'Due Today';
+    statusType = 'today';
+  } else if (diffDays === 1) {
+    statusLabel = 'Due Tomorrow';
+    statusType = 'upcoming';
+  } else {
+    statusLabel = `Due in ${diffDays} days`;
+    statusType = 'upcoming';
+  }
+
+  return {
+    isSettled: false,
+    nextDueAmount,
+    nextDueDate: nextDueDate.toISOString().slice(0, 10),
+    installmentNumber: nextInstallmentNumber,
+    totalTerms,
+    remainingInstallments: Math.ceil(balanceDue / (nextDueAmount || 1)),
+    isWeekly,
+    loanFrequency: order.loan_frequency || 'monthly',
+    frequencyLabel: isWeekly ? 'Weekly' : 'Monthly',
+    statusLabel,
+    statusType,
+    diffDays,
+  };
+};
+
 export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
   // Master Data State
   const [payments, setPayments] = useState(() => loadSavedPayments());
@@ -1120,6 +1226,12 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
         p.order_id === selectedContractForView.id
     );
   }, [payments, selectedContractForView]);
+
+  // Calculate next payment due date, next installment amount, and repayment schedule
+  const nextPaymentDetails = useMemo(() => {
+    if (!selectedContractForView) return null;
+    return calculateNextPaymentDetails(selectedContractForView, contractReceiptsHistory);
+  }, [selectedContractForView, contractReceiptsHistory]);
 
   return (
     <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
@@ -3148,29 +3260,231 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
               </div>
             </div>
 
+            {/* NEXT INSTALLMENT COLLECTION DETAILS CARD */}
+            {nextPaymentDetails && (
+              <div
+                style={{
+                  background: nextPaymentDetails.isSettled
+                    ? '#F0FDF4'
+                    : nextPaymentDetails.statusType === 'overdue'
+                    ? '#FEF2F2'
+                    : 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)',
+                  border: `1px solid ${
+                    nextPaymentDetails.isSettled
+                      ? '#BBF7D0'
+                      : nextPaymentDetails.statusType === 'overdue'
+                      ? '#FECACA'
+                      : '#BAE6FD'
+                  }`,
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '10px',
+                      background: nextPaymentDetails.isSettled
+                        ? '#16A34A'
+                        : nextPaymentDetails.statusType === 'overdue'
+                        ? '#DC2626'
+                        : '#0284C7',
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {nextPaymentDetails.isSettled ? (
+                      <CheckCircle size={22} />
+                    ) : (
+                      <Calendar size={22} />
+                    )}
+                  </div>
+
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.72rem',
+                        color: nextPaymentDetails.isSettled
+                          ? '#15803D'
+                          : nextPaymentDetails.statusType === 'overdue'
+                          ? '#991B1B'
+                          : '#0369A1',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.4px',
+                      }}
+                    >
+                      {nextPaymentDetails.isSettled
+                        ? 'LOAN SETTLEMENT STATUS'
+                        : 'NEXT PAYMENT COLLECTION SCHEDULE (ඊළඟ වාරිකය අය කරගත යුතු දිනය)'}
+                    </div>
+
+                    {nextPaymentDetails.isSettled ? (
+                      <div style={{ fontWeight: 800, color: '#166534', fontSize: '0.92rem', marginTop: '2px' }}>
+                        ✓ Account Fully Settled — All installments cleared.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0F172A' }}>
+                          📅 {formatDate(nextPaymentDetails.nextDueDate)}
+                        </span>
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: '9999px',
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            background:
+                              nextPaymentDetails.statusType === 'overdue'
+                                ? '#FEE2E2'
+                                : nextPaymentDetails.statusType === 'today'
+                                ? '#FEF3C7'
+                                : '#DCFCE7',
+                            color:
+                              nextPaymentDetails.statusType === 'overdue'
+                                ? '#DC2626'
+                                : nextPaymentDetails.statusType === 'today'
+                                ? '#B45309'
+                                : '#15803D',
+                            border: `1px solid ${
+                              nextPaymentDetails.statusType === 'overdue'
+                                ? '#FCA5A5'
+                                : nextPaymentDetails.statusType === 'today'
+                                ? '#FDE68A'
+                                : '#86EFAC'
+                            }`,
+                          }}
+                        >
+                          {nextPaymentDetails.statusLabel}
+                        </span>
+                        <span style={{ fontSize: '0.76rem', color: '#64748B', fontWeight: 600 }}>
+                          • Installment #{nextPaymentDetails.installmentNumber} of {nextPaymentDetails.totalTerms} ({nextPaymentDetails.frequencyLabel})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {!nextPaymentDetails.isSettled && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', textAlign: 'right' }}>
+                    <div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
+                        NEXT DUE AMOUNT (අයවිය යුතු මුදල)
+                      </div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0284C7' }}>
+                        {formatLKR(nextPaymentDetails.nextDueAmount)}
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>
+                        {nextPaymentDetails.remainingInstallments} installment(s) remaining
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{
+                        padding: '7px 14px',
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        boxShadow: '0 2px 6px rgba(2,132,199,0.3)',
+                        background: '#0284C7',
+                        borderColor: '#0284C7',
+                      }}
+                      onClick={() => {
+                        setIsContractViewModalOpen(false);
+                        handleOpenRecordPaymentModal(selectedContractForView);
+                      }}
+                    >
+                      <CreditCard size={14} /> Collect Now
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Payment History for this Contract */}
             <div>
               <div style={{ fontWeight: 800, fontSize: '0.86rem', color: 'var(--ash-800)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Receipt size={16} color="var(--primary)" /> Payment Receipts History for this Contract ({contractReceiptsHistory.length})
               </div>
 
-              {contractReceiptsHistory.length === 0 ? (
+              {contractReceiptsHistory.length === 0 && nextPaymentDetails?.isSettled ? (
                 <div style={{ padding: '14px', background: 'var(--ash-50)', borderRadius: '6px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--ash-500)' }}>
-                  No installment receipts logged yet. Click "Record Payment" below to log the first payment.
+                  No installment receipts logged yet.
                 </div>
               ) : (
                 <div style={{ border: '1px solid var(--ash-200)', borderRadius: '6px', overflow: 'hidden' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                     <thead>
                       <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--ash-200)' }}>
-                        <th style={{ padding: '8px', textAlign: 'left' }}>Receipt No</th>
+                        <th style={{ padding: '8px', textAlign: 'left' }}>Receipt / Status</th>
                         <th style={{ padding: '8px', textAlign: 'left' }}>Date</th>
-                        <th style={{ padding: '8px', textAlign: 'left' }}>Method</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Amount Paid</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>New Balance</th>
+                        <th style={{ padding: '8px', textAlign: 'left' }}>Payment Method</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Amount Paid / Due</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Remaining Balance</th>
                       </tr>
                     </thead>
                     <tbody>
+                      {/* Highlighted Next Scheduled Installment Row */}
+                      {!nextPaymentDetails?.isSettled && (
+                        <tr style={{ background: '#EFF6FF', borderBottom: '2px solid #BFDBFE' }}>
+                          <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 800, color: '#2563EB' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#DBEAFE', padding: '2px 7px', borderRadius: '4px', fontSize: '0.74rem' }}>
+                              ⏳ Next Due (#{nextPaymentDetails.installmentNumber})
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px', fontWeight: 800, color: '#1E3A8A' }}>
+                            📅 {formatDate(nextPaymentDetails.nextDueDate)}
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                marginLeft: '6px',
+                                fontSize: '0.66rem',
+                                padding: '1px 6px',
+                                borderRadius: '999px',
+                                fontWeight: 800,
+                                background:
+                                  nextPaymentDetails.statusType === 'overdue'
+                                    ? '#FEE2E2'
+                                    : nextPaymentDetails.statusType === 'today'
+                                    ? '#FEF3C7'
+                                    : '#DCFCE7',
+                                color:
+                                  nextPaymentDetails.statusType === 'overdue'
+                                    ? '#DC2626'
+                                    : nextPaymentDetails.statusType === 'today'
+                                    ? '#B45309'
+                                    : '#15803D',
+                              }}
+                            >
+                              {nextPaymentDetails.statusLabel}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px', color: '#475569', fontWeight: 600 }}>
+                            {nextPaymentDetails.frequencyLabel} Installment
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 900, color: '#2563EB', fontSize: '0.86rem' }}>
+                            {formatLKR(nextPaymentDetails.nextDueAmount)} <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748B' }}>due</span>
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#64748B' }}>
+                            Est. {formatLKR(Math.max(0, Number(selectedContractForView.balance_due) - nextPaymentDetails.nextDueAmount))}
+                          </td>
+                        </tr>
+                      )}
+
                       {contractReceiptsHistory.map((rcpt) => (
                         <tr key={rcpt.id} style={{ borderBottom: '1px solid var(--ash-100)' }}>
                           <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 700, color: '#2563EB' }}>
@@ -3186,6 +3500,14 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                           </td>
                         </tr>
                       ))}
+
+                      {contractReceiptsHistory.length === 0 && (
+                        <tr>
+                          <td colSpan="5" style={{ padding: '12px', textAlign: 'center', color: 'var(--ash-500)', fontSize: '0.78rem' }}>
+                            No past installment payments logged yet. First installment is scheduled as shown above.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -3447,11 +3769,22 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                 </tbody>
               </table>
 
-              {/* Terms summary box */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 14px', margin: '12px 0', display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                <span>Agreed Repayment Installment: <strong style={{ color: '#2563eb' }}>{formatLKR(selectedContractForStatement.installment_value)} / {selectedContractForStatement.loan_frequency === 'weekly' ? 'week' : 'month'}</strong></span>
-                <span>Current Status: <strong style={{ color: Number(selectedContractForStatement.balance_due) <= 0 ? '#16a34a' : '#d97706' }}>{Number(selectedContractForStatement.balance_due) <= 0 ? 'Fully Settled' : 'Active Installment Loan'}</strong></span>
-              </div>
+              {/* Terms summary box with Next Payment Schedule */}
+              {(() => {
+                const stmtNext = calculateNextPaymentDetails(
+                  selectedContractForStatement,
+                  payments.filter((p) => p.contract_no === selectedContractForStatement.contract_no || p.order_id === selectedContractForStatement.id)
+                );
+                return (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 14px', margin: '12px 0', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', fontSize: '0.82rem' }}>
+                    <span>Agreed Repayment: <strong style={{ color: '#2563eb' }}>{formatLKR(selectedContractForStatement.installment_value)} / {selectedContractForStatement.loan_frequency === 'weekly' ? 'week' : 'month'}</strong></span>
+                    {!stmtNext?.isSettled && (
+                      <span>Next Payment Due: <strong style={{ color: '#0f172a' }}>📅 {formatDate(stmtNext.nextDueDate)} ({formatLKR(stmtNext.nextDueAmount)})</strong></span>
+                    )}
+                    <span>Current Status: <strong style={{ color: Number(selectedContractForStatement.balance_due) <= 0 ? '#16a34a' : '#d97706' }}>{Number(selectedContractForStatement.balance_due) <= 0 ? 'Fully Settled' : 'Active Installment Loan'}</strong></span>
+                  </div>
+                );
+              })()}
 
               {/* Signatures */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', paddingTop: '10px', fontSize: '0.76rem', color: '#64748b' }}>
