@@ -462,8 +462,8 @@ export default function App() {
           theme={theme}
           onToggleTheme={handleToggleTheme}
           currentUser={currentUser}
-          onSwitchRole={handleSwitchRole}
           onLogout={handleLogout}
+          onNavigate={setActiveTab}
         />
 
         <main className="content-area">
