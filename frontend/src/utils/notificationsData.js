@@ -7,6 +7,8 @@
  * - Alerts & Inventory (Low stock, cash recovery schedules)
  */
 
+import { normalizeActiveTab } from './navigationUtils';
+
 export const NOTIFICATIONS_STORAGE_KEY = 'dns_live_notifications_v2';
 
 export const INITIAL_NOTIFICATIONS = [
@@ -100,7 +102,12 @@ export const formatRelativeTime = (isoString) => {
 let memoryNotifications = null;
 
 const withTimes = (list) =>
-  list.map((n) => ({ ...n, time: formatRelativeTime(n.created_at) }));
+  list.map((n) => ({
+    ...n,
+    targetTab: normalizeActiveTab(n.targetTab || n.linkTab || 'dashboard'),
+    desc: n.desc || n.message || '',
+    time: formatRelativeTime(n.created_at),
+  }));
 
 export const loadSavedNotifications = () => {
   if (Array.isArray(memoryNotifications)) return withTimes(memoryNotifications);
@@ -149,19 +156,21 @@ export const saveNotificationsToStorage = (newList) => {
 export const addLiveNotification = ({
   title,
   desc,
+  message,
   category = 'orders',
   type = 'order',
-  targetTab = 'orders',
+  targetTab,
+  linkTab,
 }) => {
   try {
     const current = loadSavedNotifications();
     const newNotif = {
       id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       title,
-      desc,
+      desc: desc || message || '',
       category,
       type,
-      targetTab,
+      targetTab: normalizeActiveTab(targetTab || linkTab || 'orders'),
       read: false,
       created_at: new Date().toISOString(),
       time: 'Just now',

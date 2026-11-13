@@ -21,6 +21,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { loadSavedCenters } from './utils/centersData';
 import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 import { getAuthenticatedUser, logoutUser } from './utils/authData';
+import { normalizeActiveTab } from './utils/navigationUtils';
 
 // Helper to determine initial active tab on page load/refresh
 const getInitialActiveTab = () => {
@@ -48,7 +49,9 @@ const getInitialActiveTab = () => {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState(() => getInitialActiveTab());
+  const [activeTab, setActiveTabRaw] = useState(() => normalizeActiveTab(getInitialActiveTab()));
+  // Every navigation (sidebar, notifications, hash, buttons) is normalized to a valid view
+  const setActiveTab = (tab) => setActiveTabRaw(normalizeActiveTab(tab));
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Active Authenticated User State
@@ -81,9 +84,9 @@ export default function App() {
   // Listen to browser Back / Forward buttons and hash changes
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.replace(/^#\/?/, '').trim();
-      if (hash && hash !== activeTab) {
-        setActiveTab(hash);
+      const hash = normalizeActiveTab(window.location.hash);
+      if (hash !== activeTab) {
+        setActiveTabRaw(hash);
       }
     };
     window.addEventListener('hashchange', handleHashChange);
