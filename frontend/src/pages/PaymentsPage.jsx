@@ -45,6 +45,7 @@ import {
   saveOrdersToStorage,
 } from '../utils/ordersData';
 import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
+import { loadSavedCustomers } from '../utils/customersData';
 import {
   calculateCenterCollectionStats,
   isCenterScheduledForDate,
@@ -167,16 +168,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
   const [payments, setPayments] = useState(() => loadSavedPayments());
   const [orders, setOrders] = useState(() => loadSavedOrders());
   const [centers, setCenters] = useState(() => loadSavedCenters());
-  const [customers, setCustomers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('dnd_customers_list');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
-  });
+  const [customers, setCustomers] = useState(() => loadSavedCustomers());
 
   // Active Sub-view: 'collection_day' (Daily Center Collection) vs 'accounts' vs 'ledger'
   const [activeSubView, setActiveSubView] = useState(() => {
@@ -307,18 +299,29 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       setPayments(loadSavedPayments());
       setOrders(loadSavedOrders());
       setCenters(loadSavedCenters());
-      try {
-        const savedCust = localStorage.getItem('dnd_customers_list');
-        if (savedCust) {
-          const parsed = JSON.parse(savedCust);
-          if (Array.isArray(parsed)) setCustomers(parsed);
-        }
-      } catch {}
+      setCustomers(loadSavedCustomers());
     };
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('dnd_payments_updated', handleStorage);
+    window.addEventListener('dnd_orders_updated', handleStorage);
+    window.addEventListener('dnd_centers_updated', handleStorage);
+    window.addEventListener('dnd_customers_updated', handleStorage);
+
+    apiRequest('/customers')
+      .then((res) => {
+        if (isMounted && res && res.data && res.data.length > 0) {
+          setCustomers(res.data);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       isMounted = false;
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('dnd_payments_updated', handleStorage);
+      window.removeEventListener('dnd_orders_updated', handleStorage);
+      window.removeEventListener('dnd_centers_updated', handleStorage);
+      window.removeEventListener('dnd_customers_updated', handleStorage);
     };
   }, []);
 

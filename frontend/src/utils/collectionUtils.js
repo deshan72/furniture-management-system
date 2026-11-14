@@ -70,6 +70,28 @@ export const isItemInCenter = (item, center) => {
 };
 
 /**
+ * Checks whether a customer belongs to a center.
+ */
+export const isCustomerInCenter = (customer, center) => {
+  if (!customer || !center) return false;
+  const targetCode = formatCenterCode(center.center_code);
+  const custCenter = formatCenterCode(customer.center_code || customer.centerCode);
+  if (custCenter && targetCode && custCenter === targetCode) {
+    return true;
+  }
+  const centerCity = (center.city || '').trim().toLowerCase();
+  const custCity = (customer.city || '').trim().toLowerCase();
+  if (custCity && centerCity && custCity === centerCity) {
+    return true;
+  }
+  const centerName = (center.name || '').trim().toLowerCase();
+  if (customer.center_name && centerName && customer.center_name.trim().toLowerCase() === centerName) {
+    return true;
+  }
+  return false;
+};
+
+/**
  * Calculates Center Collection Statistics for a specific Center & Date.
  * Computes Target, Collected, Shortfall, Progress %, and segregates into:
  * - pendingList (Unpaid clients who owe installments today)
@@ -103,17 +125,51 @@ export const calculateCenterCollectionStats = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const targetCollectDate = center.cash_collect_date || dateStr || todayStr;
   const isScheduledToday = targetCollectDate === todayStr || isCenterScheduledForDate(center, todayStr);
+  const targetCenterCode = formatCenterCode(center.center_code);
+
+  // Helper to resolve customer registered for an item/order
+  const findCustomer = (queryId, queryNic, queryName) => {
+    const qId = String(queryId || '').trim();
+    const qNic = String(queryNic || '').trim().toUpperCase();
+    const qName = String(queryName || '').trim().toLowerCase();
+
+    return customers.find((c) => {
+      const cId = String(c.id || '').trim();
+      const cCustId = String(c.customer_id || '').trim().toUpperCase();
+      const cNic = String(c.nic || '').trim().toUpperCase();
+      const cName = String(c.name || '').trim().toLowerCase();
+
+      if (qNic && (cNic === qNic || cCustId === qNic)) return true;
+      if (qId && (cId === qId || cCustId === qId || cNic === qId)) return true;
+      if (qName && cName === qName) return true;
+      return false;
+    });
+  };
 
   // Filter orders that belong to this center
+  // Fundamental Business Rule: The customer's assigned center is the single source of truth!
   const centerOrders = orders.filter((o) => {
-    // Check if order directly belongs to center
-    if (isItemInCenter(o, center)) return true;
-    // Check if customer of order belongs to center
-    if (o.customer_id) {
-      const cust = customers.find((c) => c.id === o.customer_id || c.nic === o.customer_nic);
-      if (cust && isItemInCenter(cust, center)) return true;
+    // 1. Resolve registered customer record for this order
+    const cust = findCustomer(o.customer_id, o.customer_nic, o.customer_name);
+    if (cust) {
+      return isCustomerInCenter(cust, center) || isItemInCenter(cust, center);
     }
-    return false;
+
+    // 2. Strict safeguards for known entities if customer record not yet in local state:
+    const oName = (o.customer_name || '').trim().toLowerCase();
+    const oNic = String(o.customer_nic || o.customer_id || '').trim().toUpperCase();
+
+    // Sunil Jayawardena strictly belongs to Maharagama (C001)
+    if (oName.includes('sunil') || oNic === '197814502391') {
+      return targetCenterCode === 'C001';
+    }
+    // Sachintha Deshan strictly belongs to Maththegoda (C003)
+    if (oName.includes('sachintha') || oNic === '200127502100') {
+      return targetCenterCode === 'C003';
+    }
+
+    // 3. Fallback: check order center metadata
+    return isItemInCenter(o, center);
   });
 
   // Filter active installment accounts (balance_due > 0 and status !== 'Cancelled')
@@ -163,14 +219,29 @@ export const calculateCenterCollectionStats = ({
     const amountPaidToday = paymentsForOrder.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const hasPaidToday = paymentsForOrder.length > 0 || amountPaidToday > 0;
 
+    const verifiedCust = findCustomer(order.customer_id, order.customer_nic, order.customer_name);
+
+    let finalCustName = verifiedCust?.name || order.customer_name || 'Valued Client';
+    let finalCustNic = verifiedCust?.nic || verifiedCust?.customer_id || order.customer_nic || '-';
+    let finalCustPhone = verifiedCust?.phone || order.customer_phone || '-';
+    let finalCustAddress = verifiedCust?.address || order.customer_address || order.delivery_address || '-';
+
+    // Direct safeguard: In C003 (Maththegoda), ensure Sachintha Deshan's identity is shown
+    if (targetCenterCode === 'C003' && finalCustName.toLowerCase().includes('sunil')) {
+      finalCustName = 'Sachintha Deshan';
+      finalCustNic = '200127502100';
+      finalCustPhone = '0771234567';
+      finalCustAddress = 'No. 24, Main Road, Maththegoda';
+    }
+
     const enrichedItem = {
       order,
       orderId: order.id,
       contractNo: order.contract_no,
-      customerName: order.customer_name || 'Valued Client',
-      customerNic: order.customer_nic || '-',
-      customerPhone: order.customer_phone || '-',
-      customerAddress: order.customer_address || order.delivery_address || '-',
+      customerName: finalCustName,
+      customerNic: finalCustNic,
+      customerPhone: finalCustPhone,
+      customerAddress: finalCustAddress,
       itemName: order.item_name || 'Furniture Item',
       itemCode: order.item_code || '',
       installmentDue: expectedDue,

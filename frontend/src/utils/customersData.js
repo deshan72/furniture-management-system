@@ -27,6 +27,31 @@ export const INITIAL_CUSTOMERS = [
     created_at: '2026-09-12T10:30:00Z',
   },
   {
+    id: 'cust-sachintha',
+    customer_id: '200127502100',
+    branch_code: 'MHG',
+    center_code: 'C003',
+    contract_no: '1',
+    item_code: 'FURN-101',
+    first_name: 'Sachintha',
+    last_name: 'Deshan',
+    name: 'Sachintha Deshan',
+    civil_status: 'Single',
+    dob: '2001-07-15',
+    phone: '0771234567',
+    whatsapp: '0771234567',
+    nic: '200127502100',
+    city: 'Maththegoda',
+    address: 'No. 24, Main Road, Maththegoda',
+    category: 'custom_order',
+    outstanding_balance: 23133,
+    total_spent: 99500,
+    total_orders: 1,
+    status: 'active',
+    notes: 'Maththegoda Center customer with active furniture installment plan.',
+    created_at: '2026-11-13T09:00:00Z',
+  },
+  {
     id: 'cust-2',
     customer_id: '198578901234',
     branch_code: 'MHG',
@@ -232,23 +257,73 @@ export const loadSavedCustomers = () => {
     if (saved !== null) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        return parsed
+        let changed = false;
+        const list = parsed
           .filter((c) => !isCustomerDeleted(c, deletedSet))
-          .map((c) => ({
-            ...c,
-            customer_id: c.nic || c.customer_id,
-            center_code: formatCenterCode(c.center_code || 'C001'),
-          }));
+          .map((c) => {
+            const cleanNic = String(c.nic || c.customer_id || '').trim().toUpperCase();
+            const cleanName = (c.name || '').trim().toLowerCase();
+            let centerCode = formatCenterCode(c.center_code || 'C001');
+
+            // Business rule: Sunil Jayawardena strictly belongs to Maharagama (C001)
+            if (cleanName.includes('sunil') || cleanNic === '197814502391') {
+              if (centerCode !== 'C001') {
+                centerCode = 'C001';
+                changed = true;
+              }
+            }
+
+            // If Sachintha Deshan is in list, ensure he is in C003
+            if (cleanName.includes('sachintha') || cleanNic === '200127502100') {
+              if (centerCode !== 'C003') {
+                centerCode = 'C003';
+                changed = true;
+              }
+            }
+
+            return {
+              ...c,
+              customer_id: c.nic || c.customer_id,
+              center_code: centerCode,
+            };
+          });
+
+        // Ensure Sachintha Deshan is present in the customer directory
+        const hasSachintha = list.some(
+          (c) =>
+            (c.nic && c.nic.trim().toUpperCase() === '200127502100') ||
+            (c.name && c.name.toLowerCase().includes('sachintha')) ||
+            c.id === 'cust-sachintha'
+        );
+
+        if (!hasSachintha) {
+          const sachinthaSeed = INITIAL_CUSTOMERS.find((c) => c.id === 'cust-sachintha');
+          if (sachinthaSeed && !isCustomerDeleted(sachinthaSeed, deletedSet)) {
+            list.push({ ...sachinthaSeed });
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          try {
+            localStorage.setItem('dnd_customers_list', JSON.stringify(list));
+          } catch {}
+        }
+        return list;
       }
     }
     // If dnd_customers_list was never initialized, load initial customers minus deleted ones
-    return INITIAL_CUSTOMERS
+    const initialList = INITIAL_CUSTOMERS
       .filter((c) => !isCustomerDeleted(c, deletedSet))
       .map((c) => ({
         ...c,
         customer_id: c.nic || c.customer_id,
         center_code: formatCenterCode(c.center_code || 'C001'),
       }));
+    try {
+      localStorage.setItem('dnd_customers_list', JSON.stringify(initialList));
+    } catch {}
+    return initialList;
   } catch {
     // fallback
   }

@@ -119,17 +119,17 @@ export const INITIAL_CENTERS = [
   {
     id: 'cntr-6',
     center_code: 'C003',
-    branch_code: 'CMB',
-    name: 'Colombo Central Center',
+    branch_code: 'MHG',
+    name: 'Maththegoda Center',
     name_si: '',
-    city: 'Colombo',
-    address: '56/1, Havelock Road, Colombo 05',
-    contact_person: 'Chaminda Wickrama',
-    phone: '0751122334',
+    city: 'Maththegoda',
+    address: 'No. 24, Main Road, Maththegoda',
+    contact_person: 'Himala',
+    phone: '077XXXXXXX',
     status: 'active',
-    due_date: '2026-11-09',
-    cash_collect_date: '2026-11-14',
-    notes: 'High-end custom interior designs & residential projects.',
+    due_date: '2026-11-12',
+    cash_collect_date: '2026-11-16',
+    notes: 'Maththegoda regional distribution and collection center.',
     created_at: '2026-10-05T13:00:00Z',
   },
 ];
@@ -142,6 +142,7 @@ export const loadSavedCenters = () => {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map((c, idx) => {
+          const cCode = formatCenterCode(c.center_code || `C00${idx + 1}`);
           let dd = c.due_date || '';
           let cd = c.cash_collect_date || '';
           if (c.notes && c.notes.includes('<!--DNS_META:')) {
@@ -163,9 +164,24 @@ export const loadSavedCenters = () => {
           if (!cd && defaultSeed?.cash_collect_date) cd = defaultSeed.cash_collect_date;
           if (!dd && defaultSeed?.due_date) dd = defaultSeed.due_date;
 
+          let name = c.name || '';
+          let city = c.city || '';
+          let contactPerson = c.contact_person || '';
+          if (cCode === 'C003') {
+            if (!name || name.includes('Colombo Central')) {
+              name = 'Maththegoda Center';
+            }
+            if (!city) city = 'Maththegoda';
+            if (!contactPerson) contactPerson = 'Himala';
+            if (!cd) cd = '2026-11-16';
+          }
+
           return {
             ...c,
-            center_code: formatCenterCode(c.center_code || `C00${idx + 1}`),
+            name: name || `Center ${cCode}`,
+            city,
+            contact_person: contactPerson,
+            center_code: cCode,
             due_date: dd,
             cash_collect_date: cd,
           };

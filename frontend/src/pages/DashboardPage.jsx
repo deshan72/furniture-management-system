@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import { formatCenterCode, loadSavedCenters } from '../utils/centersData';
+import { loadSavedCustomers } from '../utils/customersData';
 import { loadSavedPayments } from '../utils/paymentsData';
 import { loadSavedOrders } from '../utils/ordersData';
 import {
@@ -59,19 +60,7 @@ export default function DashboardPage({
     return propCenters && propCenters.length > 0 ? propCenters : loadSavedCenters();
   });
 
-  const [customers, setCustomers] = useState(() => {
-    try {
-      const saved = localStorage.getItem('dnd_customers_list');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.warn('Failed reading customers list:', e);
-    }
-    return [];
-  });
-
+  const [customers, setCustomers] = useState(() => loadSavedCustomers());
   const [orders, setOrders] = useState(() => loadSavedOrders());
   const [payments, setPayments] = useState(() => loadSavedPayments());
 
@@ -82,20 +71,25 @@ export default function DashboardPage({
   // Keep state synchronized with storage events
   useEffect(() => {
     const handleStorage = () => {
-      try {
-        const savedCust = localStorage.getItem('dnd_customers_list');
-        if (savedCust) {
-          const parsed = JSON.parse(savedCust);
-          if (Array.isArray(parsed)) setCustomers(parsed);
-        }
-      } catch {}
+      setCustomers(loadSavedCustomers());
       setOrders(loadSavedOrders());
       setPayments(loadSavedPayments());
       setCenters(loadSavedCenters());
     };
 
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('dnd_customers_updated', handleStorage);
+    window.addEventListener('dnd_orders_updated', handleStorage);
+    window.addEventListener('dnd_payments_updated', handleStorage);
+    window.addEventListener('dnd_centers_updated', handleStorage);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('dnd_customers_updated', handleStorage);
+      window.removeEventListener('dnd_orders_updated', handleStorage);
+      window.removeEventListener('dnd_payments_updated', handleStorage);
+      window.removeEventListener('dnd_centers_updated', handleStorage);
+    };
   }, []);
 
   // Sync centers from props if provided

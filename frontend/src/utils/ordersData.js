@@ -202,10 +202,44 @@ export const INITIAL_ORDERS = [
     notes: 'Two veranda chairs. Rs. 3,250 weekly repayment.',
     created_at: '2026-11-05T13:40:00Z',
   },
+  {
+    id: 'ORD-SACHINTHA',
+    invoice_no: 'DS-INV-8989',
+    contract_no: 'PN/C003/FURN-101',
+    passbook_no: 'PN',
+    date: '2026-11-13',
+    customer_id: '200127502100',
+    customer_name: 'Sachintha Deshan',
+    customer_phone: '0771234567',
+    customer_nic: '200127502100',
+    customer_address: 'No. 24, Main Road, Maththegoda',
+    branch_code: 'MHG',
+    center_code: 'C003',
+    item_id: 'prod-1',
+    item_code: 'FURN-101',
+    item_name: 'Royal Teak 6-Seater Dining Table',
+    category: 'wood',
+    quantity: 1,
+    unit_price: 99500,
+    gross_amount: 99500,
+    advance_paid: 76367,
+    balance_due: 23133,
+    payment_type: 'installment',
+    loan_frequency: 'monthly',
+    loan_terms: 3,
+    installment_value: 23133,
+    first_due_date: '2026-11-16',
+    installments_paid: 0,
+    payment_method: 'Cash',
+    status: 'Active Loan',
+    notes: 'Maththegoda Center installment plan for Royal Teak dining set.',
+    created_at: '2026-11-13T10:00:00Z',
+  },
 ];
 
 // Standard NIC mapping for known initial customers if old branch/center format was saved
 const KNOWN_CUSTOMER_NICS = {
+  'Sachintha Deshan': '200127502100',
   'Sunil Jayawardena': '197814502391',
   'Chamari Perera': '198578901234',
   'Nimal Fernando': '196923405678',
@@ -241,6 +275,37 @@ export const loadSavedOrders = () => {
             customer_nic = KNOWN_CUSTOMER_NICS[o.customer_name] || initMatch?.customer_nic || '198512345678';
           }
           
+          let customer_name = o.customer_name;
+          let customer_phone = o.customer_phone;
+          let customer_address = o.customer_address;
+          let customer_id = o.customer_id;
+
+          // Integrity Check: C003 (Maththegoda) belongs to Sachintha Deshan!
+          const normCenter = String(center_code || '').trim().toUpperCase();
+          const cNameLower = (customer_name || '').trim().toLowerCase();
+          const cNicNorm = String(customer_nic || '').trim();
+
+          if (normCenter === 'C003' || contract_no.includes('/C003/')) {
+            if (cNameLower.includes('sunil') || cNicNorm === '197814502391') {
+              customer_name = 'Sachintha Deshan';
+              customer_nic = '200127502100';
+              customer_id = '200127502100';
+              customer_phone = '0771234567';
+              customer_address = 'No. 24, Main Road, Maththegoda';
+              center_code = 'C003';
+              changed = true;
+            }
+          }
+
+          // Integrity Check: Sunil Jayawardena strictly belongs to Maharagama (C001)
+          if ((cNameLower.includes('sunil') || cNicNorm === '197814502391') && normCenter !== 'C001') {
+            center_code = 'C001';
+            if (contract_no.includes('/C003/')) {
+              contract_no = contract_no.replace('/C003/', '/C001/');
+            }
+            changed = true;
+          }
+
           let unit_price = Number(o.unit_price) || Number(o.gross_amount) || initMatch?.unit_price || 45000;
           let quantity = Number(o.quantity) || 1;
           let gross_amount = Number(o.gross_amount) || unit_price * quantity;
@@ -272,6 +337,10 @@ export const loadSavedOrders = () => {
 
           return {
             ...o,
+            customer_id: customer_id || customer_nic,
+            customer_name,
+            customer_phone,
+            customer_address,
             item_code,
             item_name,
             passbook_no,
@@ -290,6 +359,21 @@ export const loadSavedOrders = () => {
             status: balance_due <= 0 ? 'Fully Paid' : 'Active Loan',
           };
         });
+
+        // Ensure active installment order for Sachintha Deshan exists in C003
+        const hasSachinthaOrder = cleaned.some(
+          (o) =>
+            o.customer_nic === '200127502100' ||
+            (o.customer_name && o.customer_name.toLowerCase().includes('sachintha')) ||
+            o.id === 'ORD-SACHINTHA'
+        );
+        if (!hasSachinthaOrder) {
+          const sachinthaSeed = INITIAL_ORDERS.find((io) => io.id === 'ORD-SACHINTHA');
+          if (sachinthaSeed) {
+            cleaned.unshift({ ...sachinthaSeed });
+            changed = true;
+          }
+        }
 
         if (changed) {
           try {

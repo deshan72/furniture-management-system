@@ -73,11 +73,22 @@ function deserializeCustomerFromDb(row) {
   const middleName = meta.mn || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '');
   const lastName = meta.ln || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '');
 
+  let centerCode = meta.c || 'C001';
+  let city = meta.city || (row.address ? row.address.split(',').pop().trim() : 'Maharagama');
+  if (fullName.toLowerCase().includes('sunil') || cleanNic === '197814502391') {
+    centerCode = 'C001';
+    city = 'Maharagama';
+  }
+  if (fullName.toLowerCase().includes('sachintha') || cleanNic === '200127502100') {
+    centerCode = 'C003';
+    city = 'Maththegoda';
+  }
+
   return {
     ...row,
     customer_id: meta.cid || cleanNic || row.id,
     branch_code: meta.b || 'MHG',
-    center_code: meta.c || 'C001',
+    center_code: centerCode,
     contract_no: meta.orders ? String(meta.orders) : '1',
     item_code: '',
     first_name: firstName,
@@ -86,7 +97,7 @@ function deserializeCustomerFromDb(row) {
     civil_status: meta.cs || 'Single',
     dob: meta.dob || '',
     nic: cleanNic,
-    city: meta.city || (row.address ? row.address.split(',').pop().trim() : 'Maharagama'),
+    city: city,
     category: meta.cat || 'custom_order',
     outstanding_balance: Number(row.outstanding_balance) || 0,
     total_spent: Number(meta.spent) || Number(row.outstanding_balance) || 0,

@@ -694,9 +694,10 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       formSelectedProduct?.item_code ||
       'WD-001'
     ).trim().toUpperCase();
+    const finalAssignedCenter = formatCenterCode(formSelectedCustomer?.center_code || formCenterCode || 'C001');
     const finalContract = buildContractNumber(
       finalPassbook,
-      formCenterCode || formSelectedCustomer.center_code || 'C001',
+      finalAssignedCenter,
       finalItemCode
     );
 
@@ -744,7 +745,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       customer_nic: formSelectedCustomer.nic || formSelectedCustomer.customer_id,
       customer_address: formDeliveryAddress || formSelectedCustomer.address,
       branch_code: '',
-      center_code: formatCenterCode(formCenterCode || formSelectedCustomer.center_code || 'C001'),
+      center_code: finalAssignedCenter,
       item_id: formSelectedProduct.id,
       item_code: formSelectedProduct.item_code,
       item_name: formSelectedProduct.name,

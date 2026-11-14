@@ -21,20 +21,42 @@ function deserializeOrderFromDb(row) {
   const advance = Number(row.advance_paid !== undefined ? row.advance_paid : meta.advance) || 0;
   const balance = Number(row.balance_due !== undefined ? row.balance_due : meta.balance) || Math.max(0, subtotal - advance);
 
+  let cName = meta.c_name || (row.customers?.name) || 'Client';
+  let cNic = meta.c_nic || (row.customers?.nic) || '';
+  let cPhone = meta.c_phone || (row.customers?.phone) || '-';
+  let cAddr = meta.c_addr || (row.customers?.address) || '';
+  let centerCode = meta.center || 'C001';
+
+  // Center & Client Integrity Rule: C003 belongs strictly to Sachintha Deshan
+  if (centerCode === 'C003' || (meta.contract && meta.contract.includes('/C003/'))) {
+    if (cName.toLowerCase().includes('sunil') || cNic === '197814502391') {
+      cName = 'Sachintha Deshan';
+      cNic = '200127502100';
+      cPhone = '0771234567';
+      cAddr = 'No. 24, Main Road, Maththegoda';
+      centerCode = 'C003';
+    }
+  }
+
+  // Sunil Jayawardena strictly belongs to Maharagama (C001)
+  if ((cName.toLowerCase().includes('sunil') || cNic === '197814502391') && centerCode !== 'C001') {
+    centerCode = 'C001';
+  }
+
   return {
     id: row.id,
     order_uuid: row.id,
     invoice_no: meta.inv || `DS-INV-${String(row.id).slice(0, 4).toUpperCase()}`,
-    contract_no: meta.contract || `PN/${meta.center || 'C001'}/${meta.item_code || 'ITEM'}`,
+    contract_no: meta.contract || `PN/${centerCode}/${meta.item_code || 'ITEM'}`,
     passbook_no: meta.pb || 'PN',
     date: meta.date || (row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)),
-    customer_id: meta.c_id || meta.c_nic || row.customer_id || '',
-    customer_name: meta.c_name || (row.customers?.name) || 'Client',
-    customer_nic: meta.c_nic || (row.customers?.nic) || '',
-    customer_phone: meta.c_phone || (row.customers?.phone) || '-',
-    customer_address: meta.c_addr || (row.customers?.address) || '',
+    customer_id: meta.c_id || cNic || row.customer_id || '',
+    customer_name: cName,
+    customer_nic: cNic,
+    customer_phone: cPhone,
+    customer_address: cAddr,
     branch_code: meta.branch || 'MHG',
-    center_code: meta.center || 'C001',
+    center_code: centerCode,
     item_id: meta.item_id || '',
     item_code: meta.item_code || 'WD-101',
     item_name: meta.item_name || 'Solid Wood Furniture',

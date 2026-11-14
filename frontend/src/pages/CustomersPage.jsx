@@ -118,6 +118,7 @@ const normalizeNic = (str) => String(str || '').trim().toUpperCase();
 // Seed migration map for default mock customers (Identified primarily by NIC or ID)
 const SAMPLE_MIGRATION_MAP = {
   'cust-1': { customer_id: '197814502391', branch_code: 'MHG', center_code: 'C001', nic: '197814502391', city: 'Maharagama' },
+  'cust-sachintha': { customer_id: '200127502100', branch_code: 'MHG', center_code: 'C003', nic: '200127502100', city: 'Maththegoda' },
   'cust-2': { customer_id: '198578901234', branch_code: 'MHG', center_code: 'C002', nic: '198578901234', city: 'Kottawa' },
   'cust-3': { customer_id: '196923405678', branch_code: 'MRT', center_code: 'C001', nic: '196923405678', city: 'Moratuwa' },
   'cust-4': { customer_id: '199412308976', branch_code: 'NGB', center_code: 'C001', nic: '199412308976', city: 'Negombo' },
@@ -127,6 +128,7 @@ const SAMPLE_MIGRATION_MAP = {
 
 const SAMPLE_MIGRATION_NIC_MAP = {
   '197814502391': { branch_code: 'MHG', center_code: 'C001', city: 'Maharagama' },
+  '200127502100': { branch_code: 'MHG', center_code: 'C003', city: 'Maththegoda' },
   '198578901234': { branch_code: 'MHG', center_code: 'C002', city: 'Kottawa' },
   '196923405678': { branch_code: 'MRT', center_code: 'C001', city: 'Moratuwa' },
   '199212345678': { branch_code: 'DHW', center_code: 'C001', city: 'Dehiwala' },
