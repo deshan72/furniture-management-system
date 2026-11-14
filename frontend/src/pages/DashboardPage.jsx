@@ -29,6 +29,8 @@ import {
   Filter,
   Check,
   Target,
+  AlertCircle,
+  Award,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import { formatCenterCode, loadSavedCenters } from '../utils/centersData';
@@ -41,6 +43,11 @@ import {
 } from '../utils/collectionUtils';
 import { getAuthenticatedUser } from '../utils/authData';
 import { formatLKR, formatDate } from '../utils/formatters';
+import {
+  loadSavedTargets,
+  calculateTargetProgress,
+  isTargetAssignedToUser,
+} from '../utils/salesTargetsData';
 
 export default function DashboardPage({
   selectedCenter = 'all',
@@ -63,6 +70,7 @@ export default function DashboardPage({
   const [customers, setCustomers] = useState(() => loadSavedCustomers());
   const [orders, setOrders] = useState(() => loadSavedOrders());
   const [payments, setPayments] = useState(() => loadSavedPayments());
+  const [targets, setTargets] = useState(() => loadSavedTargets());
 
   // Weekly tracker UI state
   const [weeklyFilter, setWeeklyFilter] = useState('all'); // 'all' | 'pending' | 'collected'
@@ -75,6 +83,7 @@ export default function DashboardPage({
       setOrders(loadSavedOrders());
       setPayments(loadSavedPayments());
       setCenters(loadSavedCenters());
+      setTargets(loadSavedTargets());
     };
 
     window.addEventListener('storage', handleStorage);
@@ -82,6 +91,7 @@ export default function DashboardPage({
     window.addEventListener('dnd_orders_updated', handleStorage);
     window.addEventListener('dnd_payments_updated', handleStorage);
     window.addEventListener('dnd_centers_updated', handleStorage);
+    window.addEventListener('dns_sales_targets_updated', handleStorage);
 
     return () => {
       window.removeEventListener('storage', handleStorage);
@@ -89,6 +99,7 @@ export default function DashboardPage({
       window.removeEventListener('dnd_orders_updated', handleStorage);
       window.removeEventListener('dnd_payments_updated', handleStorage);
       window.removeEventListener('dnd_centers_updated', handleStorage);
+      window.removeEventListener('dns_sales_targets_updated', handleStorage);
     };
   }, []);
 
@@ -337,6 +348,38 @@ export default function DashboardPage({
       activeCentersCount,
     };
   }, [filteredCustomers, filteredOrders, centers]);
+
+  // =========================================================================
+  // SALES TARGETS & EXECUTIVE QUOTAS ENGINE
+  // =========================================================================
+  // Executive segregation: Executives only see targets strictly assigned to them
+  const executiveTargets = useMemo(() => {
+    return targets
+      .filter((t) => isTargetAssignedToUser(t, currentUser))
+      .map((t) => ({
+        ...t,
+        progress: calculateTargetProgress(t, orders, customers),
+      }));
+  }, [targets, currentUser, orders, customers]);
+
+  const [selectedExecTargetId, setSelectedExecTargetId] = useState(null);
+
+  const activeExecTarget = useMemo(() => {
+    if (executiveTargets.length === 0) return null;
+    if (selectedExecTargetId) {
+      const found = executiveTargets.find((t) => t.id === selectedExecTargetId);
+      if (found) return found;
+    }
+    return executiveTargets[0];
+  }, [executiveTargets, selectedExecTargetId]);
+
+  // Super Admin view: all executive targets
+  const allTargetsWithProgress = useMemo(() => {
+    return targets.map((t) => ({
+      ...t,
+      progress: calculateTargetProgress(t, orders, customers),
+    }));
+  }, [targets, orders, customers]);
 
   return (
     <div className="dashboard-page modern-responsive-dashboard">
@@ -818,6 +861,29 @@ export default function DashboardPage({
           border-color: #243554 !important;
         }
 
+        /* Sales Target Dashboard Widget Dark Theme Adaptations */
+        [data-theme="dark"] .executive-target-widget {
+          background: #141F36 !important;
+          border-color: #243554 !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        [data-theme="dark"] .target-metric-box {
+          background: #0F182B !important;
+          border-color: #243554 !important;
+        }
+
+        [data-theme="dark"] .target-inner-banner {
+          background: #0F182B !important;
+          border-color: #243554 !important;
+        }
+
+        [data-theme="dark"] .target-note-box {
+          background: rgba(245, 158, 11, 0.12) !important;
+          border-color: rgba(245, 158, 11, 0.3) !important;
+          color: #FDE68A !important;
+        }
+
         /* =========================================================
            RESPONSIVE BREAKPOINTS (Mobile & Tablet)
            ========================================================= */
@@ -1068,6 +1134,638 @@ export default function DashboardPage({
           />
         </div>
       </div>
+
+      {/* =========================================================
+          EXECUTIVE ASSIGNED SALES TARGET & PERFORMANCE QUOTA WIDGET
+          (Strictly segregated: Only visible to the assigned executive; strictly read-only)
+          ========================================================= */}
+      {isExecutive ? (
+        <div
+          className="executive-target-widget"
+          style={{
+            background: 'linear-gradient(135deg, #FFFFFF 0%, #F0FDF4 100%)',
+            border: '1px solid #86EFAC',
+            borderRadius: '16px',
+            boxShadow: '0 4px 20px rgba(22, 163, 74, 0.08)',
+            padding: '22px 26px',
+            marginBottom: '24px',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Header Row */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              borderBottom: '1px solid #DCFCE7',
+              paddingBottom: '16px',
+              marginBottom: '18px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #15803D 0%, #166534 100%)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: '0 4px 12px rgba(22,163,74,0.3)',
+                }}
+              >
+                <Target size={26} />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.14rem', fontWeight: 800, color: 'var(--text-main, #0F172A)' }}>
+                    My Assigned Sales Target & Performance Quota
+                  </h3>
+                  <span
+                    style={{
+                      background: '#DCFCE7',
+                      color: '#15803D',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '2px 9px',
+                      borderRadius: '12px',
+                      border: '1px solid #86EFAC',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <ShieldCheck size={12} /> Assigned by Administrator
+                  </span>
+                  <span
+                    style={{
+                      background: '#F1F5F9',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    🔒 Read-Only Quota
+                  </span>
+                </div>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted, #64748B)' }}>
+                  Personal sales revenue target, closed furniture clients quota, and live achievement rate for {currentUser?.name || 'Executive'}.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Action Navigation */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => onNavigate && onNavigate('sales-targets')}
+                style={{
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderColor: '#86EFAC',
+                  color: '#15803D',
+                  background: '#FFFFFF',
+                }}
+              >
+                <span>View Full Target Workspace</span>
+                <ArrowUpRight size={15} />
+              </button>
+            </div>
+          </div>
+
+          {/* If No Target is Assigned to this Executive */}
+          {executiveTargets.length === 0 ? (
+            <div
+              style={{
+                padding: '24px',
+                textAlign: 'center',
+                background: '#FFFFFF',
+                borderRadius: '12px',
+                border: '1px dashed #CBD5E1',
+              }}
+            >
+              <Target size={36} color="#94A3B8" style={{ marginBottom: '8px' }} />
+              <div style={{ fontWeight: 800, color: '#334155', fontSize: '0.95rem' }}>
+                No Active Sales Target Assigned Yet
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '4px' }}>
+                Super Admin has not assigned an active sales target to your account ({currentUser?.name}) for this period.
+              </div>
+            </div>
+          ) : (
+            <div>
+              {/* Target Selector Tabs if Executive has multiple targets */}
+              {executiveTargets.length > 1 && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  {executiveTargets.map((t) => {
+                    const isSelected = activeExecTarget?.id === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedExecTargetId(t.id)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          border: isSelected ? '1px solid #16A34A' : '1px solid #CBD5E1',
+                          background: isSelected ? '#16A34A' : '#FFFFFF',
+                          color: isSelected ? '#FFFFFF' : '#334155',
+                        }}
+                      >
+                        🎯 {t.title} ({formatLKR(t.target_amount)})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Active Target Banner */}
+              {activeExecTarget && (
+                <div>
+                  <div
+                    className="target-inner-banner"
+                    style={{
+                      background: '#FFFFFF',
+                      borderRadius: '12px',
+                      border: '1px solid #E2E8F0',
+                      padding: '14px 18px',
+                      marginBottom: '16px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                        <span
+                          style={{
+                            background: '#F1F5F9',
+                            color: '#475569',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '8px',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {activeExecTarget.target_period || 'Monthly'}
+                        </span>
+                        {activeExecTarget.center_code && activeExecTarget.center_code !== 'all' ? (
+                          <span
+                            style={{
+                              background: '#E0F2FE',
+                              color: '#0369A1',
+                              fontSize: '0.72rem',
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            📍 Center: {formatCenterCode(activeExecTarget.center_code)}
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              background: '#F8FAFC',
+                              color: '#64748B',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            🌐 All Regional Centers
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                          📅 {formatDate(activeExecTarget.start_date)} — {formatDate(activeExecTarget.end_date)}
+                        </span>
+                      </div>
+                      <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+                        {activeExecTarget.title}
+                      </h4>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      {activeExecTarget.progress.isAchieved ? (
+                        <span
+                          style={{
+                            background: '#DCFCE7',
+                            color: '#15803D',
+                            border: '1px solid #86EFAC',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                          }}
+                        >
+                          <CheckCircle2 size={14} /> Goal Achieved!
+                        </span>
+                      ) : activeExecTarget.progress.daysRemaining >= 0 ? (
+                        <span
+                          style={{
+                            background: activeExecTarget.progress.daysRemaining <= 5 ? '#FEF3C7' : '#EFF6FF',
+                            color: activeExecTarget.progress.daysRemaining <= 5 ? '#B45309' : '#1D4ED8',
+                            border: activeExecTarget.progress.daysRemaining <= 5 ? '1px solid #FDE68A' : '1px solid #BFDBFE',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                          }}
+                        >
+                          <Clock size={14} /> ⏳ {activeExecTarget.progress.daysRemaining} days remaining
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            background: '#FEE2E2',
+                            color: '#DC2626',
+                            border: '1px solid #FCA5A5',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                          }}
+                        >
+                          Target Expired
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 4 Performance Metric Boxes */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: '14px',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    {/* Assigned Sales Target Value */}
+                    <div
+                      className="target-metric-box"
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                        Assigned Sales Target
+                      </div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
+                        {formatLKR(activeExecTarget.target_amount)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                        Revenue target value
+                      </div>
+                    </div>
+
+                    {/* Realized Sales Closed */}
+                    <div
+                      className="target-metric-box"
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #BBF7D0',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase' }}>
+                        Closed Sales Revenue
+                      </div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#16A34A', marginTop: '4px' }}>
+                        {formatLKR(activeExecTarget.progress.achievedAmount)}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#15803D', marginTop: '2px', fontWeight: 700 }}>
+                        {activeExecTarget.progress.amountPercentage}% of target achieved
+                      </div>
+                    </div>
+
+                    {/* Clients Acquisition Quota */}
+                    <div
+                      className="target-metric-box"
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #BAE6FD',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0284C7', textTransform: 'uppercase' }}>
+                        Clients Quota Closed
+                      </div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0369A1', marginTop: '4px' }}>
+                        {activeExecTarget.progress.achievedClientsCount} / {activeExecTarget.target_clients_count} Clients
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '2px', fontWeight: 700 }}>
+                        {activeExecTarget.progress.clientsPercentage}% customer quota reached
+                      </div>
+                    </div>
+
+                    {/* Shortfall to Goal */}
+                    <div
+                      className="target-metric-box"
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                        Remaining Shortfall
+                      </div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: activeExecTarget.progress.shortfallAmount > 0 ? '#DC2626' : '#16A34A', marginTop: '4px' }}>
+                        {activeExecTarget.progress.shortfallAmount > 0
+                          ? formatLKR(activeExecTarget.progress.shortfallAmount)
+                          : 'Target Exceeded 🎉'}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                        {activeExecTarget.progress.shortfallClients > 0
+                          ? `${activeExecTarget.progress.shortfallClients} client(s) to go`
+                          : 'All customer quotas met'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dual Visual Progress Bars */}
+                  <div
+                    style={{
+                      background: '#FFFFFF',
+                      borderRadius: '12px',
+                      border: '1px solid #E2E8F0',
+                      padding: '14px 18px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}
+                  >
+                    {/* Revenue Bar */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontWeight: 700, marginBottom: '6px' }}>
+                        <span style={{ color: '#334155' }}>💰 Sales Revenue Progress</span>
+                        <span style={{ color: '#16A34A' }}>
+                          {formatLKR(activeExecTarget.progress.achievedAmount)} / {formatLKR(activeExecTarget.target_amount)} ({activeExecTarget.progress.amountPercentage}%)
+                        </span>
+                      </div>
+                      <div style={{ height: '9px', background: '#E2E8F0', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${Math.min(100, activeExecTarget.progress.amountPercentage)}%`,
+                            background: activeExecTarget.progress.isAchieved
+                              ? 'linear-gradient(90deg, #16A34A, #22C55E)'
+                              : 'linear-gradient(90deg, #2563EB, #38BDF8)',
+                            borderRadius: '6px',
+                            transition: 'width 0.4s ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Clients Bar */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', fontWeight: 700, marginBottom: '6px' }}>
+                        <span style={{ color: '#334155' }}>👥 Furniture Clients Acquisition Progress</span>
+                        <span style={{ color: '#0284C7' }}>
+                          {activeExecTarget.progress.achievedClientsCount} / {activeExecTarget.target_clients_count} Clients ({activeExecTarget.progress.clientsPercentage}%)
+                        </span>
+                      </div>
+                      <div style={{ height: '9px', background: '#E2E8F0', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${Math.min(100, activeExecTarget.progress.clientsPercentage)}%`,
+                            background: 'linear-gradient(90deg, #0284C7, #38BDF8)',
+                            borderRadius: '6px',
+                            transition: 'width 0.4s ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Strategy Note */}
+                  {activeExecTarget.notes && (
+                    <div
+                      className="target-note-box"
+                      style={{
+                        marginTop: '12px',
+                        background: '#FFFBEB',
+                        border: '1px solid #FEF3C7',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        fontSize: '0.78rem',
+                        color: '#92400E',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      💡 <strong>Admin Guidance:</strong> {activeExecTarget.notes}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* SUPER ADMIN EXECUTIVE TARGETS MANAGEMENT SUMMARY */
+        <div
+          className="executive-target-widget"
+          style={{
+            background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+            border: '1px solid #CBD5E1',
+            borderRadius: '16px',
+            boxShadow: '0 4px 20px rgba(15, 23, 42, 0.05)',
+            padding: '20px 24px',
+            marginBottom: '24px',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '14px',
+              borderBottom: '1px solid #E2E8F0',
+              paddingBottom: '14px',
+              marginBottom: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, #1E3A8A 0%, #0369A1 100%)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 3px 10px rgba(30,58,138,0.2)',
+                }}
+              >
+                <Target size={22} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
+                    Executive Sales Targets & Performance Quotas
+                  </h3>
+                  <span
+                    style={{
+                      background: '#E0F2FE',
+                      color: '#0369A1',
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {allTargetsWithProgress.length} Quota(s) Active
+                  </span>
+                </div>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748B' }}>
+                  Enterprise sales target monitoring. Assign and track revenue quotas for showroom executives.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => onNavigate && onNavigate('sales-targets')}
+                style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 800,
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Plus size={15} /> Assign Target
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => onNavigate && onNavigate('sales-targets')}
+                style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  padding: '7px 12px',
+                  borderRadius: '8px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span>Manage</span>
+                <ArrowUpRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Target Cards List */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '12px',
+            }}
+          >
+            {allTargetsWithProgress.slice(0, 3).map((trg) => (
+              <div
+                key={trg.id}
+                style={{
+                  background: '#FFFFFF',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onClick={() => onNavigate && onNavigate('sales-targets')}
+                title="Click to view target details in Sales Targets desk"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0F172A' }}>
+                    {trg.title}
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      padding: '2px 6px',
+                      borderRadius: '6px',
+                      background: trg.progress.isAchieved ? '#DCFCE7' : '#EFF6FF',
+                      color: trg.progress.isAchieved ? '#15803D' : '#1D4ED8',
+                    }}
+                  >
+                    {trg.progress.amountPercentage}%
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: '#64748B', marginBottom: '8px' }}>
+                  <span>👤 {trg.assigned_to_name}</span>
+                  <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                    {formatLKR(trg.progress.achievedAmount)} / {formatLKR(trg.target_amount)}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div style={{ height: '6px', background: '#E2E8F0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.min(100, trg.progress.amountPercentage)}%`,
+                      background: trg.progress.isAchieved ? '#16A34A' : '#2563EB',
+                      borderRadius: '4px',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* =========================================================
           EXECUTIVE CENTER-WISE DAILY CASH COLLECTION & TARGET HUB

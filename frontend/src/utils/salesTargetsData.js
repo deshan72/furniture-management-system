@@ -65,6 +65,33 @@ export const loadSavedTargets = () => {
   return INITIAL_TARGETS;
 };
 
+// Check if a sales target is assigned to a specific user (Executive)
+export const isTargetAssignedToUser = (target, user) => {
+  if (!user || !target) return false;
+
+  const userId = String(user.id || '').trim().toLowerCase();
+  const userName = String(user.name || '').trim().toLowerCase();
+  const userEmail = String(user.email || '').trim().toLowerCase();
+
+  const targetUserId = String(target.assigned_to_user_id || '').trim().toLowerCase();
+  const targetUserName = String(target.assigned_to_name || '').trim().toLowerCase();
+  const targetUserEmail = String(target.assigned_to_email || '').trim().toLowerCase();
+
+  // Match by user ID
+  if (targetUserId && userId && targetUserId === userId) return true;
+  // Match by email
+  if (targetUserEmail && userEmail && targetUserEmail === userEmail) return true;
+  // Match by full name
+  if (targetUserName && userName && targetUserName === userName) return true;
+
+  // Fallback: If executive user and target explicitly assigned to 'Executive Staff' or generic executive id
+  if (user.role === 'executive' && (targetUserId === 'usr_exec_001' || targetUserName === 'executive staff')) {
+    return true;
+  }
+
+  return false;
+};
+
 // Save targets to localStorage and dispatch custom event
 export const saveTargetsToStorage = (targetsList) => {
   try {

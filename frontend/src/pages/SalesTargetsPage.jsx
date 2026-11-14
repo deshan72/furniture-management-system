@@ -27,6 +27,7 @@ import {
   loadSavedTargets,
   saveTargetsToStorage,
   calculateTargetProgress,
+  isTargetAssignedToUser,
 } from '../utils/salesTargetsData';
 import { loadSavedOrders } from '../utils/ordersData';
 import { loadSavedCustomers } from '../utils/customersData';
@@ -112,14 +113,15 @@ export default function SalesTargetsPage({ currentUser: propUser, onNavigate }) 
   // Filtered Targets for display
   const displayedTargets = useMemo(() => {
     return enrichedTargets.filter((t) => {
-      // If logged in as executive (and not super admin), by default executive only sees their assigned targets
-      if (!isAdmin && t.assigned_to_user_id !== currentUser?.id && t.assigned_to_name !== currentUser?.name) {
-        // Still allow viewing if unassigned or general
-        if (t.assigned_to_user_id) return false;
+      // If logged in as executive (and not super admin), strictly show ONLY targets assigned to this executive
+      if (!isAdmin) {
+        if (!isTargetAssignedToUser(t, currentUser)) {
+          return false;
+        }
       }
 
-      // Executive filter
-      if (executiveFilter !== 'all') {
+      // Executive filter (Super Admin only)
+      if (isAdmin && executiveFilter !== 'all') {
         if (t.assigned_to_user_id !== executiveFilter && t.assigned_to_name !== executiveFilter) {
           return false;
         }
@@ -574,23 +576,42 @@ export default function SalesTargetsPage({ currentUser: propUser, onNavigate }) 
           />
         </div>
 
-        {/* Executive Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Filter size={15} color="#64748B" />
-          <select
-            className="form-input"
-            value={executiveFilter}
-            onChange={(e) => setExecutiveFilter(e.target.value)}
-            style={{ height: '40px', minWidth: '170px' }}
+        {/* Executive Filter - Only shown for Super Admin */}
+        {isAdmin ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Filter size={15} color="#64748B" />
+            <select
+              className="form-input"
+              value={executiveFilter}
+              onChange={(e) => setExecutiveFilter(e.target.value)}
+              style={{ height: '40px', minWidth: '170px' }}
+            >
+              <option value="all">All Executives</option>
+              {executiveAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} ({acc.role})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              padding: '6px 14px',
+              borderRadius: '10px',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              color: '#1E40AF',
+            }}
           >
-            <option value="all">All Executives</option>
-            {executiveAccounts.map((acc) => (
-              <option key={acc.id} value={acc.id}>
-                {acc.name} ({acc.role})
-              </option>
-            ))}
-          </select>
-        </div>
+            <span>👤 Assigned Executive: <strong>{currentUser?.name || 'Executive Staff'}</strong></span>
+          </div>
+        )}
 
         {/* Status Filter */}
         <select
@@ -981,7 +1002,7 @@ export default function SalesTargetsPage({ currentUser: propUser, onNavigate }) 
                     <span>View Orders ({progress.matchingOrders.length})</span>
                   </button>
 
-                  {isAdmin && (
+                  {isAdmin ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <button
                         type="button"
@@ -1013,6 +1034,24 @@ export default function SalesTargetsPage({ currentUser: propUser, onNavigate }) 
                         <Trash2 size={13} />
                       </button>
                     </div>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#64748B',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        background: '#F1F5F9',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #E2E8F0',
+                      }}
+                      title="Sales targets can only be created or modified by Super Admin."
+                    >
+                      <ShieldCheck size={14} color="#0284C7" /> Assigned by Admin (Read-Only)
+                    </span>
                   )}
                 </div>
               </div>
