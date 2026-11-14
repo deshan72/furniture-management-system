@@ -954,6 +954,112 @@ export default function DashboardPage({
       </div>
 
       {/* =========================================================
+          6-CARD RESPONSIVE KPI METRICS GRID (TOP VIEW)
+          Featuring: Today's Collection, Weekly Cash, Debt, Clients, Sales, Hubs
+          ========================================================= */}
+      <div className="dash-kpi-grid">
+        {/* KPI 1: Today's Collection */}
+        <div
+          className="kpi-interactive-card"
+          onClick={() => onNavigate && onNavigate('payments')}
+          title="Click to view today's collected receipts"
+        >
+          <StatCard
+            title="Today's Collection"
+            value={formatLKR(todayCollectionAmount)}
+            subtitle={
+              todayPayments.length > 0
+                ? `${todayPayments.length} receipt(s) collected today`
+                : 'No payments logged yet today'
+            }
+            icon={Wallet}
+            color="#15803D"
+            bg="#DCFCE7"
+          />
+        </div>
+
+        {/* KPI 2: Weekly Cash to Collect */}
+        <div
+          className="kpi-interactive-card"
+          onClick={() => {
+            const el = document.getElementById('executive-weekly-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          title="Click to view weekly recovery action plan"
+        >
+          <StatCard
+            title="Weekly Cash to Collect"
+            value={formatLKR(totalWeeklyTarget)}
+            subtitle={`${weeklyDueAccounts.filter((a) => !a.isCollected).length} client(s) pending collection this week`}
+            icon={CalendarClock}
+            color="#D97706"
+            bg="#FEF3C7"
+          />
+        </div>
+
+        {/* KPI 3: Total Outstanding Debt */}
+        <div
+          className="kpi-interactive-card"
+          onClick={() => onNavigate && onNavigate('customer-overview')}
+          title="Click to view customer overview and debt ledgers"
+        >
+          <StatCard
+            title="Outstanding Balances"
+            value={formatLKR(metrics.totalDebt)}
+            subtitle={`${metrics.withDebtCount} client(s) with pending credit`}
+            icon={AlertTriangle}
+            color="#DC2626"
+            bg="#FEE2E2"
+          />
+        </div>
+
+        {/* KPI 4: Total Furniture Clients */}
+        <div
+          className="kpi-interactive-card"
+          onClick={() => onNavigate && onNavigate('customers')}
+        >
+          <StatCard
+            title={selectedCenter === 'all' ? 'Total Furniture Clients' : 'Hub Registered Clients'}
+            value={metrics.totalClients}
+            subtitle={selectedCenter === 'all' ? 'Active clients nationwide' : `Clients in ${activeCenterObj?.city || 'this center'}`}
+            icon={Users}
+            color="#1E4D8C"
+            bg="#E8F1FA"
+          />
+        </div>
+
+        {/* KPI 5: Total Sales Value */}
+        <div
+          className="kpi-interactive-card"
+          onClick={() => onNavigate && onNavigate('orders')}
+        >
+          <StatCard
+            title="Total Sales Value (LKR)"
+            value={formatLKR(metrics.totalSales)}
+            subtitle="Workshop & delivered contracts"
+            icon={Banknote}
+            color="#059669"
+            bg="#DCFCE7"
+          />
+        </div>
+
+        {/* KPI 6: Active Regional Hubs */}
+        <div
+          className="kpi-interactive-card"
+          onClick={() => onNavigate && onNavigate('centers')}
+        >
+          <StatCard
+            title="Active Regional Hubs"
+            value={`${metrics.activeCentersCount} / ${centers.length}`}
+            subtitle="Operational centers & workshops"
+            icon={Building2}
+            color="#7C3AED"
+            bg="#EDE9FE"
+          />
+        </div>
+      </div>
+
+      {/* =========================================================
           EXECUTIVE CENTER-WISE DAILY CASH COLLECTION & TARGET HUB
           (Today's collection center, target amount, collected, shortfall, and 1-click navigation)
           ========================================================= */}
@@ -1252,112 +1358,6 @@ export default function DashboardPage({
             <span>Open Center Collection Sheet & Collect Cash</span>
             <ArrowRight size={15} />
           </button>
-        </div>
-      </div>
-
-      {/* =========================================================
-          6-CARD RESPONSIVE KPI METRICS GRID
-          Featuring: Today's Collection & Weekly Cash To Collect
-          ========================================================= */}
-      <div className="dash-kpi-grid">
-        {/* KPI 1: Today's Collection */}
-        <div
-          className="kpi-interactive-card"
-          onClick={() => onNavigate && onNavigate('payments')}
-          title="Click to view today's collected receipts"
-        >
-          <StatCard
-            title="Today's Collection"
-            value={formatLKR(todayCollectionAmount)}
-            subtitle={
-              todayPayments.length > 0
-                ? `${todayPayments.length} receipt(s) collected today`
-                : 'No payments logged yet today'
-            }
-            icon={Wallet}
-            color="#15803D"
-            bg="#DCFCE7"
-          />
-        </div>
-
-        {/* KPI 2: Weekly Cash to Collect */}
-        <div
-          className="kpi-interactive-card"
-          onClick={() => {
-            const el = document.getElementById('executive-weekly-section');
-            if (el) el.scrollIntoView({ behavior: 'smooth' });
-          }}
-          title="Click to view weekly recovery action plan"
-        >
-          <StatCard
-            title="Weekly Cash to Collect"
-            value={formatLKR(totalWeeklyTarget)}
-            subtitle={`${weeklyDueAccounts.filter((a) => !a.isCollected).length} client(s) pending collection this week`}
-            icon={CalendarClock}
-            color="#D97706"
-            bg="#FEF3C7"
-          />
-        </div>
-
-        {/* KPI 3: Total Outstanding Debt */}
-        <div
-          className="kpi-interactive-card"
-          onClick={() => onNavigate && onNavigate('customer-overview')}
-          title="Click to view customer overview and debt ledgers"
-        >
-          <StatCard
-            title="Outstanding Balances"
-            value={formatLKR(metrics.totalDebt)}
-            subtitle={`${metrics.withDebtCount} client(s) with pending credit`}
-            icon={AlertTriangle}
-            color="#DC2626"
-            bg="#FEE2E2"
-          />
-        </div>
-
-        {/* KPI 4: Total Furniture Clients */}
-        <div
-          className="kpi-interactive-card"
-          onClick={() => onNavigate && onNavigate('customers')}
-        >
-          <StatCard
-            title={selectedCenter === 'all' ? 'Total Furniture Clients' : 'Hub Registered Clients'}
-            value={metrics.totalClients}
-            subtitle={selectedCenter === 'all' ? 'Active clients nationwide' : `Clients in ${activeCenterObj?.city || 'this center'}`}
-            icon={Users}
-            color="#1E4D8C"
-            bg="#E8F1FA"
-          />
-        </div>
-
-        {/* KPI 5: Total Sales Value */}
-        <div
-          className="kpi-interactive-card"
-          onClick={() => onNavigate && onNavigate('orders')}
-        >
-          <StatCard
-            title="Total Sales Value (LKR)"
-            value={formatLKR(metrics.totalSales)}
-            subtitle="Workshop & delivered contracts"
-            icon={Banknote}
-            color="#059669"
-            bg="#DCFCE7"
-          />
-        </div>
-
-        {/* KPI 6: Active Regional Hubs */}
-        <div
-          className="kpi-interactive-card"
-          onClick={() => onNavigate && onNavigate('centers')}
-        >
-          <StatCard
-            title="Active Regional Hubs"
-            value={`${metrics.activeCentersCount} / ${centers.length}`}
-            subtitle="Operational centers & workshops"
-            icon={Building2}
-            color="#7C3AED"
-            bg="#EDE9FE"
-          />
         </div>
       </div>
 
