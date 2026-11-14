@@ -35,7 +35,15 @@ import Modal from '../components/Modal';
 import { printHtmlDocument } from '../utils/printUtils';
 import { apiRequest } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
-import { INITIAL_CUSTOMERS, loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
+import {
+  INITIAL_CUSTOMERS,
+  loadSavedCustomers,
+  saveCustomersToStorage,
+  getDeletedCustomerIds,
+  markCustomerAsDeleted,
+  isCustomerDeleted,
+  isTestCustomer,
+} from '../utils/customersData';
 import { addLiveNotification } from '../utils/notificationsData';
 import {
   validateNic,
@@ -197,10 +205,10 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Customers List State (with local storage persistence & auto-migration to NIC-first identity)
   const [customers, setCustomers] = useState(() => {
     const saved = loadSavedCustomers();
-    if (Array.isArray(saved) && saved.length > 0) {
+    if (Array.isArray(saved)) {
       return saved.map((c, idx) => migrateCustomerRecord(c, idx));
     }
-    return INITIAL_CUSTOMERS.map((c, idx) => migrateCustomerRecord(c, idx));
+    return [];
   });
 
   // Filter States
@@ -286,11 +294,20 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Sync external customer changes (from Centers or Overview page)
   useEffect(() => {
     const handleCustomerSync = (e) => {
+      const deletedSet = getDeletedCustomerIds();
       if (e?.detail && Array.isArray(e.detail)) {
-        setCustomers(e.detail.map((c, idx) => migrateCustomerRecord(c, idx)));
+        setCustomers(
+          e.detail
+            .filter((c) => !isCustomerDeleted(c, deletedSet))
+            .map((c, idx) => migrateCustomerRecord(c, idx))
+        );
       } else {
         const fresh = loadSavedCustomers();
-        setCustomers(fresh.map((c, idx) => migrateCustomerRecord(c, idx)));
+        setCustomers(
+          fresh
+            .filter((c) => !isCustomerDeleted(c, deletedSet))
+            .map((c, idx) => migrateCustomerRecord(c, idx))
+        );
       }
     };
     window.addEventListener('storage', handleCustomerSync);
@@ -316,13 +333,17 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     apiRequest('/customers')
       .then((res) => {
         if (isMounted && res && res.data && res.data.length > 0) {
-          const dbCustomers = res.data.map((c, idx) => migrateCustomerRecord(c, idx));
+          const deletedSet = getDeletedCustomerIds();
+          const dbCustomers = res.data
+            .filter((c) => !isCustomerDeleted(c, deletedSet))
+            .map((c, idx) => migrateCustomerRecord(c, idx));
+
           setCustomers((prev) => {
             const dbIds = new Set(dbCustomers.map((d) => d.id));
             const dbNics = new Set(dbCustomers.map((d) => (d.nic || '').trim().toUpperCase()).filter(Boolean));
-            // Keep local records not yet present in db
+            // Keep local records not yet present in db and not marked as deleted
             const localOnly = prev.filter(
-              (p) => !dbIds.has(p.id) && !dbNics.has((p.nic || '').trim().toUpperCase())
+              (p) => !isCustomerDeleted(p, deletedSet) && !dbIds.has(p.id) && !dbNics.has((p.nic || '').trim().toUpperCase())
             );
             const merged = [...dbCustomers, ...localOnly];
             saveCustomersToStorage(merged);
@@ -363,6 +384,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       if (c.city && c.city.trim()) cities.add(c.city.trim());
     });
     return Array.from(cities).sort();
+  }, [customers]);
+
+  // Count of initial test customers currently present in directory
+  const testCustomersCount = useMemo(() => {
+    return customers.filter(isTestCustomer).length;
   }, [customers]);
 
   // KPI Statistics
@@ -730,23 +756,103 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     });
   };
 
-  // Delete customer
-  const handleDeleteCustomer = (id, name) => {
+  // Helper to test if two customer records identify the same client
+  const isCustomerRecordMatch = (c, target) => {
+    if (!c || !target) return false;
+    if (c.id && target.id && String(c.id).trim() === String(target.id).trim()) return true;
+    if (c.customer_id && target.customer_id && String(c.customer_id).trim() === String(target.customer_id).trim()) return true;
+    const cNic = String(c.nic || '').trim().toUpperCase();
+    const tNic = String(target.nic || target.customer_id || '').trim().toUpperCase();
+    if (cNic && tNic && cNic === tNic) return true;
+    if (
+      c.name &&
+      target.name &&
+      c.name.trim().toLowerCase() === target.name.trim().toLowerCase() &&
+      (isTestCustomer(c) || isTestCustomer(target))
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  // Delete customer (supports passing customer object or ID)
+  const handleDeleteCustomer = (custOrId, optionalName) => {
+    const cust =
+      typeof custOrId === 'object' && custOrId !== null
+        ? custOrId
+        : customers.find(
+            (c) => c.id === custOrId || c.customer_id === custOrId || c.nic === custOrId
+          ) || { id: custOrId, name: optionalName || 'Client' };
+
+    const targetId = cust.id || cust.customer_id || cust.nic;
+    const cleanNic = cust.nic || cust.customer_id || '';
+    const name =
+      cust.name ||
+      optionalName ||
+      `${cust.first_name || ''} ${cust.last_name || ''}`.trim() ||
+      'Client';
+
     if (window.confirm(`Are you sure you want to remove customer "${name}" from directory?`)) {
-      const updatedList = customers.filter((c) => c.id !== id);
+      // 1. Tombstone in localStorage so they will NEVER reappear on refresh or seed fallback
+      markCustomerAsDeleted(cust);
+
+      // 2. Filter from active state
+      const updatedList = customers.filter((c) => !isCustomerRecordMatch(c, cust));
       setCustomers(updatedList);
       saveCustomersToStorage(updatedList);
-      if (selectedCustomer?.id === id) {
+
+      if (selectedCustomer && isCustomerRecordMatch(selectedCustomer, cust)) {
         setIsViewModalOpen(false);
       }
 
-      apiRequest(`/customers/${id}`, { method: 'DELETE' }).catch((err) => {
-        console.warn('Customer delete DB warning:', err);
+      // 3. Inform backend / Supabase
+      const deleteUrl = cust.id
+        ? `/customers/${cust.id}?nic=${encodeURIComponent(cleanNic)}`
+        : `/customers/${cleanNic}`;
+      apiRequest(deleteUrl, { method: 'DELETE' }).catch((err) => {
+        console.warn('Customer delete DB notice:', err);
       });
 
       addLiveNotification({
         title: `Client Removed`,
         desc: `Customer ${name} was deleted from the customer directory.`,
+        category: 'alerts',
+        type: 'warning',
+        targetTab: 'customer-directory',
+      });
+    }
+  };
+
+  // Delete all test customers at once
+  const handleDeleteAllTestCustomers = () => {
+    const testCustomers = customers.filter(isTestCustomer);
+    if (testCustomers.length === 0) return;
+
+    if (
+      window.confirm(
+        `Are you sure you want to remove all ${testCustomers.length} test customers? This will leave your customer directory clean for real clients.`
+      )
+    ) {
+      testCustomers.forEach((tc) => {
+        markCustomerAsDeleted(tc);
+        const cleanNic = tc.nic || tc.customer_id || '';
+        const deleteUrl = tc.id
+          ? `/customers/${tc.id}?nic=${encodeURIComponent(cleanNic)}`
+          : `/customers/${cleanNic}`;
+        apiRequest(deleteUrl, { method: 'DELETE' }).catch(() => {});
+      });
+
+      const updatedList = customers.filter((c) => !isTestCustomer(c));
+      setCustomers(updatedList);
+      saveCustomersToStorage(updatedList);
+
+      if (selectedCustomer && isTestCustomer(selectedCustomer)) {
+        setIsViewModalOpen(false);
+      }
+
+      addLiveNotification({
+        title: `Test Clients Cleared`,
+        desc: `Successfully removed ${testCustomers.length} test customer records from directory.`,
         category: 'alerts',
         type: 'warning',
         targetTab: 'customer-directory',
@@ -1261,6 +1367,26 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
               )}
             </div>
 
+            {/* Clear All Test Clients Quick Action */}
+            {testCustomersCount > 0 && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleDeleteAllTestCustomers}
+                title="Remove all sample test customers at once from directory"
+                style={{
+                  padding: '9px 14px',
+                  fontSize: '0.84rem',
+                  gap: '6px',
+                  color: '#ef4444',
+                  borderColor: 'rgba(239, 68, 68, 0.4)',
+                  background: 'rgba(239, 68, 68, 0.08)',
+                }}
+              >
+                <Trash2 size={15} /> Clear Test Clients ({testCustomersCount})
+              </button>
+            )}
+
             {/* + Add New Customer Button */}
             <button
               className="btn btn-primary"
@@ -1412,7 +1538,24 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           </div>
         </div>
 
-        {filteredCustomers.length === 0 ? (
+        {customers.length === 0 ? (
+          <div className="table-empty-state">
+            <Users size={38} color="var(--text-faint)" />
+            <p style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>
+              No customers in directory
+            </p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '380px' }}>
+              All sample customer records have been cleared. Click &quot;+ Add Customer&quot; above to register your first client.
+            </p>
+            <button
+              className="btn btn-primary"
+              onClick={handleOpenAddModal}
+              style={{ marginTop: '8px', fontSize: '0.82rem' }}
+            >
+              <Plus size={14} /> Add Customer
+            </button>
+          </div>
+        ) : filteredCustomers.length === 0 ? (
           <div className="table-empty-state">
             <Filter size={36} color="var(--text-faint)" />
             <p style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>
@@ -1649,7 +1792,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                           <button
                             className="icon-btn-action icon-btn-delete"
                             title="Delete Customer"
-                            onClick={() => handleDeleteCustomer(cust.id, cust.name)}
+                            onClick={() => handleDeleteCustomer(cust)}
                           >
                             <Trash2 size={15} />
                           </button>
@@ -1839,7 +1982,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                       <button
                         className="icon-btn-action icon-btn-delete"
                         title="Delete Customer"
-                        onClick={() => handleDeleteCustomer(cust.id, cust.name)}
+                        onClick={() => handleDeleteCustomer(cust)}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -2498,17 +2641,28 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             )}
 
             <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ gap: '6px' }}
-                onClick={() => {
-                  setIsViewModalOpen(false);
-                  handleOpenEdit(selectedCustomer);
-                }}
-              >
-                <Edit2 size={14} /> Edit Customer Details
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ gap: '6px' }}
+                  onClick={() => {
+                    setIsViewModalOpen(false);
+                    handleOpenEdit(selectedCustomer);
+                  }}
+                >
+                  <Edit2 size={14} /> Edit Customer Details
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ gap: '6px', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                  onClick={() => handleDeleteCustomer(selectedCustomer)}
+                  title="Remove customer from directory"
+                >
+                  <Trash2 size={14} /> Delete Customer
+                </button>
+              </div>
 
               <button
                 type="button"

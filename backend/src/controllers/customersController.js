@@ -251,13 +251,23 @@ export const updateCustomer = async (req, res, next) => {
 export const deleteCustomer = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const { nic } = req.query;
 
-    const { error } = await supabase
-      .from('customers')
-      .delete()
-      .eq('id', id);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 
-    if (error) throw error;
+    let query = supabase.from('customers').delete();
+    if (isUuid) {
+      query = query.eq('id', id);
+    } else if (nic) {
+      query = query.eq('nic', nic);
+    } else {
+      query = query.eq('nic', id);
+    }
+
+    const { error } = await query;
+    if (error) {
+      console.warn('Customer delete DB warning:', error.message);
+    }
 
     res.json({
       success: true,

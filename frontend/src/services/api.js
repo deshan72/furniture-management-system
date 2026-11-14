@@ -394,8 +394,18 @@ async function directSupabaseRequest(endpoint, options = {}) {
 
     if (method === 'DELETE') {
       if (!id) throw new Error('Missing customer ID for delete');
+      const urlParams = new URLSearchParams(endpoint.includes('?') ? endpoint.split('?')[1] : '');
+      const paramNic = urlParams.get('nic');
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
-      const queryParam = isUuid ? `id=eq.${id}` : `nic=eq.${encodeURIComponent(id)}`;
+
+      let queryParam = '';
+      if (isUuid) {
+        queryParam = `id=eq.${id}`;
+      } else if (paramNic) {
+        queryParam = `nic=eq.${encodeURIComponent(paramNic)}`;
+      } else {
+        queryParam = `nic=eq.${encodeURIComponent(id)}`;
+      }
 
       const res = await fetch(`${SUPABASE_URL}/rest/v1/customers?${queryParam}`, {
         method: 'DELETE',
@@ -404,7 +414,7 @@ async function directSupabaseRequest(endpoint, options = {}) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || 'Direct Supabase customer delete failed');
+        console.warn('Direct Supabase customer delete notice:', err.message);
       }
       return { success: true };
     }

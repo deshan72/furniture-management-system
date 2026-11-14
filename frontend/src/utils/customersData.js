@@ -148,23 +148,111 @@ export const INITIAL_CUSTOMERS = [
   },
 ];
 
-export const loadSavedCustomers = () => {
+export const DELETED_CUSTOMERS_KEY = 'dnd_deleted_customers';
+
+export const TEST_CUSTOMER_NICS = new Set([
+  '197814502391',
+  '198578901234',
+  '196923405678',
+  '199412308976',
+  '199145607890',
+  '197234509812',
+]);
+
+export const TEST_CUSTOMER_IDS = new Set([
+  'cust-1',
+  'cust-2',
+  'cust-3',
+  'cust-4',
+  'cust-5',
+  'cust-6',
+]);
+
+export const isTestCustomer = (c) => {
+  if (!c) return false;
+  const id = String(c.id || '').trim();
+  const nic = String(c.nic || '').trim().toUpperCase();
+  const custId = String(c.customer_id || '').trim().toUpperCase();
+  return (
+    TEST_CUSTOMER_IDS.has(id) ||
+    TEST_CUSTOMER_NICS.has(nic) ||
+    TEST_CUSTOMER_NICS.has(custId) ||
+    id.startsWith('cust-')
+  );
+};
+
+export const getDeletedCustomerIds = () => {
   try {
-    const saved = localStorage.getItem('dnd_customers_list');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((c) => ({
-          ...c,
-          customer_id: c.nic || c.customer_id,
-          center_code: formatCenterCode(c.center_code || 'C001'),
-        }));
+    const raw = localStorage.getItem(DELETED_CUSTOMERS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.map((x) => String(x).trim().toUpperCase()));
       }
     }
+  } catch {}
+  return new Set();
+};
+
+export const markCustomerAsDeleted = (customer) => {
+  try {
+    const deletedSet = getDeletedCustomerIds();
+    if (customer) {
+      if (customer.id) deletedSet.add(String(customer.id).trim().toUpperCase());
+      if (customer.customer_id) deletedSet.add(String(customer.customer_id).trim().toUpperCase());
+      if (customer.nic) deletedSet.add(String(customer.nic).trim().toUpperCase());
+      if (customer.name) deletedSet.add(String(customer.name).trim().toUpperCase());
+    }
+    localStorage.setItem(DELETED_CUSTOMERS_KEY, JSON.stringify(Array.from(deletedSet)));
+  } catch (e) {
+    console.warn('Failed to mark customer as deleted:', e);
+  }
+};
+
+export const isCustomerDeleted = (c, deletedSet = null) => {
+  if (!c) return false;
+  const set = deletedSet || getDeletedCustomerIds();
+  const cId = c.id ? String(c.id).trim().toUpperCase() : '';
+  const cCustId = c.customer_id ? String(c.customer_id).trim().toUpperCase() : '';
+  const cNic = c.nic ? String(c.nic).trim().toUpperCase() : '';
+  const cName = c.name ? String(c.name).trim().toUpperCase() : '';
+
+  return (
+    (cId && set.has(cId)) ||
+    (cCustId && set.has(cCustId)) ||
+    (cNic && set.has(cNic)) ||
+    (cName && set.has(cName))
+  );
+};
+
+export const loadSavedCustomers = () => {
+  try {
+    const deletedSet = getDeletedCustomerIds();
+    const saved = localStorage.getItem('dnd_customers_list');
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((c) => !isCustomerDeleted(c, deletedSet))
+          .map((c) => ({
+            ...c,
+            customer_id: c.nic || c.customer_id,
+            center_code: formatCenterCode(c.center_code || 'C001'),
+          }));
+      }
+    }
+    // If dnd_customers_list was never initialized, load initial customers minus deleted ones
+    return INITIAL_CUSTOMERS
+      .filter((c) => !isCustomerDeleted(c, deletedSet))
+      .map((c) => ({
+        ...c,
+        customer_id: c.nic || c.customer_id,
+        center_code: formatCenterCode(c.center_code || 'C001'),
+      }));
   } catch {
     // fallback
   }
-  return INITIAL_CUSTOMERS;
+  return [];
 };
 
 export const saveCustomersToStorage = (customersList) => {
