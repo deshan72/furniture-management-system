@@ -1018,7 +1018,7 @@ export default function DashboardPage({
                     border: '1px solid #BAE6FD',
                   }}
                 >
-                  අද දින මධ්‍යස්ථාන මුදල් ඉලක්කය
+                  Daily Center Target
                 </span>
                 {dashCenterStats.isScheduledToday ? (
                   <span
@@ -1260,7 +1260,7 @@ export default function DashboardPage({
           Featuring: Today's Collection & Weekly Cash To Collect
           ========================================================= */}
       <div className="dash-kpi-grid">
-        {/* KPI 1: Today's Collection (අද දින එකතුව) */}
+        {/* KPI 1: Today's Collection */}
         <div
           className="kpi-interactive-card"
           onClick={() => onNavigate && onNavigate('payments')}
@@ -1280,7 +1280,7 @@ export default function DashboardPage({
           />
         </div>
 
-        {/* KPI 2: Weekly Cash to Collect (සතිපතා එකතු කළ යුතු ඉලක්කය) */}
+        {/* KPI 2: Weekly Cash to Collect */}
         <div
           className="kpi-interactive-card"
           onClick={() => {
@@ -1299,7 +1299,7 @@ export default function DashboardPage({
           />
         </div>
 
-        {/* KPI 3: Total Outstanding Debt (හිඟ ශේෂය) */}
+        {/* KPI 3: Total Outstanding Debt */}
         <div
           className="kpi-interactive-card"
           onClick={() => onNavigate && onNavigate('customer-overview')}
@@ -1387,7 +1387,7 @@ export default function DashboardPage({
                     border: '1px solid #BAE6FD',
                   }}
                 >
-                  සතිපතා මුදල් එකතු කිරීම
+                  Weekly Cash Recovery
                 </span>
               </div>
               <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
