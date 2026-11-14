@@ -877,7 +877,156 @@ async function directSupabaseRequest(endpoint, options = {}) {
     }
   }
 
-  // 5. Payments route handling
+  // 5. Daily Payments route handling (දිනපතා මධ්‍යස්ථාන මුදල් එකතු කිරීම්)
+  if (cleanEndpoint.startsWith('/payments/daily') || cleanEndpoint.startsWith('/daily_payments')) {
+    const parts = cleanEndpoint.split('/').filter(Boolean);
+    const id = parts[2] || (parts[0] === 'daily_payments' ? parts[1] : null);
+
+    if (method === 'GET') {
+      let res = await fetch(`${SUPABASE_URL}/rest/v1/daily_payments?select=*&order=collection_date.desc`, { headers });
+      if (!res.ok) {
+        res = await fetch(`${SUPABASE_URL}/rest/v1/payments?select=*&order=created_at.desc`, { headers });
+      }
+      if (!res.ok) throw new Error('Query daily payments failed');
+      const data = await res.json();
+      return { success: true, count: data.length, data: Array.isArray(data) ? data.map(deserializePaymentFromDb) : [] };
+    }
+
+    if (method === 'POST') {
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const payload = {
+        receipt_no: parsedBody.receipt_no || `DS-RCP-${Date.now().toString().slice(-6)}`,
+        collection_date: parsedBody.collection_date || parsedBody.date || new Date().toISOString().slice(0, 10),
+        center_code: parsedBody.center_code || 'C001',
+        branch_code: parsedBody.branch_code || 'MHG',
+        contract_no: parsedBody.contract_no || '',
+        order_id: parsedBody.order_id || null,
+        customer_id: parsedBody.customer_id || null,
+        customer_name: parsedBody.customer_name || 'Client',
+        customer_nic: parsedBody.customer_nic || '',
+        customer_phone: parsedBody.customer_phone || '',
+        amount: Number(parsedBody.amount) || 0,
+        payment_method: (parsedBody.payment_method || 'cash').toLowerCase().replace(/\s+/g, '_'),
+        collected_by: parsedBody.collected_by || 'Officer',
+        notes: parsedBody.notes || '',
+      };
+      if (parsedBody.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsedBody.id)) {
+        payload.id = parsedBody.id;
+      }
+
+      let res = await fetch(`${SUPABASE_URL}/rest/v1/daily_payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        // Fallback to unified payments table
+        const fbPayload = sanitizePaymentPayload(parsedBody);
+        res = await fetch(`${SUPABASE_URL}/rest/v1/payments`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fbPayload),
+        });
+      }
+
+      if (!res.ok) {
+        console.warn('Daily payment direct DB fallback notice:', res.status);
+        return { success: true, data: { ...parsedBody, id: payload.id || generateUUID() } };
+      }
+
+      const data = await res.json();
+      const raw = Array.isArray(data) ? data[0] : (data || payload);
+      return { success: true, data: deserializePaymentFromDb(raw) };
+    }
+
+    if (method === 'DELETE') {
+      if (id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/daily_payments?id=eq.${id}`, { method: 'DELETE', headers });
+        await fetch(`${SUPABASE_URL}/rest/v1/payments?id=eq.${id}`, { method: 'DELETE', headers });
+      }
+      return { success: true };
+    }
+  }
+
+  // 6. Monthly Payments route handling (මාසික ණය වාරික සහ අත්තිකාරම් පියවීම්)
+  if (cleanEndpoint.startsWith('/payments/monthly') || cleanEndpoint.startsWith('/monthly_payments')) {
+    const parts = cleanEndpoint.split('/').filter(Boolean);
+    const id = parts[2] || (parts[0] === 'monthly_payments' ? parts[1] : null);
+
+    if (method === 'GET') {
+      let res = await fetch(`${SUPABASE_URL}/rest/v1/monthly_payments?select=*&order=payment_date.desc`, { headers });
+      if (!res.ok) {
+        res = await fetch(`${SUPABASE_URL}/rest/v1/payments?select=*&order=created_at.desc`, { headers });
+      }
+      if (!res.ok) throw new Error('Query monthly payments failed');
+      const data = await res.json();
+      return { success: true, count: data.length, data: Array.isArray(data) ? data.map(deserializePaymentFromDb) : [] };
+    }
+
+    if (method === 'POST') {
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const paymentDate = parsedBody.payment_date || parsedBody.date || new Date().toISOString().slice(0, 10);
+      const payload = {
+        receipt_no: parsedBody.receipt_no || `DS-RCP-${Date.now().toString().slice(-6)}`,
+        payment_date: paymentDate,
+        payment_month: parsedBody.payment_month || paymentDate.slice(0, 7),
+        contract_no: parsedBody.contract_no || '',
+        order_id: parsedBody.order_id || null,
+        customer_id: parsedBody.customer_id || null,
+        customer_name: parsedBody.customer_name || 'Client',
+        customer_nic: parsedBody.customer_nic || '',
+        customer_phone: parsedBody.customer_phone || '',
+        center_code: parsedBody.center_code || 'C001',
+        installment_term: Number(parsedBody.installment_term || parsedBody.installments_paid) || 1,
+        amount: Number(parsedBody.amount) || 0,
+        previous_balance: Number(parsedBody.previous_balance) || 0,
+        new_balance: Number(parsedBody.new_balance) || 0,
+        payment_type: parsedBody.payment_type || 'Installment Loan',
+        payment_method: (parsedBody.payment_method || 'cash').toLowerCase().replace(/\s+/g, '_'),
+        reference_no: parsedBody.reference_no || '',
+        collected_by: parsedBody.collected_by || 'Cashier',
+        notes: parsedBody.notes || '',
+      };
+      if (parsedBody.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsedBody.id)) {
+        payload.id = parsedBody.id;
+      }
+
+      let res = await fetch(`${SUPABASE_URL}/rest/v1/monthly_payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const fbPayload = sanitizePaymentPayload(parsedBody);
+        res = await fetch(`${SUPABASE_URL}/rest/v1/payments`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fbPayload),
+        });
+      }
+
+      if (!res.ok) {
+        console.warn('Monthly payment direct DB fallback notice:', res.status);
+        return { success: true, data: { ...parsedBody, id: payload.id || generateUUID() } };
+      }
+
+      const data = await res.json();
+      const raw = Array.isArray(data) ? data[0] : (data || payload);
+      return { success: true, data: deserializePaymentFromDb(raw) };
+    }
+
+    if (method === 'DELETE') {
+      if (id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/monthly_payments?id=eq.${id}`, { method: 'DELETE', headers });
+        await fetch(`${SUPABASE_URL}/rest/v1/payments?id=eq.${id}`, { method: 'DELETE', headers });
+      }
+      return { success: true };
+    }
+  }
+
+  // 7. Unified Payments route handling (Generic ledger)
   if (cleanEndpoint.startsWith('/payments')) {
     const parts = cleanEndpoint.split('/').filter(Boolean); // ['payments', ':id']
     const id = parts[1];

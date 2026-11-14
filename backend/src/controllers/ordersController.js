@@ -202,20 +202,68 @@ export const createOrder = async (req, res, next) => {
       order_status: raw.order_status || (raw.status === 'Fully Paid' ? 'delivered' : 'confirmed'),
       delivery_date: raw.delivery_date || raw.first_due_date || null,
       notes: serializedNotes,
+      // Enhanced native columns (from migration)
+      invoice_no: raw.invoice_no || meta.inv,
+      contract_no: raw.contract_no || meta.contract,
+      passbook_no: raw.passbook_no || meta.pb,
+      customer_nic: raw.customer_nic || meta.c_nic,
+      customer_name: raw.customer_name || meta.c_name,
+      customer_phone: raw.customer_phone || meta.c_phone,
+      customer_address: raw.customer_address || meta.c_addr,
+      branch_code: raw.branch_code || meta.branch,
+      center_code: raw.center_code || meta.center,
+      item_code: raw.item_code || meta.item_code,
+      item_name: raw.item_name || meta.item_name,
+      category: raw.category || meta.cat,
+      quantity: Number(raw.quantity) || 1,
+      unit_price: Number(raw.unit_price) || subtotal,
+      gross_amount: subtotal,
+      payment_type: raw.payment_type || 'installment',
+      loan_frequency: raw.loan_frequency || 'monthly',
+      loan_terms: Number(raw.loan_terms) || 12,
+      installment_value: Number(raw.installment_value) || 0,
+      first_due_date: raw.first_due_date || null,
+      installments_paid: Number(raw.installments_paid) || (advancePaid > 0 ? 1 : 0),
+      status: raw.status || (balanceDue <= 0 ? 'Fully Paid' : 'Active Loan'),
     };
 
     if (raw.customer_id && uuidRegex.test(raw.customer_id)) {
       orderPayload.customer_id = raw.customer_id;
     }
 
-    // 1. Create Order
-    const { data: order, error: orderError } = await supabase
+    // 1. Create Order (with fallback if native columns are not yet migrated in DB)
+    let orderData = null;
+    let { data: order, error: orderError } = await supabase
       .from('orders')
       .insert([orderPayload])
       .select()
       .single();
 
+    if (orderError && orderError.message && orderError.message.includes('column')) {
+      // Native columns not yet migrated; fallback to standard schema
+      const fallbackPayload = {
+        order_type: orderPayload.order_type,
+        subtotal: orderPayload.subtotal,
+        discount: orderPayload.discount,
+        delivery_charge: orderPayload.delivery_charge,
+        total_amount: orderPayload.total_amount,
+        advance_paid: orderPayload.advance_paid,
+        balance_due: orderPayload.balance_due,
+        payment_status: orderPayload.payment_status,
+        order_status: orderPayload.order_status,
+        delivery_date: orderPayload.delivery_date,
+        notes: serializedNotes,
+      };
+      if (raw.customer_id && uuidRegex.test(raw.customer_id)) {
+        fallbackPayload.customer_id = raw.customer_id;
+      }
+      const retry = await supabase.from('orders').insert([fallbackPayload]).select().single();
+      order = retry.data;
+      orderError = retry.error;
+    }
+
     if (orderError) throw orderError;
+    orderData = order;
 
     // 2. Insert Order Items if array provided
     if (Array.isArray(raw.items) && raw.items.length > 0) {

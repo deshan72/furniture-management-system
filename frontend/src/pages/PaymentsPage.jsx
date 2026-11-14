@@ -248,22 +248,44 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
     // 1. Fetch payments from database
     apiRequest('/payments')
       .then((res) => {
-        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
-          setPayments((prev) => {
-            const dbPayments = res.data;
-            const dbIds = new Set(dbPayments.map((d) => d.id));
-            const dbRcps = new Set(
-              dbPayments.map((d) => (d.receipt_no || '').trim().toUpperCase()).filter(Boolean)
-            );
-            const localOnly = prev.filter(
-              (p) =>
-                !dbIds.has(p.id) &&
-                !dbRcps.has((p.receipt_no || '').trim().toUpperCase())
-            );
-            const merged = [...dbPayments, ...localOnly];
-            savePaymentsToStorage(merged);
-            return merged;
-          });
+        if (isMounted && res && Array.isArray(res.data)) {
+          if (res.data.length === 0) {
+            // Database has 0 payments; sync initial payments to database!
+            const localPayments = loadSavedPayments();
+            if (localPayments && localPayments.length > 0) {
+              console.log(`📤 Initializing database payments sync (${localPayments.length} records)...`);
+              localPayments.forEach((p) => {
+                // Categorize into daily center collection vs monthly installment
+                if (p.payment_type === 'Installment Loan' || p.payment_type === 'Order Advance' || p.payment_type === 'Full Settlement') {
+                  apiRequest('/payments/monthly', { method: 'POST', body: JSON.stringify(p) }).catch(() => {});
+                } else {
+                  apiRequest('/payments/daily', { method: 'POST', body: JSON.stringify(p) }).catch(() => {});
+                }
+                apiRequest('/payments', { method: 'POST', body: JSON.stringify(p) }).catch(() => {});
+              });
+            }
+          } else {
+            setPayments((prev) => {
+              const dbPayments = res.data;
+              const dbIds = new Set(dbPayments.map((d) => d.id));
+              const dbRcps = new Set(
+                dbPayments.map((d) => (d.receipt_no || '').trim().toUpperCase()).filter(Boolean)
+              );
+              const localOnly = prev.filter(
+                (p) =>
+                  !dbIds.has(p.id) &&
+                  !dbRcps.has((p.receipt_no || '').trim().toUpperCase())
+              );
+              if (localOnly.length > 0) {
+                localOnly.forEach((locP) => {
+                  apiRequest('/payments', { method: 'POST', body: JSON.stringify(locP) }).catch(() => {});
+                });
+              }
+              const merged = [...dbPayments, ...localOnly];
+              savePaymentsToStorage(merged);
+              return merged;
+            });
+          }
         }
       })
       .catch((err) => {
@@ -486,8 +508,21 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
 
-    // 3. Persist to API / Supabase
+    // 3. Persist to API / Supabase (Daily Payments table & Unified Ledger)
     try {
+      // 3.1 Send to daily_payments endpoint
+      apiRequest('/payments/daily', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...newPayment,
+          collection_date: newPayment.date,
+          center_code: activeCenterObj?.center_code || newPayment.center_code || 'C001',
+          branch_code: activeCenterObj?.branch_code || newPayment.branch_code || 'MHG',
+          collected_by: activeCenterObj?.contact_person || 'Field Officer',
+        }),
+      }).catch((e) => console.warn('Daily payment DB persist notice:', e));
+
+      // 3.2 Send to unified payments endpoint
       apiRequest('/payments', {
         method: 'POST',
         body: JSON.stringify(newPayment),
@@ -727,8 +762,20 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
 
-    // Persist payment & order balance to database
+    // Persist payment & order balance to database (Monthly Payments table & Unified Ledger)
     try {
+      // 1. Send to monthly_payments endpoint
+      apiRequest('/payments/monthly', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...newPayment,
+          payment_date: newPayment.date,
+          payment_month: (newPayment.date || new Date().toISOString()).slice(0, 7),
+          installment_term: (selectedOrder.installments_paid || 0) + 1,
+        }),
+      }).catch((e) => console.warn('Monthly payment DB persist notice:', e));
+
+      // 2. Also send to unified payments endpoint
       apiRequest('/payments', {
         method: 'POST',
         body: JSON.stringify(newPayment),

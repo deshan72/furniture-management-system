@@ -227,23 +227,42 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     // 2. Fetch latest orders from Supabase / database and merge
     apiRequest('/orders')
       .then((res) => {
-        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
-          setOrders((prev) => {
-            const dbOrders = res.data;
-            const dbIds = new Set(dbOrders.map((d) => d.id));
-            const dbContracts = new Set(
-              dbOrders.map((d) => (d.contract_no || '').trim().toUpperCase()).filter(Boolean)
-            );
-            // Keep local records not yet present in db
-            const localOnly = prev.filter(
-              (p) =>
-                !dbIds.has(p.id) &&
-                !dbContracts.has((p.contract_no || '').trim().toUpperCase())
-            );
-            const merged = [...dbOrders, ...localOnly];
-            saveOrdersToStorage(merged);
-            return merged;
-          });
+        if (isMounted && res && Array.isArray(res.data)) {
+          if (res.data.length === 0) {
+            // Database currently has 0 orders; sync initial/local orders to DB
+            const localOrders = loadSavedOrders();
+            if (localOrders && localOrders.length > 0) {
+              console.log(`📤 Initializing database orders sync (${localOrders.length} records)...`);
+              localOrders.forEach((ord) => {
+                apiRequest('/orders', {
+                  method: 'POST',
+                  body: JSON.stringify(ord),
+                }).catch(() => {});
+              });
+            }
+          } else {
+            setOrders((prev) => {
+              const dbOrders = res.data;
+              const dbIds = new Set(dbOrders.map((d) => d.id));
+              const dbContracts = new Set(
+                dbOrders.map((d) => (d.contract_no || '').trim().toUpperCase()).filter(Boolean)
+              );
+              // Keep local records not yet present in db and sync them
+              const localOnly = prev.filter(
+                (p) =>
+                  !dbIds.has(p.id) &&
+                  !dbContracts.has((p.contract_no || '').trim().toUpperCase())
+              );
+              if (localOnly.length > 0) {
+                localOnly.forEach((locOrd) => {
+                  apiRequest('/orders', { method: 'POST', body: JSON.stringify(locOrd) }).catch(() => {});
+                });
+              }
+              const merged = [...dbOrders, ...localOnly];
+              saveOrdersToStorage(merged);
+              return merged;
+            });
+          }
         }
       })
       .catch((err) => {
