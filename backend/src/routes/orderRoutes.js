@@ -3,6 +3,8 @@ import {
   getOrders,
   getOrderById,
   createOrder,
+  updateOrder,
+  deleteOrder,
   addOrderPayment,
 } from '../controllers/ordersController.js';
 
@@ -13,7 +15,9 @@ router.route('/')
   .post(createOrder);
 
 router.route('/:id')
-  .get(getOrderById);
+  .get(getOrderById)
+  .patch(updateOrder)
+  .delete(deleteOrder);
 
 router.route('/:id/payments')
   .post(addOrderPayment);

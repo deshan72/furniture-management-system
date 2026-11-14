@@ -41,6 +41,7 @@ import {
 import { addLiveNotification } from '../utils/notificationsData';
 import { printHtmlDocument } from '../utils/printUtils';
 import { formatLKR, formatDate } from '../utils/formatters';
+import { apiRequest } from '../services/api';
 
 // Helper to calculate next payment due date, next installment amount, and repayment schedule
 export const calculateNextPaymentDetails = (order, receipts = []) => {
@@ -192,14 +193,69 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
   const [formCollectedBy, setFormCollectedBy] = useState('D N S Showroom Cashier');
   const [formNotes, setFormNotes] = useState('');
 
-  // Sync with localStorage
+  // Sync with localStorage and fetch latest payments & orders from database
   useEffect(() => {
+    let isMounted = true;
+
+    // 1. Fetch payments from database
+    apiRequest('/payments')
+      .then((res) => {
+        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
+          setPayments((prev) => {
+            const dbPayments = res.data;
+            const dbIds = new Set(dbPayments.map((d) => d.id));
+            const dbRcps = new Set(
+              dbPayments.map((d) => (d.receipt_no || '').trim().toUpperCase()).filter(Boolean)
+            );
+            const localOnly = prev.filter(
+              (p) =>
+                !dbIds.has(p.id) &&
+                !dbRcps.has((p.receipt_no || '').trim().toUpperCase())
+            );
+            const merged = [...dbPayments, ...localOnly];
+            savePaymentsToStorage(merged);
+            return merged;
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Payments fetch notice:', err);
+      });
+
+    // 2. Fetch orders from database
+    apiRequest('/orders')
+      .then((res) => {
+        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
+          setOrders((prev) => {
+            const dbOrders = res.data;
+            const dbIds = new Set(dbOrders.map((d) => d.id));
+            const dbContracts = new Set(
+              dbOrders.map((d) => (d.contract_no || '').trim().toUpperCase()).filter(Boolean)
+            );
+            const localOnly = prev.filter(
+              (p) =>
+                !dbIds.has(p.id) &&
+                !dbContracts.has((p.contract_no || '').trim().toUpperCase())
+            );
+            const merged = [...dbOrders, ...localOnly];
+            saveOrdersToStorage(merged);
+            return merged;
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Orders fetch notice:', err);
+      });
+
     const handleStorage = () => {
       setPayments(loadSavedPayments());
       setOrders(loadSavedOrders());
     };
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   // Filter orders that have an outstanding balance for recording payments
@@ -326,6 +382,36 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
 
+    // Persist payment & order balance to database
+    try {
+      apiRequest('/payments', {
+        method: 'POST',
+        body: JSON.stringify(newPayment),
+      })
+        .then((res) => {
+          if (res && res.data && res.data.id) {
+            const merged = { ...newPayment, ...res.data };
+            setPayments((prev) => prev.map((p) => (p.id === newPayment.id ? merged : p)));
+            const fresh = loadSavedPayments().map((p) => (p.id === newPayment.id ? merged : p));
+            savePaymentsToStorage(fresh);
+          }
+        })
+        .catch((dbErr) => {
+          console.warn('Payment DB persist notice:', dbErr);
+        });
+
+      if (selectedOrder.id) {
+        apiRequest(`/orders/${selectedOrder.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            advance_paid: newTotalAdvance,
+            balance_due: nextBal,
+            status: nextBal <= 0 ? 'Fully Paid' : 'Active Loan',
+          }),
+        }).catch((e) => console.warn('Order DB update notice:', e));
+      }
+    } catch {}
+
     // Broadcast live payment notification
     const isFullSettlement = nextBal <= 0;
     addLiveNotification({
@@ -351,6 +437,10 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       setPayments(updated);
       savePaymentsToStorage(updated);
 
+      apiRequest(`/payments/${paymentId}`, { method: 'DELETE' }).catch((err) => {
+        console.warn('Payment DB delete notice:', err);
+      });
+
       addLiveNotification({
         title: `Payment Receipt Voided`,
         desc: `Receipt ${receiptNo} was deleted from the payments ledger.`,
@@ -367,6 +457,10 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       const updated = orders.filter((o) => o.id !== orderId);
       setOrders(updated);
       saveOrdersToStorage(updated);
+
+      apiRequest(`/orders/${orderId}`, { method: 'DELETE' }).catch((err) => {
+        console.warn('Order DB delete notice:', err);
+      });
       if (selectedContractForView && selectedContractForView.id === orderId) {
         setIsContractViewModalOpen(false);
       }

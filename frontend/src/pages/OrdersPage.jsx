@@ -204,9 +204,11 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   const [formNotes, setFormNotes] = useState('');
   const [formAutoWhatsApp, setFormAutoWhatsApp] = useState(true);
 
-  // Sync external changes from localStorage and fetch latest products from backend/Supabase
+  // Sync external changes from localStorage and fetch latest products & orders from backend/Supabase
   useEffect(() => {
     let isMounted = true;
+
+    // 1. Fetch latest products
     apiRequest('/products')
       .then((res) => {
         if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
@@ -220,6 +222,32 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       })
       .catch(() => {
         // Fallback to localStorage products already loaded
+      });
+
+    // 2. Fetch latest orders from Supabase / database and merge
+    apiRequest('/orders')
+      .then((res) => {
+        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
+          setOrders((prev) => {
+            const dbOrders = res.data;
+            const dbIds = new Set(dbOrders.map((d) => d.id));
+            const dbContracts = new Set(
+              dbOrders.map((d) => (d.contract_no || '').trim().toUpperCase()).filter(Boolean)
+            );
+            // Keep local records not yet present in db
+            const localOnly = prev.filter(
+              (p) =>
+                !dbIds.has(p.id) &&
+                !dbContracts.has((p.contract_no || '').trim().toUpperCase())
+            );
+            const merged = [...dbOrders, ...localOnly];
+            saveOrdersToStorage(merged);
+            return merged;
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Orders fetch notice:', err);
       });
 
     const handleStorage = (e) => {
@@ -745,6 +773,25 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
 
+    // Persist new order & initial advance to database (Supabase / Express)
+    try {
+      apiRequest('/orders', {
+        method: 'POST',
+        body: JSON.stringify(newOrder),
+      })
+        .then((res) => {
+          if (res && res.data && res.data.id) {
+            const merged = { ...newOrder, ...res.data };
+            setOrders((prev) => prev.map((o) => (o.id === newOrder.id ? merged : o)));
+            const fresh = loadSavedOrders().map((o) => (o.id === newOrder.id ? merged : o));
+            saveOrdersToStorage(fresh);
+          }
+        })
+        .catch((dbErr) => {
+          console.warn('Order DB persist notice:', dbErr);
+        });
+    } catch {}
+
     // Update customer stats
     const updatedCustomers = customers.map((c) => {
       if (c.id === formSelectedCustomer.id) {
@@ -872,6 +919,40 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       targetTab: 'payments',
     });
 
+    // Persist installment payment and updated balance to database
+    try {
+      apiRequest('/payments', {
+        method: 'POST',
+        body: JSON.stringify({
+          order_id: activeSelectedOrder.id,
+          contract_no: activeSelectedOrder.contract_no,
+          customer_id: activeSelectedOrder.customer_id,
+          customer_name: activeSelectedOrder.customer_name,
+          customer_nic: activeSelectedOrder.customer_nic,
+          customer_phone: activeSelectedOrder.customer_phone,
+          branch_code: activeSelectedOrder.branch_code,
+          center_code: activeSelectedOrder.center_code,
+          amount: amt,
+          previous_balance: activeSelectedOrder.balance_due,
+          new_balance: newBal,
+          payment_method: 'Cash',
+          payment_type: 'Installment Loan',
+          notes: `Installment for ${activeSelectedOrder.contract_no}`,
+        }),
+      }).catch((e) => console.warn('Payment DB sync notice:', e));
+
+      if (activeSelectedOrder.id) {
+        apiRequest(`/orders/${activeSelectedOrder.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            advance_paid: (activeSelectedOrder.advance_paid || 0) + amt,
+            balance_due: newBal,
+            status: newStatus,
+          }),
+        }).catch((e) => console.warn('Order DB update notice:', e));
+      }
+    } catch {}
+
     setIsPaymentModalOpen(false);
     setPaymentAmount('');
     alert(`Installment of ${formatLKR(amt)} recorded! Remaining balance: ${formatLKR(newBal)}`);
@@ -888,6 +969,10 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
         setIsViewDetailsModalOpen(false);
         setActiveSelectedOrder(null);
       }
+
+      apiRequest(`/orders/${orderId}`, { method: 'DELETE' }).catch((err) => {
+        console.warn('Order DB delete notice:', err);
+      });
 
       addLiveNotification({
         title: `Order Cancelled`,

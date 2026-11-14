@@ -39,6 +39,7 @@ import { loadSavedPayments, savePaymentsToStorage, generateNextReceiptNo } from 
 import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
 import { addLiveNotification } from '../utils/notificationsData';
 import { formatLKR, formatDate } from '../utils/formatters';
+import { apiRequest } from '../services/api';
 
 export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigate }) {
   // Master Data
@@ -332,6 +333,35 @@ export default function CustomerOverviewPage({ selectedCenter = 'all', onNavigat
     });
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
+
+    // Persist payment & updated order balance to database (Supabase / Express)
+    try {
+      apiRequest('/payments', {
+        method: 'POST',
+        body: JSON.stringify(newPayment),
+      }).catch((e) => console.warn('Payment DB sync notice:', e));
+
+      if (targetOrderForPayment.id) {
+        apiRequest(`/orders/${targetOrderForPayment.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            advance_paid: (Number(targetOrderForPayment.advance_paid) || 0) + amt,
+            balance_due: nextBal,
+            status: nextBal <= 0 ? 'Fully Paid' : 'Active Loan',
+          }),
+        }).catch((e) => console.warn('Order DB update notice:', e));
+      }
+
+      const custTargetId = activeCustomer.id || activeCustomer.nic;
+      if (custTargetId) {
+        apiRequest(`/customers/${custTargetId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            outstanding_balance: Math.max(0, (Number(activeCustomer.outstanding_balance) || 0) - amt),
+          }),
+        }).catch((e) => console.warn('Customer balance DB update notice:', e));
+      }
+    } catch {}
 
     // Update Customers outstanding balance
     const updatedCustomers = customers.map((c) => {

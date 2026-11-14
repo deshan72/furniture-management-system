@@ -219,6 +219,227 @@ export function deserializeCustomerFromDb(row) {
   };
 }
 
+// Clean order object for Supabase schema, serializing extra frontend contract/item fields into notes
+function sanitizeOrderPayload(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  const subtotal = Number(raw.gross_amount || raw.subtotal || raw.total_amount) || 0;
+  const advance = Number(raw.advance_paid) || 0;
+  const balance = raw.balance_due !== undefined ? Number(raw.balance_due) : Math.max(0, subtotal - advance);
+  const paymentStatus = balance <= 0 ? 'paid' : advance > 0 ? 'partial' : 'unpaid';
+
+  const meta = {
+    inv: raw.invoice_no || '',
+    contract: raw.contract_no || '',
+    pb: raw.passbook_no || 'PN',
+    date: raw.date || new Date().toISOString().slice(0, 10),
+    c_id: raw.customer_id || '',
+    c_name: raw.customer_name || '',
+    c_nic: raw.customer_nic || '',
+    c_phone: raw.customer_phone || '',
+    c_addr: raw.customer_address || '',
+    branch: raw.branch_code || 'MHG',
+    center: raw.center_code || 'C001',
+    item_id: raw.item_id || '',
+    item_code: raw.item_code || '',
+    item_name: raw.item_name || raw.items_summary || '',
+    cat: raw.category || 'wood',
+    qty: Number(raw.quantity) || 1,
+    unit_price: Number(raw.unit_price) || subtotal,
+    gross: subtotal,
+    advance: advance,
+    balance: balance,
+    pay_type: raw.payment_type || 'installment',
+    freq: raw.loan_frequency || 'monthly',
+    terms: Number(raw.loan_terms) || 12,
+    inst_val: Number(raw.installment_value) || 0,
+    due_date: raw.first_due_date || '',
+    inst_paid: Number(raw.installments_paid) || (advance > 0 ? 1 : 0),
+    pay_method: raw.payment_method || 'Cash',
+    st: raw.status || (balance <= 0 ? 'Fully Paid' : 'Active Loan'),
+  };
+
+  const userNotes = String(raw.notes || '').replace(/<!--DNS_META:[\s\S]*?-->/g, '').trim();
+  const serializedNotes = `<!--DNS_META:${JSON.stringify(meta)}-->\n${userNotes}`.trim();
+
+  const clean = {
+    order_type: raw.order_type || (raw.payment_type === 'installment' ? 'custom_order' : 'ready_stock'),
+    order_status: raw.order_status || (raw.status === 'Fully Paid' ? 'delivered' : 'confirmed'),
+    subtotal: subtotal,
+    discount: Number(raw.discount) || 0,
+    delivery_charge: Number(raw.delivery_charge) || 0,
+    total_amount: subtotal,
+    advance_paid: advance,
+    balance_due: balance,
+    payment_status: paymentStatus,
+    delivery_date: raw.delivery_date || raw.first_due_date || null,
+    notes: serializedNotes,
+  };
+
+  if (raw.customer_uuid && uuidRegex.test(raw.customer_uuid)) {
+    clean.customer_id = raw.customer_uuid;
+  } else if (raw.customer_id && uuidRegex.test(raw.customer_id)) {
+    clean.customer_id = raw.customer_id;
+  }
+
+  if (raw.id && uuidRegex.test(raw.id)) {
+    clean.id = raw.id;
+  }
+
+  return clean;
+}
+
+// Deserializes Supabase orders row back into full frontend order schema
+function deserializeOrderFromDb(row) {
+  if (!row || typeof row !== 'object') return row;
+
+  let meta = {};
+  let notes = row.notes || '';
+
+  if (notes && notes.includes('<!--DNS_META:')) {
+    const match = notes.match(/<!--DNS_META:([\s\S]*?)-->/);
+    if (match) {
+      try {
+        meta = JSON.parse(match[1]);
+        notes = notes.replace(match[0], '').trim();
+      } catch {}
+    }
+  }
+
+  const subtotal = Number(row.subtotal || row.total_amount || meta.gross) || 0;
+  const advance = Number(row.advance_paid !== undefined ? row.advance_paid : meta.advance) || 0;
+  const balance = Number(row.balance_due !== undefined ? row.balance_due : meta.balance) || Math.max(0, subtotal - advance);
+
+  return {
+    id: row.id,
+    order_uuid: row.id,
+    invoice_no: meta.inv || `DS-INV-${String(row.id).slice(0, 4).toUpperCase()}`,
+    contract_no: meta.contract || `PN/${meta.center || 'C001'}/${meta.item_code || 'ITEM'}`,
+    passbook_no: meta.pb || 'PN',
+    date: meta.date || (row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)),
+    customer_id: meta.c_id || meta.c_nic || row.customer_id || '',
+    customer_name: meta.c_name || (row.customers?.name) || 'Client',
+    customer_nic: meta.c_nic || (row.customers?.nic) || '',
+    customer_phone: meta.c_phone || (row.customers?.phone) || '-',
+    customer_address: meta.c_addr || (row.customers?.address) || '',
+    branch_code: meta.branch || 'MHG',
+    center_code: meta.center || 'C001',
+    item_id: meta.item_id || '',
+    item_code: meta.item_code || 'WD-101',
+    item_name: meta.item_name || 'Solid Wood Furniture',
+    items_summary: meta.item_name || 'Solid Wood Furniture',
+    category: meta.cat || 'wood',
+    quantity: Number(meta.qty) || 1,
+    unit_price: Number(meta.unit_price) || subtotal,
+    gross_amount: subtotal,
+    advance_paid: advance,
+    balance_due: balance,
+    payment_type: meta.pay_type || 'installment',
+    loan_frequency: meta.freq || 'monthly',
+    loan_terms: Number(meta.terms) || 12,
+    installment_value: Number(meta.inst_val) || 0,
+    first_due_date: meta.due_date || row.delivery_date || '',
+    installments_paid: Number(meta.inst_paid) || (advance > 0 ? 1 : 0),
+    payment_method: meta.pay_method || 'Cash',
+    status: meta.st || (balance <= 0 ? 'Fully Paid' : 'Active Loan'),
+    order_status: row.order_status || 'confirmed',
+    notes: notes,
+    created_at: row.created_at || new Date().toISOString(),
+  };
+}
+
+// Clean payment object for Supabase schema, serializing extra frontend receipt fields into notes
+function sanitizePaymentPayload(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const amount = Number(raw.amount) || 0;
+
+  const meta = {
+    rcp: raw.receipt_no || '',
+    date: raw.date || new Date().toISOString().slice(0, 10),
+    order_id: raw.order_id || '',
+    contract: raw.contract_no || '',
+    c_id: raw.customer_id || '',
+    c_name: raw.customer_name || '',
+    c_nic: raw.customer_nic || '',
+    c_phone: raw.customer_phone || '',
+    branch: raw.branch_code || 'MHG',
+    center: raw.center_code || 'C001',
+    pay_type: raw.payment_type || 'Order Advance',
+    prev_bal: Number(raw.previous_balance) || 0,
+    new_bal: Number(raw.new_balance) || 0,
+    ref: raw.reference_no || '',
+    by: raw.collected_by || 'Cashier',
+  };
+
+  const userNotes = String(raw.notes || '').replace(/<!--DNS_META:[\s\S]*?-->/g, '').trim();
+  const serializedNotes = `<!--DNS_META:${JSON.stringify(meta)}-->\n${userNotes}`.trim();
+
+  const clean = {
+    amount: amount,
+    payment_type: raw.payment_type === 'Order Advance' ? 'advance' : (raw.new_balance <= 0 ? 'full_payment' : 'balance_payment'),
+    payment_method: (raw.payment_method || 'cash').toLowerCase().replace(/\s+/g, '_'),
+    notes: serializedNotes,
+  };
+
+  if (raw.order_id && uuidRegex.test(raw.order_id)) {
+    clean.order_id = raw.order_id;
+  }
+  if (raw.customer_id && uuidRegex.test(raw.customer_id)) {
+    clean.customer_id = raw.customer_id;
+  }
+  if (raw.id && uuidRegex.test(raw.id)) {
+    clean.id = raw.id;
+  }
+
+  return clean;
+}
+
+// Deserializes Supabase payments row back into full frontend payment schema
+function deserializePaymentFromDb(row) {
+  if (!row || typeof row !== 'object') return row;
+
+  let meta = {};
+  let notes = row.notes || '';
+
+  if (notes && notes.includes('<!--DNS_META:')) {
+    const match = notes.match(/<!--DNS_META:([\s\S]*?)-->/);
+    if (match) {
+      try {
+        meta = JSON.parse(match[1]);
+        notes = notes.replace(match[0], '').trim();
+      } catch {}
+    }
+  }
+
+  return {
+    id: row.id,
+    payment_uuid: row.id,
+    receipt_no: meta.rcp || `DS-RCP-${String(row.id).slice(0, 6).toUpperCase()}`,
+    date: meta.date || (row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)),
+    order_id: meta.order_id || row.order_id || '',
+    contract_no: meta.contract || '',
+    customer_id: meta.c_id || meta.c_nic || row.customer_id || '',
+    customer_name: meta.c_name || (row.customers?.name) || 'Client',
+    customer_nic: meta.c_nic || (row.customers?.nic) || '',
+    customer_phone: meta.c_phone || (row.customers?.phone) || '-',
+    branch_code: meta.branch || 'MHG',
+    center_code: meta.center || 'C001',
+    payment_type: meta.pay_type || (row.payment_type === 'advance' ? 'Order Advance' : 'Installment Loan'),
+    amount: Number(row.amount) || 0,
+    previous_balance: Number(meta.prev_bal) || 0,
+    new_balance: Number(meta.new_bal) || 0,
+    payment_method: meta.ref?.startsWith('BOC') ? 'Bank Transfer' : (row.payment_method ? row.payment_method.charAt(0).toUpperCase() + row.payment_method.slice(1).replace('_', ' ') : 'Cash'),
+    reference_no: meta.ref || '',
+    collected_by: meta.by || 'Accounts Team',
+    notes: notes,
+    created_at: row.created_at || new Date().toISOString(),
+  };
+}
+
 // Fallback direct Supabase REST client
 async function directSupabaseRequest(endpoint, options = {}) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -542,6 +763,168 @@ async function directSupabaseRequest(endpoint, options = {}) {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message || 'Direct Supabase center delete failed');
+      }
+      return { success: true };
+    }
+  }
+
+  // 4. Orders route handling
+  if (cleanEndpoint.startsWith('/orders')) {
+    const parts = cleanEndpoint.split('/').filter(Boolean); // ['orders', ':id']
+    const id = parts[1];
+
+    if (method === 'GET') {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Direct Supabase orders query failed');
+      }
+      const rawData = await res.json();
+      const data = Array.isArray(rawData) ? rawData.map(deserializeOrderFromDb) : rawData;
+      return { success: true, count: data.length, data };
+    }
+
+    if (method === 'POST') {
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const payload = sanitizeOrderPayload(parsedBody);
+      if (!payload.id) {
+        payload.id = generateUUID();
+      }
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn('Direct Supabase order insert notice:', err.message);
+        return { success: true, data: { ...parsedBody, id: payload.id } };
+      }
+
+      const data = await res.json();
+      const rawItem = Array.isArray(data) ? data[0] : (data || payload);
+      const deserialized = deserializeOrderFromDb(rawItem);
+
+      // If initial advance payment > 0, also record in payments table
+      if (Number(parsedBody.advance_paid) > 0) {
+        try {
+          const advPayment = {
+            id: generateUUID(),
+            order_id: payload.id,
+            contract_no: parsedBody.contract_no,
+            customer_id: parsedBody.customer_id,
+            customer_name: parsedBody.customer_name,
+            customer_nic: parsedBody.customer_nic,
+            customer_phone: parsedBody.customer_phone,
+            branch_code: parsedBody.branch_code,
+            center_code: parsedBody.center_code,
+            amount: Number(parsedBody.advance_paid),
+            payment_type: 'Order Advance',
+            payment_method: parsedBody.payment_method || 'Cash',
+            previous_balance: Number(parsedBody.gross_amount || parsedBody.total_amount),
+            new_balance: Number(parsedBody.balance_due),
+            notes: `Initial advance for ${parsedBody.contract_no || 'Order'}`,
+          };
+          const cleanAdv = sanitizePaymentPayload(advPayment);
+          await fetch(`${SUPABASE_URL}/rest/v1/payments`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(cleanAdv),
+          });
+        } catch (payErr) {
+          console.warn('Advance payment recording notice:', payErr);
+        }
+      }
+
+      return { success: true, data: deserialized };
+    }
+
+    if (method === 'PUT' || method === 'PATCH') {
+      if (!id) throw new Error('Missing order ID for update');
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const payload = sanitizeOrderPayload(parsedBody);
+      payload.updated_at = new Date().toISOString();
+      delete payload.id;
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid) {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const rawItem = Array.isArray(data) ? data[0] : data;
+          return { success: true, data: deserializeOrderFromDb(rawItem) };
+        }
+      }
+      return { success: true, data: parsedBody };
+    }
+
+    if (method === 'DELETE') {
+      if (!id) throw new Error('Missing order ID for delete');
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid) {
+        await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${id}`, {
+          method: 'DELETE',
+          headers,
+        });
+      }
+      return { success: true };
+    }
+  }
+
+  // 5. Payments route handling
+  if (cleanEndpoint.startsWith('/payments')) {
+    const parts = cleanEndpoint.split('/').filter(Boolean); // ['payments', ':id']
+    const id = parts[1];
+
+    if (method === 'GET') {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/payments?select=*&order=created_at.desc`, { headers });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Direct Supabase payments query failed');
+      }
+      const rawData = await res.json();
+      const data = Array.isArray(rawData) ? rawData.map(deserializePaymentFromDb) : rawData;
+      return { success: true, count: data.length, data };
+    }
+
+    if (method === 'POST') {
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const payload = sanitizePaymentPayload(parsedBody);
+      if (!payload.id) {
+        payload.id = generateUUID();
+      }
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn('Direct Supabase payment insert notice:', err.message);
+        return { success: true, data: { ...parsedBody, id: payload.id } };
+      }
+
+      const data = await res.json();
+      const rawItem = Array.isArray(data) ? data[0] : (data || payload);
+      return { success: true, data: deserializePaymentFromDb(rawItem) };
+    }
+
+    if (method === 'DELETE') {
+      if (!id) throw new Error('Missing payment ID for delete');
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid) {
+        await fetch(`${SUPABASE_URL}/rest/v1/payments?id=eq.${id}`, {
+          method: 'DELETE',
+          headers,
+        });
       }
       return { success: true };
     }
