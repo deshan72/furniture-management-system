@@ -28,11 +28,16 @@ import {
   ExternalLink,
   Filter,
   Check,
+  Target,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import { formatCenterCode, loadSavedCenters } from '../utils/centersData';
 import { loadSavedPayments } from '../utils/paymentsData';
 import { loadSavedOrders } from '../utils/ordersData';
+import {
+  calculateCenterCollectionStats,
+  isCenterScheduledForDate,
+} from '../utils/collectionUtils';
 import { getAuthenticatedUser } from '../utils/authData';
 import { formatLKR, formatDate } from '../utils/formatters';
 
@@ -148,6 +153,58 @@ export default function DashboardPage({
   // DATE RANGE CALCULATIONS: TODAY & CURRENT WEEK
   // =========================================================================
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // Center-Wise Daily Collection Hub State (Executive Focus)
+  const [dashCollectionCenterId, setDashCollectionCenterId] = useState(() => {
+    const stored = localStorage.getItem('dnd_active_collection_center');
+    if (stored) return stored;
+    if (selectedCenter && selectedCenter !== 'all') return selectedCenter;
+    const today = new Date().toISOString().slice(0, 10);
+    const allCenters = propCenters && propCenters.length > 0 ? propCenters : loadSavedCenters();
+    const scheduled = allCenters.find((c) => isCenterScheduledForDate(c, today));
+    if (scheduled) return scheduled.id || scheduled.center_code;
+    return allCenters[0]?.id || allCenters[0]?.center_code || 'cntr-1';
+  });
+
+  const activeDashCenter = useMemo(() => {
+    if (!centers || centers.length === 0) return null;
+    return (
+      centers.find(
+        (c) =>
+          c.id === dashCollectionCenterId ||
+          c.center_code === dashCollectionCenterId ||
+          formatCenterCode(c.center_code) === formatCenterCode(dashCollectionCenterId) ||
+          `${c.branch_code}/${formatCenterCode(c.center_code)}` === dashCollectionCenterId
+      ) || centers[0]
+    );
+  }, [centers, dashCollectionCenterId]);
+
+  // The collection date MUST equal center's cash_collect_date
+  const dashCollectionDate = useMemo(() => {
+    return activeDashCenter?.cash_collect_date || todayStr;
+  }, [activeDashCenter, todayStr]);
+
+  const dashCenterStats = useMemo(() => {
+    return calculateCenterCollectionStats({
+      center: activeDashCenter,
+      dateStr: dashCollectionDate,
+      orders,
+      payments,
+      customers,
+    });
+  }, [activeDashCenter, dashCollectionDate, orders, payments, customers]);
+
+  const handleOpenCenterCollection = (center) => {
+    if (!center) return;
+    localStorage.setItem('dnd_active_collection_center', center.id || center.center_code);
+    localStorage.setItem('dnd_active_payments_subview', 'collection_day');
+    if (center.cash_collect_date) {
+      localStorage.setItem('dnd_active_collection_date', center.cash_collect_date);
+    }
+    if (onNavigate) {
+      onNavigate('payments');
+    }
+  };
 
   const { weekStartStr, weekEndStr, weekLabel } = useMemo(() => {
     const now = new Date();
@@ -899,6 +956,308 @@ export default function DashboardPage({
               )}
             </>
           )}
+        </div>
+      </div>
+
+      {/* =========================================================
+          EXECUTIVE CENTER-WISE DAILY CASH COLLECTION & TARGET HUB
+          (Today's collection center, target amount, collected, shortfall, and 1-click navigation)
+          ========================================================= */}
+      <div
+        className="executive-center-hub-card"
+        style={{
+          background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+          border: '1px solid #CBD5E1',
+          borderRadius: '16px',
+          boxShadow: '0 4px 20px rgba(15, 23, 42, 0.06)',
+          padding: '22px 26px',
+          marginBottom: '24px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Hub Header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px',
+            borderBottom: '1px solid #E2E8F0',
+            paddingBottom: '16px',
+            marginBottom: '18px',
+          }}
+        >
+          {/* Title & Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #1E4D8C 0%, #0F2E59 100%)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 4px 12px rgba(30,77,140,0.25)',
+              }}
+            >
+              <Target size={26} />
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '1.14rem', fontWeight: 800, color: 'var(--text-main, #0F172A)' }}>
+                  Today's Center Cash Collection & Target Hub
+                </h3>
+                <span
+                  style={{
+                    background: '#E0F2FE',
+                    color: '#0369A1',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    padding: '2px 9px',
+                    borderRadius: '12px',
+                    border: '1px solid #BAE6FD',
+                  }}
+                >
+                  අද දින මධ්‍යස්ථාන මුදල් ඉලක්කය
+                </span>
+                {dashCenterStats.isScheduledToday ? (
+                  <span
+                    style={{
+                      background: '#DCFCE7',
+                      color: '#15803D',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '2px 9px',
+                      borderRadius: '12px',
+                      border: '1px solid #86EFAC',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <span className="pulse-dot" style={{ width: '6px', height: '6px', background: '#16A34A' }}></span>
+                    Scheduled Cash Collection Today
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      background: '#FEF3C7',
+                      color: '#92400E',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 9px',
+                      borderRadius: '12px',
+                      border: '1px solid #FDE68A',
+                    }}
+                  >
+                    💵 Cash Collect Date: {formatDate(dashCollectionDate)}
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted, #64748B)' }}>
+                Field cash collection target and client payment recovery desk for regional centers.
+              </p>
+            </div>
+          </div>
+
+          {/* Center Selector Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--ash-600)' }}>
+              Center:
+            </span>
+            <select
+              className="form-input"
+              value={activeDashCenter?.id || activeDashCenter?.center_code || dashCollectionCenterId}
+              onChange={(e) => {
+                setDashCollectionCenterId(e.target.value);
+                localStorage.setItem('dnd_active_collection_center', e.target.value);
+              }}
+              style={{
+                fontWeight: 800,
+                fontSize: '0.9rem',
+                padding: '7px 12px',
+                minWidth: '270px',
+                borderColor: '#2563EB',
+                background: 'var(--bg-card, #fff)',
+                color: 'var(--text-main, #0F172A)',
+                borderRadius: '8px',
+              }}
+            >
+              {centers.map((c) => {
+                const isSch = isCenterScheduledForDate(c, todayStr);
+                return (
+                  <option key={c.id || c.center_code} value={c.id || c.center_code}>
+                    {c.branch_code ? `${c.branch_code}/` : ''}{c.center_code} — {c.name}{c.cash_collect_date ? ` [📅 ${c.cash_collect_date}]` : ''} {isSch ? '⭐ (Scheduled Today)' : ''}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        {/* 4-Pillar Stat Box Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+          {/* Pillar 1: Target to Collect */}
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#FEF3C7', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <TrendingUp size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+                Center Target to Collect ({formatDate(dashCollectionDate)})
+              </span>
+              <div style={{ fontSize: '1.34rem', fontWeight: 900, color: '#92400E', marginTop: '1px' }}>
+                {formatLKR(dashCenterStats.targetAmount)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#B45309' }}>
+                {dashCenterStats.totalClientsCount} active center clients
+              </div>
+            </div>
+          </div>
+
+          {/* Pillar 2: Collected Today */}
+          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#DCFCE7', color: '#15803D', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <CheckCircle2 size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase' }}>
+                Cash Collected ({dashCollectionDate === todayStr ? 'Today' : formatDate(dashCollectionDate)})
+              </span>
+              <div style={{ fontSize: '1.34rem', fontWeight: 900, color: '#166534', marginTop: '1px' }}>
+                {formatLKR(dashCenterStats.collectedToday)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#15803D' }}>
+                {dashCenterStats.confirmedCount} confirmed receipts
+              </div>
+            </div>
+          </div>
+
+          {/* Pillar 3: Pending Shortfall */}
+          <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '12px', padding: '16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Clock size={22} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#DC2626', textTransform: 'uppercase' }}>
+                Pending Shortfall
+              </span>
+              <div style={{ fontSize: '1.34rem', fontWeight: 900, color: '#991B1B', marginTop: '1px' }}>
+                {formatLKR(dashCenterStats.pendingShortfall)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#DC2626' }}>
+                {dashCenterStats.pendingCount} client(s) pending
+              </div>
+            </div>
+          </div>
+
+          {/* Pillar 4: Target Progress % */}
+          <div style={{ background: 'var(--bg-card, #FFFFFF)', border: '1px solid var(--border-subtle, var(--ash-200))', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--ash-500)', textTransform: 'uppercase' }}>
+                Recovery Efficiency
+              </span>
+              <span style={{ fontSize: '1.05rem', fontWeight: 900, color: dashCenterStats.achievementRate >= 100 ? '#16A34A' : '#2563EB' }}>
+                {dashCenterStats.achievementRate}%
+              </span>
+            </div>
+            <div style={{ width: '100%', height: '8px', background: '#E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${dashCenterStats.achievementRate}%`,
+                  background: dashCenterStats.achievementRate >= 100 ? '#16A34A' : 'linear-gradient(90deg, #2563EB 0%, #10B981 100%)',
+                  borderRadius: '10px',
+                  transition: 'width 0.4s ease',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+              <span>{dashCenterStats.confirmedCount} of {dashCenterStats.totalClientsCount} clients</span>
+              <span>{dashCenterStats.achievementRate >= 100 ? '🎯 Full Target Met!' : 'Collecting'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Context & CTA Bar */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            marginTop: '16px',
+            paddingTop: '14px',
+            borderTop: '1px dashed #CBD5E1',
+          }}
+        >
+          {/* Status Chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span
+              style={{
+                background: '#FEF2F2',
+                color: '#DC2626',
+                border: '1px solid #FECACA',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <Clock size={13} /> {dashCenterStats.pendingCount} Clients Pending Collection
+            </span>
+
+            <span
+              style={{
+                background: '#F0FDF4',
+                color: '#15803D',
+                border: '1px solid #BBF7D0',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <Check size={13} strokeWidth={2.5} /> {dashCenterStats.confirmedCount} Clients Confirmed Paid
+            </span>
+
+            <span style={{ fontSize: '0.76rem', color: 'var(--ash-500)' }}>
+              👤 In Charge: <strong>{dashCenterStats.officerInCharge}</strong> • 📞 <strong>{dashCenterStats.officerPhone || '077XXXXXXX'}</strong>
+            </span>
+          </div>
+
+          {/* Action CTA */}
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => handleOpenCenterCollection(activeDashCenter)}
+            style={{
+              padding: '9px 18px',
+              fontSize: '0.86rem',
+              fontWeight: 800,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
+            }}
+          >
+            <span>Open Center Collection Sheet & Collect Cash</span>
+            <ArrowRight size={15} />
+          </button>
         </div>
       </div>
 

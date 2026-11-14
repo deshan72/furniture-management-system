@@ -27,6 +27,12 @@ import {
   LayoutGrid,
   List,
   MapPin,
+  Phone,
+  MessageSquare,
+  Send,
+  Target,
+  CheckCircle2,
+  Share2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import {
@@ -38,6 +44,13 @@ import {
   loadSavedOrders,
   saveOrdersToStorage,
 } from '../utils/ordersData';
+import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
+import {
+  calculateCenterCollectionStats,
+  isCenterScheduledForDate,
+  generateWhatsAppReminderLink,
+  generateFieldCollectionSheetHtml,
+} from '../utils/collectionUtils';
 import { addLiveNotification } from '../utils/notificationsData';
 import { printHtmlDocument } from '../utils/printUtils';
 import { formatLKR, formatDate } from '../utils/formatters';
@@ -153,9 +166,52 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
   // Master Data State
   const [payments, setPayments] = useState(() => loadSavedPayments());
   const [orders, setOrders] = useState(() => loadSavedOrders());
+  const [centers, setCenters] = useState(() => loadSavedCenters());
+  const [customers, setCustomers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dnd_customers_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
 
-  // Active Sub-view: 'accounts' (Active Loan Accounts & Advances) vs 'ledger' (Payment Receipts Ledger)
-  const [activeSubView, setActiveSubView] = useState('accounts');
+  // Active Sub-view: 'collection_day' (Daily Center Collection) vs 'accounts' vs 'ledger'
+  const [activeSubView, setActiveSubView] = useState(() => {
+    return localStorage.getItem('dnd_active_payments_subview') || 'collection_day';
+  });
+
+  // Center Collection Mode State
+  const [selectedCollectionCenterId, setSelectedCollectionCenterId] = useState(() => {
+    const stored = localStorage.getItem('dnd_active_collection_center');
+    if (stored) return stored;
+    if (selectedCenter && selectedCenter !== 'all') return selectedCenter;
+    const today = new Date().toISOString().slice(0, 10);
+    const allCenters = loadSavedCenters();
+    const scheduled = allCenters.find((c) => isCenterScheduledForDate(c, today));
+    if (scheduled) return scheduled.id || scheduled.center_code;
+    return allCenters[0]?.id || allCenters[0]?.center_code || 'cntr-1';
+  });
+
+  const [collectionDate, setCollectionDate] = useState(() => {
+    const storedDate = localStorage.getItem('dnd_active_collection_date');
+    if (storedDate) return storedDate;
+    const allCenters = loadSavedCenters();
+    const target = allCenters[0];
+    return target?.cash_collect_date || new Date().toISOString().slice(0, 10);
+  });
+
+  const [collectionClientTab, setCollectionClientTab] = useState('pending'); // 'pending' | 'confirmed'
+  const [collectionSearch, setCollectionSearch] = useState('');
+
+  // Quick Collect Modal State
+  const [quickCollectItem, setQuickCollectItem] = useState(null);
+  const [quickCollectAmount, setQuickCollectAmount] = useState('');
+  const [quickCollectMethod, setQuickCollectMethod] = useState('Cash');
+  const [quickCollectOfficer, setQuickCollectOfficer] = useState('');
+  const [quickCollectNote, setQuickCollectNote] = useState('');
 
   // View Mode toggle: 'table' | 'cards' (Cards View vs Table View)
   const [viewMode, setViewMode] = useState('table');
@@ -250,6 +306,14 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
     const handleStorage = () => {
       setPayments(loadSavedPayments());
       setOrders(loadSavedOrders());
+      setCenters(loadSavedCenters());
+      try {
+        const savedCust = localStorage.getItem('dnd_customers_list');
+        if (savedCust) {
+          const parsed = JSON.parse(savedCust);
+          if (Array.isArray(parsed)) setCustomers(parsed);
+        }
+      } catch {}
     };
     window.addEventListener('storage', handleStorage);
     return () => {
@@ -262,6 +326,284 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
   const payableOrders = useMemo(() => {
     return orders.filter((o) => Number(o.balance_due) > 0);
   }, [orders]);
+
+  // Active Center Object for Center-Wise Collection
+  const activeCenterObj = useMemo(() => {
+    if (!centers || centers.length === 0) return null;
+    return (
+      centers.find(
+        (c) =>
+          c.id === selectedCollectionCenterId ||
+          c.center_code === selectedCollectionCenterId ||
+          formatCenterCode(c.center_code) === formatCenterCode(selectedCollectionCenterId) ||
+          `${c.branch_code}/${formatCenterCode(c.center_code)}` === selectedCollectionCenterId
+      ) || centers[0]
+    );
+  }, [centers, selectedCollectionCenterId]);
+
+  // Automatically sync collectionDate to activeCenterObj's cash_collect_date
+  useEffect(() => {
+    if (activeCenterObj?.cash_collect_date) {
+      setCollectionDate(activeCenterObj.cash_collect_date);
+    }
+  }, [activeCenterObj?.id, activeCenterObj?.center_code, activeCenterObj?.cash_collect_date]);
+
+  // Keep center cash_collect_date updated if modified
+  const handleUpdateCenterCollectDate = (newDate) => {
+    setCollectionDate(newDate);
+    if (!activeCenterObj) return;
+
+    const updatedCenters = centers.map((c) =>
+      c.id === activeCenterObj.id || c.center_code === activeCenterObj.center_code
+        ? { ...c, cash_collect_date: newDate }
+        : c
+    );
+    setCenters(updatedCenters);
+    try {
+      localStorage.setItem('dnd_centers_list', JSON.stringify(updatedCenters));
+      localStorage.setItem('dnd_active_collection_date', newDate);
+      if (activeCenterObj.id) {
+        apiRequest(`/centers/${activeCenterObj.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ cash_collect_date: newDate }),
+        }).catch(() => {});
+      }
+    } catch {}
+  };
+
+  // Center-Wise Collection Stats (Target, Collected, Shortfall, Pending vs Confirmed)
+  const centerStats = useMemo(() => {
+    return calculateCenterCollectionStats({
+      center: activeCenterObj,
+      dateStr: collectionDate,
+      orders,
+      payments,
+      customers,
+    });
+  }, [activeCenterObj, collectionDate, orders, payments, customers]);
+
+  const filteredPendingClients = useMemo(() => {
+    if (!collectionSearch.trim()) return centerStats.pendingList;
+    const q = collectionSearch.toLowerCase().trim();
+    return centerStats.pendingList.filter(
+      (c) =>
+        c.customerName?.toLowerCase().includes(q) ||
+        c.customerNic?.toLowerCase().includes(q) ||
+        c.customerPhone?.includes(q) ||
+        c.contractNo?.toLowerCase().includes(q) ||
+        c.customerAddress?.toLowerCase().includes(q) ||
+        c.itemName?.toLowerCase().includes(q)
+    );
+  }, [centerStats.pendingList, collectionSearch]);
+
+  const filteredConfirmedClients = useMemo(() => {
+    if (!collectionSearch.trim()) return centerStats.confirmedList;
+    const q = collectionSearch.toLowerCase().trim();
+    return centerStats.confirmedList.filter(
+      (c) =>
+        c.customerName?.toLowerCase().includes(q) ||
+        c.customerNic?.toLowerCase().includes(q) ||
+        c.customerPhone?.includes(q) ||
+        c.contractNo?.toLowerCase().includes(q) ||
+        c.latestReceiptNo?.toLowerCase().includes(q) ||
+        c.itemName?.toLowerCase().includes(q)
+    );
+  }, [centerStats.confirmedList, collectionSearch]);
+
+  const handleOpenQuickCollect = (clientItem) => {
+    setQuickCollectItem(clientItem);
+    setQuickCollectAmount(clientItem.installmentDue || clientItem.balanceDue || '');
+    setQuickCollectMethod('Cash');
+    setQuickCollectOfficer(activeCenterObj?.contact_person || 'Field Collection Officer');
+    setQuickCollectNote(`Center field cash collection for ${clientItem.contractNo}`);
+  };
+
+  const handleConfirmQuickCollect = (andPrint = false) => {
+    if (!quickCollectItem || !quickCollectItem.order) {
+      alert('Order details not found.');
+      return;
+    }
+    const payAmt = Number(quickCollectAmount);
+    if (isNaN(payAmt) || payAmt <= 0) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+    const currentBal = Number(quickCollectItem.order.balance_due) || 0;
+    if (payAmt > currentBal) {
+      alert(`Payment amount (${formatLKR(payAmt)}) exceeds remaining balance of ${formatLKR(currentBal)}.`);
+      return;
+    }
+
+    const nextBal = Math.max(0, currentBal - payAmt);
+    const receiptNo = generateNextReceiptNo(payments);
+
+    const newPayment = {
+      id: `pay-${Date.now().toString().slice(-6)}`,
+      receipt_no: receiptNo,
+      date: activeCenterObj?.cash_collect_date || collectionDate || new Date().toISOString().slice(0, 10),
+      order_id: quickCollectItem.order.id,
+      contract_no: quickCollectItem.order.contract_no,
+      customer_id: quickCollectItem.order.customer_id || quickCollectItem.order.customer_nic,
+      customer_name: quickCollectItem.customerName,
+      customer_nic: quickCollectItem.customerNic,
+      customer_phone: quickCollectItem.customerPhone,
+      branch_code: quickCollectItem.order.branch_code || activeCenterObj?.branch_code || '',
+      center_code: quickCollectItem.order.center_code || activeCenterObj?.center_code || 'C001',
+      payment_type: nextBal <= 0 ? 'Full Settlement' : 'Installment Loan',
+      amount: payAmt,
+      previous_balance: currentBal,
+      new_balance: nextBal,
+      payment_method: quickCollectMethod,
+      reference_no: `COL-${Math.floor(1000 + Math.random() * 9000)}`,
+      collected_by: quickCollectOfficer || activeCenterObj?.contact_person || 'Field Officer',
+      notes: quickCollectNote || `Center field cash collection`,
+      created_at: new Date().toISOString(),
+    };
+
+    // 1. Update payments
+    const updatedPayments = [newPayment, ...payments];
+    setPayments(updatedPayments);
+    savePaymentsToStorage(updatedPayments);
+
+    // 2. Update orders
+    const newPaidInstallments = (quickCollectItem.order.installments_paid || 0) + 1;
+    const newTotalAdvance = (Number(quickCollectItem.order.advance_paid) || 0) + payAmt;
+    const updatedOrders = orders.map((o) => {
+      if (o.id === quickCollectItem.order.id) {
+        return {
+          ...o,
+          balance_due: nextBal,
+          advance_paid: newTotalAdvance,
+          installments_paid: newPaidInstallments,
+          status: nextBal <= 0 ? 'Fully Paid' : 'Active Loan',
+        };
+      }
+      return o;
+    });
+    setOrders(updatedOrders);
+    saveOrdersToStorage(updatedOrders);
+
+    // 3. Persist to API / Supabase
+    try {
+      apiRequest('/payments', {
+        method: 'POST',
+        body: JSON.stringify(newPayment),
+      }).then((res) => {
+        if (res && res.data && res.data.id) {
+          const merged = { ...newPayment, ...res.data };
+          setPayments((prev) => prev.map((p) => (p.id === newPayment.id ? merged : p)));
+          const fresh = loadSavedPayments().map((p) => (p.id === newPayment.id ? merged : p));
+          savePaymentsToStorage(fresh);
+        }
+      }).catch((e) => console.warn('Payment DB persist notice:', e));
+
+      if (quickCollectItem.order.id) {
+        apiRequest(`/orders/${quickCollectItem.order.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            advance_paid: newTotalAdvance,
+            balance_due: nextBal,
+            status: nextBal <= 0 ? 'Fully Paid' : 'Active Loan',
+          }),
+        }).catch((e) => console.warn('Order DB update notice:', e));
+      }
+    } catch {}
+
+    // 4. Notification
+    addLiveNotification({
+      title: `Cash Collected: ${formatLKR(payAmt)} ✅`,
+      desc: `Receipt ${newPayment.receipt_no}: ${formatLKR(payAmt)} collected from ${newPayment.customer_name} (${activeCenterObj?.name || 'Center'}).`,
+      category: 'payments',
+      type: 'payment',
+      targetTab: 'payments',
+    });
+
+    setQuickCollectItem(null);
+
+    if (andPrint) {
+      setActiveReceiptPayment(newPayment);
+      setIsReceiptModalOpen(true);
+    }
+  };
+
+  const handlePrintFieldSheet = () => {
+    const html = generateFieldCollectionSheetHtml(centerStats);
+    printHtmlDocument(html, {
+      title: `Field_Sheet_${centerStats.centerCode}_${centerStats.dateStr}`,
+    });
+  };
+
+  const handleSendWhatsAppReminder = (clientItem) => {
+    const link = generateWhatsAppReminderLink(clientItem, activeCenterObj, clientItem.installmentDue);
+    if (!link) {
+      alert('Valid mobile number not found for this client.');
+      return;
+    }
+    window.open(link, '_blank');
+  };
+
+  const handleSendWhatsAppReceipt = (p) => {
+    if (!p) return;
+    const phone = String(p.customer_phone || '').replace(/\D/g, '');
+    const formattedPhone = phone.startsWith('0') ? `94${phone.slice(1)}` : phone;
+    const text = `Official Payment Receipt - D N S Home Solutions\n\nDear ${p.customer_name},\nWe have received your payment of ${formatLKR(p.amount)} for contract ${p.contract_no}.\n• Receipt No: ${p.receipt_no}\n• Date: ${formatDate(p.date)}\n• Payment Method: ${p.payment_method}\n• Remaining Balance: ${formatLKR(p.new_balance)}\n\nThank you for choosing D N S Home Solutions!`;
+    window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleExportCollectionCSV = () => {
+    const allRows = [
+      ...centerStats.pendingList.map((r) => ({ ...r, status: 'Pending Collection' })),
+      ...centerStats.confirmedList.map((r) => ({ ...r, status: 'Paid & Confirmed' })),
+    ];
+    if (!allRows.length) {
+      alert('No client records to export for this center.');
+      return;
+    }
+    const headers = [
+      'Index',
+      'Customer Name',
+      'NIC',
+      'Phone',
+      'Address',
+      'Contract No',
+      'Item',
+      'Due Amount',
+      'Amount Paid',
+      'Status',
+      'Receipt No',
+    ];
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [
+        headers.join(','),
+        ...allRows.map((r, i) =>
+          [
+            i + 1,
+            `"${(r.customerName || '').replace(/"/g, '""')}"`,
+            `"${(r.customerNic || '').replace(/"/g, '""')}"`,
+            `"${(r.customerPhone || '').replace(/"/g, '""')}"`,
+            `"${(r.customerAddress || '').replace(/"/g, '""')}"`,
+            `"${(r.contractNo || '').replace(/"/g, '""')}"`,
+            `"${(r.itemName || '').replace(/"/g, '""')}"`,
+            r.installmentDue || 0,
+            r.amountPaidToday || 0,
+            `"${r.status}"`,
+            `"${r.latestReceiptNo || ''}"`,
+          ].join(',')
+        ),
+      ].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute(
+      'download',
+      `Collection_Sheet_${centerStats.centerCode}_${centerStats.dateStr}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
   // Suggestions for order search in the Record Payment modal
   const orderSuggestions = useMemo(() => {
@@ -1326,7 +1668,13 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={activeSubView === 'accounts' ? handleExportAccountsCSV : handleExportReceiptsCSV}
+            onClick={
+              activeSubView === 'collection_day'
+                ? handleExportCollectionCSV
+                : activeSubView === 'accounts'
+                ? handleExportAccountsCSV
+                : handleExportReceiptsCSV
+            }
             style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}
             title="Download CSV spreadsheet"
           >
@@ -1336,11 +1684,23 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={activeSubView === 'accounts' ? handleExportAccountsPDF : handleExportReceiptsPDF}
+            onClick={
+              activeSubView === 'collection_day'
+                ? handlePrintFieldSheet
+                : activeSubView === 'accounts'
+                ? handleExportAccountsPDF
+                : handleExportReceiptsPDF
+            }
             style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
-            title={activeSubView === 'accounts' ? 'Download active loan accounts as PDF' : 'Download payment receipts ledger as PDF'}
+            title={
+              activeSubView === 'collection_day'
+                ? 'Print field collection sheet as PDF'
+                : activeSubView === 'accounts'
+                ? 'Download active loan accounts as PDF'
+                : 'Download payment receipts ledger as PDF'
+            }
           >
-            <Printer size={14} /> Download PDF
+            <Printer size={14} /> {activeSubView === 'collection_day' ? 'Print Field Sheet' : 'Download PDF'}
           </button>
 
           <button
@@ -1427,8 +1787,36 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
         <div className="subview-ribbon-bar" style={{ display: 'flex', background: 'var(--ash-100, #F1F5F9)', padding: '4px', borderRadius: '10px', gap: '4px' }}>
           <button
             type="button"
+            className={`subview-ribbon-btn ${activeSubView === 'collection_day' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveSubView('collection_day');
+              localStorage.setItem('dnd_active_payments_subview', 'collection_day');
+            }}
+            style={{
+              border: 'none',
+              background: activeSubView === 'collection_day' ? 'var(--bg-card, #fff)' : 'transparent',
+              color: activeSubView === 'collection_day' ? 'var(--primary)' : 'var(--ash-600)',
+              padding: '8px 18px',
+              borderRadius: '7px',
+              fontWeight: 800,
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: activeSubView === 'collection_day' ? '0 2px 6px rgba(0,0,0,0.08)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <Building size={15} /> 🏢 Daily Center Collection ({centerStats.totalClientsCount} Clients • {formatLKR(centerStats.targetAmount)})
+          </button>
+          <button
+            type="button"
             className={`subview-ribbon-btn ${activeSubView === 'accounts' ? 'active' : ''}`}
-            onClick={() => setActiveSubView('accounts')}
+            onClick={() => {
+              setActiveSubView('accounts');
+              localStorage.setItem('dnd_active_payments_subview', 'accounts');
+            }}
             style={{
               border: 'none',
               background: activeSubView === 'accounts' ? 'var(--bg-card, #fff)' : 'transparent',
@@ -1450,7 +1838,10 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           <button
             type="button"
             className={`subview-ribbon-btn ${activeSubView === 'ledger' ? 'active' : ''}`}
-            onClick={() => setActiveSubView('ledger')}
+            onClick={() => {
+              setActiveSubView('ledger');
+              localStorage.setItem('dnd_active_payments_subview', 'ledger');
+            }}
             style={{
               border: 'none',
               background: activeSubView === 'ledger' ? 'var(--bg-card, #fff)' : 'transparent',
@@ -1473,10 +1864,674 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       </div>
 
       {/* =========================================================
-          VIEW 1: ACTIVE LOAN ACCOUNTS & REPAYMENT PLANS TABLE
-          (THE EXACT TABLE VIEW REQUESTED BY USER)
+          VIEW 0: DAILY CENTER CASH COLLECTION HUB & FIELD DESK
+          (Center-wise daily cash collection, target, separate paid vs unpaid lists, WhatsApp reminder, 1-click collect)
           ========================================================= */}
-      {activeSubView === 'accounts' ? (
+      {activeSubView === 'collection_day' ? (
+        <>
+          {/* 1. Center Selection & Date Header Card */}
+          <div
+            className="center-collection-header-card"
+            style={{
+              background: 'var(--bg-card, #FFFFFF)',
+              border: '1px solid var(--border-subtle, var(--ash-300))',
+              borderRadius: '14px',
+              padding: '18px 22px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            }}
+          >
+            {/* Left: Center Switcher & Info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #1E4D8C 0%, #0F2E59 100%)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: '0 4px 10px rgba(30,77,140,0.3)',
+                }}
+              >
+                <Building size={24} />
+              </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--ash-500)', letterSpacing: '0.04em' }}>
+                    Select Regional Collection Center:
+                  </label>
+                  {centerStats.isScheduledToday && (
+                    <span
+                      style={{
+                        background: '#DCFCE7',
+                        color: '#15803D',
+                        border: '1px solid #86EFAC',
+                        borderRadius: '20px',
+                        padding: '2px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                      }}
+                    >
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16A34A' }}></span>
+                      📅 Scheduled Cash Collection Today
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+                  <select
+                    className="form-input"
+                    value={activeCenterObj?.id || activeCenterObj?.center_code || selectedCollectionCenterId}
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setSelectedCollectionCenterId(newId);
+                      localStorage.setItem('dnd_active_collection_center', newId);
+                      const target = centers.find(
+                        (c) =>
+                          c.id === newId ||
+                          c.center_code === newId ||
+                          formatCenterCode(c.center_code) === formatCenterCode(newId)
+                      );
+                      if (target?.cash_collect_date) {
+                        setCollectionDate(target.cash_collect_date);
+                        localStorage.setItem('dnd_active_collection_date', target.cash_collect_date);
+                      }
+                    }}
+                    style={{
+                      fontWeight: 800,
+                      fontSize: '0.94rem',
+                      padding: '7px 12px',
+                      minWidth: '280px',
+                      borderColor: 'var(--primary)',
+                      background: 'var(--bg-card, #fff)',
+                      color: 'var(--text-main, #0F172A)',
+                    }}
+                  >
+                    {centers.map((c) => {
+                      const isSch = isCenterScheduledForDate(c, collectionDate);
+                      return (
+                        <option key={c.id || c.center_code} value={c.id || c.center_code}>
+                          {c.branch_code ? `${c.branch_code}/` : ''}{c.center_code} — {c.name}{c.cash_collect_date ? ` [📅 ${c.cash_collect_date}]` : ''} {isSch ? '⭐ (Scheduled)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 800 }}>💵 Center Cash Collect Date:</span>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={collectionDate}
+                      onChange={(e) => handleUpdateCenterCollectDate(e.target.value)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.88rem',
+                        fontWeight: 800,
+                        color: '#15803D',
+                        background: '#F0FDF4',
+                        borderColor: '#86EFAC',
+                        borderRadius: '7px',
+                      }}
+                      title="This is the center's official cash collection date. Cash installments are collected on this day."
+                    />
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '0.75rem', color: 'var(--ash-500)', marginTop: '4px' }}>
+                  👤 Officer in Charge: <strong>{centerStats.officerInCharge}</strong> • 📞 Hotline:{' '}
+                  <strong>{centerStats.officerPhone || '077XXXXXXX'}</strong> • Location:{' '}
+                  <strong>{activeCenterObj?.city || 'Regional Area'}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Quick Field Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handlePrintFieldSheet}
+                style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                title="Print official field collection sheet with client signature rows"
+              >
+                <Printer size={15} /> Print Field Sheet
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleOpenRecordPaymentModal()}
+                style={{ padding: '8px 16px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <Plus size={15} /> Add Custom Payment
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Center Collection Daily KPI Cards (4 Pillars) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginTop: '16px' }}>
+            {/* Card 1: Daily Target for Center */}
+            <div className="payments-kpi-card" style={{ background: '#FFFBEB', borderRadius: '12px', border: '1px solid #FDE68A', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#FEF3C7', color: '#B45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Target size={22} />
+              </div>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#B45309', textTransform: 'uppercase', fontWeight: 800 }}>
+                  Daily Center Target
+                </span>
+                <div style={{ fontSize: '1.32rem', fontWeight: 900, color: '#92400E', marginTop: '1px' }}>
+                  {formatLKR(centerStats.targetAmount)}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: '2px' }}>
+                  {centerStats.totalClientsCount} active installment clients
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Cash Collected Today */}
+            <div className="payments-kpi-card" style={{ background: '#F0FDF4', borderRadius: '12px', border: '1px solid #BBF7D0', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#DCFCE7', color: '#15803D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={22} />
+              </div>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#15803D', textTransform: 'uppercase', fontWeight: 800 }}>
+                  Collected Today
+                </span>
+                <div style={{ fontSize: '1.32rem', fontWeight: 900, color: '#166534', marginTop: '1px' }}>
+                  {formatLKR(centerStats.collectedToday)}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#15803D', marginTop: '2px' }}>
+                  {centerStats.confirmedCount} payment receipts issued
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Pending Shortfall */}
+            <div className="payments-kpi-card" style={{ background: '#FEF2F2', borderRadius: '12px', border: '1px solid #FECACA', padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#FEE2E2', color: '#DC2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock size={22} />
+              </div>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#DC2626', textTransform: 'uppercase', fontWeight: 800 }}>
+                  Pending Shortfall
+                </span>
+                <div style={{ fontSize: '1.32rem', fontWeight: 900, color: '#991B1B', marginTop: '1px' }}>
+                  {formatLKR(centerStats.pendingShortfall)}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '2px' }}>
+                  {centerStats.pendingCount} client(s) pending collection
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Target Recovery Progress */}
+            <div className="payments-kpi-card" style={{ background: 'var(--bg-card, #fff)', borderRadius: '12px', border: '1px solid var(--border-subtle, var(--ash-200))', padding: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', textTransform: 'uppercase', fontWeight: 800 }}>
+                  Target Achievement
+                </span>
+                <span style={{ fontSize: '1.05rem', fontWeight: 900, color: centerStats.achievementRate >= 100 ? '#16A34A' : 'var(--primary)' }}>
+                  {centerStats.achievementRate}%
+                </span>
+              </div>
+              <div style={{ width: '100%', height: '8px', background: '#E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${centerStats.achievementRate}%`,
+                    background: centerStats.achievementRate >= 100 ? '#16A34A' : 'linear-gradient(90deg, #2563EB 0%, #10B981 100%)',
+                    borderRadius: '10px',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>{centerStats.confirmedCount} of {centerStats.totalClientsCount} clients paid</span>
+                <span>{centerStats.achievementRate >= 100 ? '🎯 Target Met!' : 'In Progress'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Dual Tab Client Navigation (Pending vs Confirmed) */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px',
+              marginTop: '20px',
+              borderBottom: '2px solid var(--ash-200)',
+              paddingBottom: '12px',
+            }}
+          >
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setCollectionClientTab('pending')}
+                style={{
+                  border: 'none',
+                  background: collectionClientTab === 'pending' ? '#DC2626' : 'var(--ash-100)',
+                  color: collectionClientTab === 'pending' ? '#ffffff' : 'var(--ash-700)',
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Clock size={16} /> ⏳ Pending Collection ({centerStats.pendingCount})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCollectionClientTab('confirmed')}
+                style={{
+                  border: 'none',
+                  background: collectionClientTab === 'confirmed' ? '#16A34A' : 'var(--ash-100)',
+                  color: collectionClientTab === 'confirmed' ? '#ffffff' : 'var(--ash-700)',
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <CheckCircle2 size={16} /> ✅ Confirmed Payments ({centerStats.confirmedCount})
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div style={{ position: 'relative', minWidth: '280px' }}>
+              <Search size={15} style={{ position: 'absolute', left: '12px', top: '10px', color: 'var(--ash-400)' }} />
+              <input
+                type="text"
+                className="form-input"
+                style={{ paddingLeft: '34px', fontSize: '0.82rem', width: '100%' }}
+                placeholder={`Search ${collectionClientTab === 'pending' ? 'pending clients' : 'confirmed receipts'}...`}
+                value={collectionSearch}
+                onChange={(e) => setCollectionSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* 4. Tab 1: PENDING COLLECTION CLIENTS LIST */}
+          {collectionClientTab === 'pending' && (
+            <div style={{ marginTop: '16px' }}>
+              {filteredPendingClients.length === 0 ? (
+                <div
+                  style={{
+                    background: '#F0FDF4',
+                    border: '1px dashed #86EFAC',
+                    borderRadius: '12px',
+                    padding: '40px 20px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
+                  <h4 style={{ margin: '0 0 6px 0', color: '#166534', fontWeight: 800, fontSize: '1.05rem' }}>
+                    All Clear! No Pending Installments For This Center
+                  </h4>
+                  <p style={{ margin: 0, color: '#15803D', fontSize: '0.84rem' }}>
+                    Every active client in <strong>{centerStats.centerName}</strong> has either paid their installment today or has settled in full.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="payments-table-card"
+                  style={{
+                    background: 'var(--bg-card, #fff)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-subtle, var(--ash-200))',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--ash-200)' }}>
+                        <th style={{ padding: '12px 14px', textAlign: 'center', width: '40px' }}>#</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Customer Details</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Contract & Item</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Due Today (LKR)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Total Loan Balance</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'center', width: '260px' }}>Field Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPendingClients.map((client, idx) => (
+                        <tr
+                          key={client.orderId || client.contractNo}
+                          style={{
+                            borderBottom: '1px solid var(--ash-100)',
+                            transition: 'background 0.15s ease',
+                          }}
+                        >
+                          <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--ash-400)' }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ fontWeight: 800, color: 'var(--text-main, #0F172A)', fontSize: '0.88rem' }}>
+                              {client.customerName}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                              <span style={{ background: '#EFF6FF', color: '#1D4ED8', fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px' }}>
+                                NIC: {client.customerNic}
+                              </span>
+                              <span style={{ fontSize: '0.74rem', color: 'var(--ash-500)' }}>
+                                📍 {client.customerAddress}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--ash-600)', marginTop: '2px' }}>
+                              📞 {client.customerPhone}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                              {client.contractNo}
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--ash-600)' }}>
+                              {client.itemName}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--ash-400)', marginTop: '2px' }}>
+                              Terms: {client.installmentsPaid} / {client.loanTerms} paid ({client.frequency})
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                            <div style={{ fontWeight: 900, color: '#DC2626', fontSize: '0.94rem' }}>
+                              {formatLKR(client.installmentDue)}
+                            </div>
+                            <span style={{ fontSize: '0.68rem', color: '#B91C1C', fontWeight: 700, background: '#FEF2F2', padding: '1px 6px', borderRadius: '4px' }}>
+                              Collection Due
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                            <div style={{ fontWeight: 800, color: 'var(--ash-700)', fontSize: '0.86rem' }}>
+                              {formatLKR(client.balanceDue)}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--ash-400)' }}>
+                              Outstanding
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                              {/* 1-Click Collect Cash & Confirm Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuickCollect(client)}
+                                className="btn"
+                                style={{
+                                  background: '#16A34A',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  fontWeight: 800,
+                                  fontSize: '0.76rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 2px 6px rgba(22,163,74,0.3)',
+                                }}
+                                title="Collect cash from this client and confirm in system"
+                              >
+                                <Wallet size={13} /> Collect & Confirm
+                              </button>
+
+                              {/* WhatsApp Reminder Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleSendWhatsAppReminder(client)}
+                                className="btn"
+                                style={{
+                                  background: '#25D366',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  padding: '6px 10px',
+                                  borderRadius: '6px',
+                                  fontWeight: 700,
+                                  fontSize: '0.76rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  cursor: 'pointer',
+                                }}
+                                title="Send WhatsApp payment due reminder"
+                              >
+                                <Share2 size={13} /> WhatsApp
+                              </button>
+
+                              {/* Direct Phone Call */}
+                              {client.customerPhone && (
+                                <a
+                                  href={`tel:${client.customerPhone}`}
+                                  className="btn btn-secondary"
+                                  style={{ padding: '6px 8px', borderRadius: '6px' }}
+                                  title={`Call ${client.customerPhone}`}
+                                >
+                                  <Phone size={13} />
+                                </a>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 5. Tab 2: CONFIRMED PAYMENTS LIST */}
+          {collectionClientTab === 'confirmed' && (
+            <div style={{ marginTop: '16px' }}>
+              {filteredConfirmedClients.length === 0 ? (
+                <div
+                  style={{
+                    background: '#F8FAFC',
+                    border: '1px dashed var(--ash-300)',
+                    borderRadius: '12px',
+                    padding: '40px 20px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <Receipt size={32} style={{ color: 'var(--ash-400)', marginBottom: '8px' }} />
+                  <h4 style={{ margin: '0 0 6px 0', color: 'var(--ash-700)', fontWeight: 800, fontSize: '1.05rem' }}>
+                    No Payments Confirmed Yet Today
+                  </h4>
+                  <p style={{ margin: 0, color: 'var(--ash-500)', fontSize: '0.84rem' }}>
+                    Switch to the <strong>⏳ Pending Collection</strong> tab and click <strong>Collect & Confirm</strong> as cash arrives from clients.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="payments-table-card"
+                  style={{
+                    background: 'var(--bg-card, #fff)',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border-subtle, var(--ash-200))',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--ash-200)' }}>
+                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Receipt #</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Customer Details</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Contract & Item</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Amount Paid (LKR)</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'right' }}>Remaining Balance</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'left' }}>Method & Time</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'center' }}>Status</th>
+                        <th style={{ padding: '12px 14px', textAlign: 'center', width: '180px' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredConfirmedClients.map((client) => {
+                        const topPayment = client.paymentsToday[0] || null;
+                        return (
+                          <tr
+                            key={client.latestReceiptNo || client.orderId}
+                            style={{
+                              borderBottom: '1px solid var(--ash-100)',
+                              background: '#F0FDF4',
+                              transition: 'background 0.15s ease',
+                            }}
+                          >
+                            <td style={{ padding: '12px 14px' }}>
+                              <span
+                                style={{
+                                  background: '#DCFCE7',
+                                  color: '#15803D',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  fontWeight: 800,
+                                  fontSize: '0.78rem',
+                                  border: '1px solid #86EFAC',
+                                }}
+                              >
+                                {client.latestReceiptNo || 'RECEIPT'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <div style={{ fontWeight: 800, color: 'var(--text-main, #0F172A)', fontSize: '0.88rem' }}>
+                                {client.customerName}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '2px' }}>
+                                NIC: {client.customerNic} • 📞 {client.customerPhone}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <div style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                                {client.contractNo}
+                              </div>
+                              <div style={{ fontSize: '0.76rem', color: 'var(--ash-600)' }}>
+                                {client.itemName}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                              <div style={{ fontWeight: 900, color: '#15803D', fontSize: '0.98rem' }}>
+                                {formatLKR(client.amountPaidToday)}
+                              </div>
+                              <span style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 700 }}>
+                                Paid Today
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                              <div style={{ fontWeight: 800, color: 'var(--ash-700)', fontSize: '0.86rem' }}>
+                                {formatLKR(client.balanceDue)}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: client.balanceDue <= 0 ? '#16A34A' : 'var(--ash-400)' }}>
+                                {client.balanceDue <= 0 ? '✓ Cleared' : 'Remaining'}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <div style={{ fontWeight: 700, color: 'var(--ash-700)' }}>
+                                {topPayment?.payment_method || 'Cash'}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--ash-400)' }}>
+                                {client.paidAtTime ? new Date(client.paidAtTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today'}
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <span
+                                style={{
+                                  background: '#DCFCE7',
+                                  color: '#15803D',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  padding: '3px 8px',
+                                  borderRadius: '12px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <Check size={12} strokeWidth={3} /> Confirmed
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                {topPayment && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveReceiptPayment(topPayment);
+                                        setIsReceiptModalOpen(true);
+                                      }}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '5px 8px', fontSize: '0.74rem' }}
+                                      title="View payment receipt details"
+                                    >
+                                      <Eye size={13} />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePrintSingleReceiptPDF(topPayment)}
+                                      className="btn btn-secondary"
+                                      style={{ padding: '5px 8px', fontSize: '0.74rem' }}
+                                      title="Print receipt PDF"
+                                    >
+                                      <Printer size={13} />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendWhatsAppReceipt(topPayment)}
+                                      className="btn"
+                                      style={{
+                                        background: '#25D366',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        padding: '5px 8px',
+                                        fontSize: '0.74rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                      }}
+                                      title="WhatsApp receipt to client"
+                                    >
+                                      <Share2 size={13} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : activeSubView === 'accounts' ? (
         <>
           {/* Search & Filter Bar for Accounts */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
@@ -3876,6 +4931,153 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}
               >
                 <Printer size={15} /> Download / Print PDF Statement
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* =========================================================
+          MODAL 5: QUICK 1-CLICK CASH COLLECTION & CONFIRMATION
+          ========================================================= */}
+      <Modal
+        isOpen={!!quickCollectItem}
+        onClose={() => setQuickCollectItem(null)}
+        title="💰 Confirm Field Cash Collection"
+      >
+        {quickCollectItem && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div
+              style={{
+                background: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                borderRadius: '10px',
+                padding: '14px 16px',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '10px',
+                fontSize: '0.82rem',
+              }}
+            >
+              <div>
+                <span style={{ color: 'var(--ash-500)', fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Customer Name
+                </span>
+                <div style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.94rem' }}>
+                  {quickCollectItem.customerName}
+                </div>
+                <div style={{ color: 'var(--ash-600)', fontSize: '0.74rem' }}>
+                  NIC: {quickCollectItem.customerNic} • 📞 {quickCollectItem.customerPhone}
+                </div>
+              </div>
+
+              <div>
+                <span style={{ color: 'var(--ash-500)', fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Contract & Item
+                </span>
+                <div style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.92rem' }}>
+                  {quickCollectItem.contractNo}
+                </div>
+                <div style={{ color: 'var(--ash-600)', fontSize: '0.74rem' }}>
+                  {quickCollectItem.itemName}
+                </div>
+              </div>
+
+              <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', paddingTop: '8px', marginTop: '4px' }}>
+                <span>Scheduled Center: <strong>{activeCenterObj?.name} ({activeCenterObj?.center_code})</strong></span>
+                <span>Outstanding Loan: <strong style={{ color: '#DC2626' }}>{formatLKR(quickCollectItem.balanceDue)}</strong></span>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 800, fontSize: '0.84rem' }}>
+                Cash Amount Collected (LKR) *
+              </label>
+              <input
+                type="number"
+                className="form-input"
+                value={quickCollectAmount}
+                onChange={(e) => setQuickCollectAmount(e.target.value)}
+                style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803D' }}
+                placeholder="Enter amount collected..."
+                autoFocus
+              />
+              <div style={{ fontSize: '0.72rem', color: 'var(--ash-500)', marginTop: '4px' }}>
+                Defaulted to due installment: {formatLKR(quickCollectItem.installmentDue)}. You can adjust if partial or extra cash was received.
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="form-group">
+                <label className="form-label">Payment Method</label>
+                <select
+                  className="form-input"
+                  value={quickCollectMethod}
+                  onChange={(e) => setQuickCollectMethod(e.target.value)}
+                >
+                  <option value="Cash">Cash (Center Field Collection)</option>
+                  <option value="Bank Transfer">Bank Transfer / Slip</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Card">Credit / Debit Card</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Collected By</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={quickCollectOfficer}
+                  onChange={(e) => setQuickCollectOfficer(e.target.value)}
+                  placeholder="Officer name"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Officer Notes / Reference (Optional)</label>
+              <input
+                type="text"
+                className="form-input"
+                value={quickCollectNote}
+                onChange={(e) => setQuickCollectNote(e.target.value)}
+                placeholder="Center visit notes..."
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px', borderTop: '1px solid var(--ash-200)', paddingTop: '14px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setQuickCollectItem(null)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleConfirmQuickCollect(true)}
+                style={{ fontWeight: 700 }}
+              >
+                <Printer size={15} /> Confirm & Print Receipt
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleConfirmQuickCollect(false)}
+                style={{
+                  background: '#16A34A',
+                  borderColor: '#16A34A',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 12px rgba(22,163,74,0.3)',
+                }}
+              >
+                <Check size={16} strokeWidth={2.5} /> Confirm Cash Collection
               </button>
             </div>
           </div>

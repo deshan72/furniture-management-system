@@ -47,6 +47,8 @@ export const INITIAL_CENTERS = [
     contact_person: 'Sarath Gunawardena',
     phone: '0772345671',
     status: 'active',
+    due_date: '2026-11-10',
+    cash_collect_date: '2026-11-14',
     notes: 'Main distribution and client service center for Colombo South.',
     created_at: '2026-08-10T09:00:00Z',
   },
@@ -61,6 +63,8 @@ export const INITIAL_CENTERS = [
     contact_person: 'Nuwan Perera',
     phone: '0715566778',
     status: 'active',
+    due_date: '2026-11-12',
+    cash_collect_date: '2026-11-15',
     notes: 'Sub-center covering Kottawa, Homagama and Pannipitiya areas.',
     created_at: '2026-08-25T11:30:00Z',
   },
@@ -75,6 +79,8 @@ export const INITIAL_CENTERS = [
     contact_person: 'Nalaka Fernando',
     phone: '0768899001',
     status: 'active',
+    due_date: '2026-11-08',
+    cash_collect_date: '2026-11-14',
     notes: 'Primary workshop hub and timber showroom center.',
     created_at: '2026-07-15T08:45:00Z',
   },
@@ -89,6 +95,8 @@ export const INITIAL_CENTERS = [
     contact_person: 'Rohan Silva',
     phone: '0704455667',
     status: 'active',
+    due_date: '2026-11-05',
+    cash_collect_date: '2026-11-16',
     notes: 'Hotel & commercial resort projects liaison center.',
     created_at: '2026-09-01T10:15:00Z',
   },
@@ -103,6 +111,8 @@ export const INITIAL_CENTERS = [
     contact_person: 'Dinesh Kumara',
     phone: '0785566778',
     status: 'active',
+    due_date: '2026-11-11',
+    cash_collect_date: '2026-11-14',
     notes: 'Covers retail showroom stock and office furniture inquiries.',
     created_at: '2026-09-18T14:20:00Z',
   },
@@ -117,6 +127,8 @@ export const INITIAL_CENTERS = [
     contact_person: 'Chaminda Wickrama',
     phone: '0751122334',
     status: 'active',
+    due_date: '2026-11-09',
+    cash_collect_date: '2026-11-14',
     notes: 'High-end custom interior designs & residential projects.',
     created_at: '2026-10-05T13:00:00Z',
   },
@@ -129,10 +141,35 @@ export const loadSavedCenters = () => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((c) => ({
-          ...c,
-          center_code: formatCenterCode(c.center_code || 'C001'),
-        }));
+        return parsed.map((c, idx) => {
+          let dd = c.due_date || '';
+          let cd = c.cash_collect_date || '';
+          if (c.notes && c.notes.includes('<!--DNS_META:')) {
+            try {
+              const match = c.notes.match(/<!--DNS_META:(\{.*?\})-->/);
+              if (match) {
+                const meta = JSON.parse(match[1]);
+                if (meta.dd && !dd) dd = meta.dd;
+                if (meta.cd && !cd) cd = meta.cd;
+                if (meta.due_date && !dd) dd = meta.due_date;
+                if (meta.cash_collect_date && !cd) cd = meta.cash_collect_date;
+              }
+            } catch (_) {}
+          }
+          // Default fallback for initial centers if missing
+          const defaultSeed = INITIAL_CENTERS.find(
+            (ic) => ic.id === c.id || ic.center_code === c.center_code || ic.name === c.name
+          );
+          if (!cd && defaultSeed?.cash_collect_date) cd = defaultSeed.cash_collect_date;
+          if (!dd && defaultSeed?.due_date) dd = defaultSeed.due_date;
+
+          return {
+            ...c,
+            center_code: formatCenterCode(c.center_code || `C00${idx + 1}`),
+            due_date: dd,
+            cash_collect_date: cd,
+          };
+        });
       }
     }
   } catch {
