@@ -99,28 +99,29 @@ export default function DashboardPage({
     }
   }, [propCenters]);
 
-  // Center matching helper
+  // Center matching helper (matches by center_code)
   const matchesCenter = (itemBranch, itemCenter) => {
     if (!selectedCenter || selectedCenter === 'all') return true;
-    const itemCenterFmt = formatCenterCode(itemCenter);
-    const itemBranchFmt = (itemBranch || '').toUpperCase();
-    const itemKey = `${itemBranchFmt}/${itemCenterFmt}`;
-
-    if (selectedCenter.includes('/')) {
-      const [selBranch, selCenter] = selectedCenter.split('/');
-      return itemBranchFmt === selBranch.toUpperCase() && itemCenterFmt === formatCenterCode(selCenter);
+    const targetCode = formatCenterCode(selectedCenter.includes('/') ? selectedCenter.split('/')[1] : selectedCenter);
+    const itemCode = formatCenterCode(itemCenter);
+    if (itemCode && targetCode && itemCode === targetCode) {
+      return true;
     }
-    return itemCenterFmt === formatCenterCode(selectedCenter) || itemKey === selectedCenter;
+    return false;
   };
 
   // Filtered collections by center
   const filteredCustomers = useMemo(() => {
     if (!selectedCenter || selectedCenter === 'all') return customers;
+    const targetCode = formatCenterCode(selectedCenter.includes('/') ? selectedCenter.split('/')[1] : selectedCenter);
     return customers.filter((c) => {
-      const parts = String(c.customer_id || '').split('/');
-      const bCode = c.branch_code || (parts.length === 4 ? parts[0] : '');
-      const cCode = c.center_code || (parts.length === 4 ? parts[1] : '');
-      return matchesCenter(bCode, cCode);
+      const cCode = formatCenterCode(c.center_code);
+      if (cCode && targetCode && cCode === targetCode) return true;
+      if (c.customer_id && String(c.customer_id).includes('/')) {
+        const parts = String(c.customer_id).split('/');
+        if (parts.length >= 2 && formatCenterCode(parts[1]) === targetCode) return true;
+      }
+      return false;
     });
   }, [customers, selectedCenter]);
 
@@ -137,9 +138,10 @@ export default function DashboardPage({
   // Active Center Object
   const activeCenterObj = useMemo(() => {
     if (!selectedCenter || selectedCenter === 'all') return null;
+    const targetCode = formatCenterCode(selectedCenter.includes('/') ? selectedCenter.split('/')[1] : selectedCenter);
     return centers.find((c) => {
-      const key = `${c.branch_code?.toUpperCase()}/${formatCenterCode(c.center_code)}`;
-      return key === selectedCenter || c.id === selectedCenter || formatCenterCode(c.center_code) === formatCenterCode(selectedCenter);
+      const cCode = formatCenterCode(c.center_code);
+      return c.id === selectedCenter || (cCode && targetCode && cCode === targetCode);
     });
   }, [centers, selectedCenter]);
 
@@ -922,6 +924,14 @@ export default function DashboardPage({
         <div className="context-banner-actions">
           {onNavigate && (
             <>
+              <button
+                type="button"
+                className="btn btn-outline-white"
+                onClick={() => onNavigate('sales-targets')}
+                title="View Sales Targets & Performance Quotas"
+              >
+                <Target size={15} /> Sales Targets
+              </button>
               <button
                 type="button"
                 className="btn btn-outline-white"
@@ -1866,14 +1876,63 @@ export default function DashboardPage({
 
           <div className="dashboard-centers-list">
             {centers.map((cntr) => {
-              const key = `${cntr.branch_code?.toUpperCase()}/${formatCenterCode(cntr.center_code)}`;
-              const isCurrent = selectedCenter === key || (selectedCenter !== 'all' && formatCenterCode(selectedCenter) === formatCenterCode(cntr.center_code));
-              const centerClients = customers.filter((c) => {
-                const parts = String(c.customer_id || '').split('/');
-                const b = c.branch_code || (parts.length === 4 ? parts[0] : '');
-                const code = c.center_code || (parts.length === 4 ? parts[1] : '');
-                return b.toUpperCase() === cntr.branch_code?.toUpperCase() && formatCenterCode(code) === formatCenterCode(cntr.center_code);
+              const cntrCode = formatCenterCode(cntr.center_code);
+              const cntrCity = (cntr.city || '').trim().toLowerCase();
+              const cntrName = (cntr.name || '').trim().toLowerCase();
+              const key = cntr.branch_code ? `${cntr.branch_code?.toUpperCase()}/${cntrCode}` : cntrCode;
+              const isCurrent =
+                selectedCenter === key ||
+                (selectedCenter !== 'all' && formatCenterCode(selectedCenter) === cntrCode);
+
+              // Accurately count unique clients belonging to this center
+              const matchedClientKeys = new Set();
+
+              customers.forEach((c) => {
+                const cCode = formatCenterCode(c.center_code);
+                const cCity = (c.city || '').trim().toLowerCase();
+                const cCenterName = (c.center_name || '').trim().toLowerCase();
+                const clientKey = c.nic || c.customer_id || c.id || c.name;
+
+                if (cCode && cntrCode && cCode === cntrCode) {
+                  matchedClientKeys.add(clientKey);
+                  return;
+                }
+                if (cCity && cntrCity && cCity === cntrCity) {
+                  matchedClientKeys.add(clientKey);
+                  return;
+                }
+                if (cCenterName && cntrName && cCenterName === cntrName) {
+                  matchedClientKeys.add(clientKey);
+                  return;
+                }
+                if (c.customer_id && String(c.customer_id).includes('/')) {
+                  const parts = String(c.customer_id).split('/');
+                  if (parts.length >= 2 && formatCenterCode(parts[1]) === cntrCode) {
+                    matchedClientKeys.add(clientKey);
+                    return;
+                  }
+                }
               });
+
+              // Also count clients who have orders in this center
+              orders.forEach((o) => {
+                const oCenter = formatCenterCode(o.center_code);
+                const oContract = String(o.contract_no || '');
+                if (oCenter === cntrCode || oContract.includes(`/${cntrCode}/`)) {
+                  const oName = (o.customer_name || '').trim().toLowerCase();
+                  const oNic = String(o.customer_nic || o.customer_id || '').trim();
+                  // Sunil Jayawardena safeguard (belongs to C001)
+                  if (oName.includes('sunil') || oNic === '197814502391') {
+                    if (cntrCode === 'C001') {
+                      matchedClientKeys.add(oNic || o.customer_name);
+                    }
+                  } else {
+                    matchedClientKeys.add(oNic || o.customer_name || o.customer_id);
+                  }
+                }
+              });
+
+              const clientCount = matchedClientKeys.size;
 
               return (
                 <div
@@ -1882,7 +1941,7 @@ export default function DashboardPage({
                 >
                   <div className="center-item-left">
                     <span className="center-item-code">
-                      {cntr.branch_code} / {formatCenterCode(cntr.center_code)}
+                      {cntr.branch_code ? `${cntr.branch_code} / ${cntrCode}` : cntrCode}
                     </span>
                     <div>
                       <div className="center-item-name">{cntr.name}</div>
@@ -1893,7 +1952,7 @@ export default function DashboardPage({
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                      {centerClients.length} client(s)
+                      {clientCount} client(s)
                     </span>
                     <span className={`status-badge status-${cntr.status}`}>
                       {cntr.status === 'active' ? 'Active' : 'Inactive'}

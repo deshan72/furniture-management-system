@@ -7,6 +7,7 @@ export const KNOWN_TABS = [
   'dashboard',
   'orders',
   'payments',
+  'sales-targets',
   'returns',
   'products',
   'categories',
@@ -32,6 +33,14 @@ export const KNOWN_TABS = [
 ];
 
 const TAB_ALIASES = {
+  'sales-targets': 'sales-targets',
+  'sales-target': 'sales-targets',
+  sales_targets: 'sales-targets',
+  sales_target: 'sales-targets',
+  targets: 'sales-targets',
+  target: 'sales-targets',
+  quotas: 'sales-targets',
+  quota: 'sales-targets',
   'customer-directory': 'customers',
   customer_directory: 'customers',
   customer: 'customers',

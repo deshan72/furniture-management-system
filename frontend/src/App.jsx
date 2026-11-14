@@ -10,6 +10,7 @@ import CentersPage from './pages/CentersPage';
 import OrdersPage from './pages/OrdersPage';
 import CashHandlingPage from './pages/CashHandlingPage';
 import PaymentsPage from './pages/PaymentsPage';
+import SalesTargetsPage from './pages/SalesTargetsPage';
 import ReturnsRepairsPage from './pages/ReturnsRepairsPage';
 import UsersPage from './pages/UsersPage';
 import SettingsPage from './pages/SettingsPage';
@@ -567,6 +568,9 @@ export default function App() {
               {activeTab === 'payments' && (
                 <PaymentsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
               )}
+              {activeTab === 'sales-targets' && (
+                <SalesTargetsPage currentUser={currentUser} onNavigate={setActiveTab} />
+              )}
               {activeTab === 'returns' && (
                 <ReturnsRepairsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
               )}
@@ -646,7 +650,7 @@ export default function App() {
 
               {/* Fallback to Dashboard if activeTab does not match any recognized route */}
               {![
-                'dashboard', 'orders', 'orders-new', 'orders-installments', 'payments', 'returns',
+                'dashboard', 'orders', 'orders-new', 'orders-installments', 'payments', 'sales-targets', 'returns',
                 'products', 'inventory', 'low-stock', 'customers', 'customer-overview',
                 'centers', 'centers-new', 'centers-assign', 'purchases', 'cash-handling',
                 'reports', 'reports-sales', 'reports-profit', 'settings', 'users', 'backup'

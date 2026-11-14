@@ -21,6 +21,7 @@ import {
   PlusCircle,
   UserPlus,
   UserCheck,
+  Target,
   LogOut,
 } from 'lucide-react';
 import { hasPageAccess, ROLES_METADATA } from '../utils/rolesData';
@@ -47,6 +48,7 @@ export default function Sidebar({
       items: [
         { id: 'orders', label: 'Orders & Invoices', icon: ClipboardList },
         { id: 'payments', label: 'Payments & Advances', icon: CreditCard },
+        { id: 'sales-targets', label: 'Sales Targets', icon: Target },
       ],
     },
     {

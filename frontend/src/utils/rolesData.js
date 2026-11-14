@@ -26,6 +26,13 @@ export const SYSTEM_MODULES = [
     sensitivity: 'Operational',
   },
   {
+    id: 'sales-targets',
+    label: 'Sales Targets',
+    category: 'Orders & Billing',
+    description: 'Set sales target value, deadline date, and client count, and assign targets to showroom executives.',
+    sensitivity: 'Operational',
+  },
+  {
     id: 'returns',
     label: 'Returns & Repairs',
     category: 'Orders & Billing',
@@ -191,6 +198,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'dashboard',
     'orders',
     'payments',
+    'sales-targets',
     'returns',
     'products',
     'categories',
