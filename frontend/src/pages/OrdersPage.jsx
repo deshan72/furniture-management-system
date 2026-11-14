@@ -48,6 +48,83 @@ import {
   sanitizePhoneInput,
 } from '../utils/validators';
 
+// WhatsApp Official SVG Icon Component
+const WhatsAppIcon = ({ size = 15, color = 'currentColor', style = {} }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill={color}
+    style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0, ...style }}
+  >
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+  </svg>
+);
+
+// Format WhatsApp Click-to-Chat URL
+export const getWhatsAppUrl = (phone, text = '') => {
+  if (!phone) return null;
+  let clean = String(phone).replace(/\D/g, '');
+  if (clean.startsWith('0')) {
+    clean = '94' + clean.slice(1);
+  } else if (!clean.startsWith('94')) {
+    clean = '94' + clean;
+  }
+  const encodedText = text ? `?text=${encodeURIComponent(text)}` : '';
+  return `https://wa.me/${clean}${encodedText}`;
+};
+
+// Generates professional structured invoice summary for WhatsApp
+export const generateWhatsAppInvoiceMessage = (order) => {
+  if (!order) return '';
+
+  const isInstallment = order.payment_type === 'installment';
+  const customerName = order.customer_name || 'Valued Customer';
+  const nic = order.customer_nic || order.customer_id || 'N/A';
+  const phone = order.customer_phone || '';
+  const center = order.center_code || 'C001';
+  const orderDate = order.date ? formatDate(order.date) : new Date().toLocaleDateString('en-GB');
+
+  let paymentSection = '';
+  if (isInstallment) {
+    paymentSection = `💰 *PAYMENT TERMS (INSTALLMENT PLAN)*
+• Gross Total: ${formatLKR(order.gross_amount || 0)}
+• Advance Paid: ${formatLKR(order.advance_paid || 0)}
+• Remaining Balance: ${formatLKR(order.balance_due || 0)}
+• Monthly/Weekly Plan: ${formatLKR(order.installment_value || 0)} / ${order.loan_frequency || 'Monthly'}
+• Terms: ${order.loan_terms || 12} Installments${order.first_due_date ? `\n• First Due Date: ${formatDate(order.first_due_date)}` : ''}`;
+  } else {
+    paymentSection = `💰 *PAYMENT DETAILS (FULL CASH)*
+• Total Amount: ${formatLKR(order.gross_amount || 0)}
+• Advance / Paid: ${formatLKR(order.gross_amount || 0)}
+• Payment Status: Fully Paid (Settled)`;
+  }
+
+  return `🛋️ *D N S HOME SOLUTIONS*
+*Official Customer Sales Invoice & Agreement*
+───────────────────────────
+📄 *Invoice No:* ${order.invoice_no || 'N/A'}
+📜 *Contract No:* ${order.contract_no || 'N/A'}
+📅 *Date:* ${orderDate}
+
+👤 *CUSTOMER INFORMATION*
+• Name: ${customerName}
+• NIC: ${nic}
+• Phone: ${phone}
+• Center Code: ${center}
+${order.customer_address ? `• Delivery Address: ${order.customer_address}\n` : ''}
+🛋️ *ITEM SPECIFICATIONS*
+• Item: ${order.item_name || 'Furniture Item'}${order.item_code ? ` (${order.item_code})` : ''}
+• Quantity: ${order.quantity || 1} Unit(s)
+• Unit Price: ${formatLKR(order.unit_price || 0)}
+${Number(order.document_charge) > 0 ? `• Agreement / Doc Fee: ${formatLKR(order.document_charge)}\n` : ''}
+${paymentSection}
+
+───────────────────────────
+✨ *Thank you for your business with D N S Home Solutions!*
+📞 For inquiries & customer support: 0772345671`;
+};
+
 export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   // Orders, customers, products and centers data
   const [orders, setOrders] = useState(() => loadSavedOrders());
@@ -125,6 +202,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   const [formFirstDueDate, setFormFirstDueDate] = useState('');
   const [formPaymentMethod, setFormPaymentMethod] = useState('Cash');
   const [formNotes, setFormNotes] = useState('');
+  const [formAutoWhatsApp, setFormAutoWhatsApp] = useState(true);
 
   // Sync external changes from localStorage and fetch latest products from backend/Supabase
   useEffect(() => {
@@ -572,7 +650,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   };
 
   // Submit and Place Order
-  const handleConfirmPlaceOrder = (andPrint = false) => {
+  const handleConfirmPlaceOrder = ({ andPrint = false, andWhatsApp = false } = {}) => {
     if (!formSelectedCustomer) {
       alert('Please select an active registered customer. Only active clients can place orders.');
       return;
@@ -634,9 +712,10 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       customer_id: formSelectedCustomer.nic || formSelectedCustomer.customer_id,
       customer_name: formSelectedCustomer.name,
       customer_phone: formSelectedCustomer.phone,
+      customer_whatsapp: formSelectedCustomer.whatsapp || formSelectedCustomer.phone,
       customer_nic: formSelectedCustomer.nic || formSelectedCustomer.customer_id,
       customer_address: formDeliveryAddress || formSelectedCustomer.address,
-      branch_code: formBranchCode || formSelectedCustomer.branch_code || 'MHG',
+      branch_code: '',
       center_code: formatCenterCode(formCenterCode || formSelectedCustomer.center_code || 'C001'),
       item_id: formSelectedProduct.id,
       item_code: formSelectedProduct.item_code,
@@ -684,7 +763,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     // Broadcast live notifications for real-time order creation & advance payment
     addLiveNotification({
       title: `New Order: ${newOrder.invoice_no}`,
-      desc: `${newOrder.item_name} (Qty: ${newOrder.quantity || 1}) placed for ${newOrder.customer_name} (${newOrder.branch_code}/${newOrder.center_code}). Total: ${formatLKR(newOrder.gross_amount)}.`,
+      desc: `${newOrder.item_name} (Qty: ${newOrder.quantity || 1}) placed for ${newOrder.customer_name} (${newOrder.center_code}). Total: ${formatLKR(newOrder.gross_amount)}.`,
       category: 'orders',
       type: 'order',
       targetTab: 'orders',
@@ -704,10 +783,29 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     setActiveSelectedOrder(newOrder);
     setIsAddOrderModalOpen(false);
 
+    if (andWhatsApp) {
+      handleSendWhatsAppInvoice(newOrder);
+    }
+
     if (andPrint) {
       setIsPrintModalOpen(true);
     } else {
       setIsOrderSuccessModalOpen(true);
+    }
+  };
+
+  // Send WhatsApp Invoice Directly to Customer
+  const handleSendWhatsAppInvoice = (order) => {
+    if (!order) return;
+    const targetPhone = order.customer_whatsapp || order.customer_phone || '';
+    if (!targetPhone) {
+      alert('Customer phone number is missing. Cannot send WhatsApp invoice.');
+      return;
+    }
+    const message = generateWhatsAppInvoiceMessage(order);
+    const waUrl = getWhatsAppUrl(targetPhone, message);
+    if (waUrl) {
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -1508,6 +1606,26 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     <button
                       type="button"
                       className="btn btn-secondary"
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        color: '#15803D',
+                        borderColor: '#86EFAC',
+                        background: '#F0FDF4',
+                        fontWeight: 700,
+                      }}
+                      title="Send Invoice to Customer via WhatsApp"
+                      onClick={() => handleSendWhatsAppInvoice(order)}
+                    >
+                      <WhatsAppIcon size={13} color="#15803D" /> WhatsApp
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
                       style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                       onClick={() => {
                         setActiveSelectedOrder(order);
@@ -1700,6 +1818,27 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                             }}
                           >
                             <Printer size={12} /> Invoice
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{
+                              padding: '4px 6px',
+                              fontSize: '0.72rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              whiteSpace: 'nowrap',
+                              color: '#15803D',
+                              borderColor: '#86EFAC',
+                              background: '#F0FDF4',
+                              fontWeight: 700,
+                            }}
+                            title={`Send Invoice via WhatsApp to ${order.customer_name} (${order.customer_phone})`}
+                            onClick={() => handleSendWhatsAppInvoice(order)}
+                          >
+                            <WhatsAppIcon size={12} color="#15803D" /> WhatsApp
                           </button>
 
                           <button
@@ -2887,8 +3026,44 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
             )}
           </div>
 
+          {/* WhatsApp Notification Option */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              background: '#F0FDF4',
+              border: '1px solid #BBF7D0',
+              borderRadius: '8px',
+              fontSize: '0.82rem',
+              color: '#166534',
+              marginTop: '10px',
+              flexWrap: 'wrap',
+              gap: '8px',
+            }}
+          >
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={formAutoWhatsApp}
+                onChange={(e) => setFormAutoWhatsApp(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#16A34A', cursor: 'pointer' }}
+              />
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <WhatsAppIcon size={16} color="#25D366" />
+                Send Invoice to Customer via WhatsApp
+              </span>
+            </label>
+            {formSelectedCustomer && (
+              <span style={{ fontSize: '0.78rem', color: '#15803D', fontWeight: 700, fontFamily: 'monospace' }}>
+                Recipient: 📱 {formSelectedCustomer.whatsapp || formSelectedCustomer.phone}
+              </span>
+            )}
+          </div>
+
           {/* Modal Actions */}
-          <div className="modal-actions" style={{ marginTop: '8px' }}>
+          <div className="modal-actions" style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -2897,25 +3072,46 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               Cancel
             </button>
 
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => handleConfirmPlaceOrder(true)}
-              disabled={!formSelectedCustomer || !formSelectedProduct}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-            >
-              <Printer size={15} /> Place & Print Bill
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleConfirmPlaceOrder({ andWhatsApp: true })}
+                disabled={!formSelectedCustomer || !formSelectedProduct}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 700,
+                  color: '#15803D',
+                  borderColor: '#86EFAC',
+                  background: '#F0FDF4',
+                }}
+                title="Create order and open WhatsApp to send invoice to customer"
+              >
+                <WhatsAppIcon size={15} color="#15803D" /> Place & WhatsApp
+              </button>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => handleConfirmPlaceOrder(false)}
-              disabled={!formSelectedCustomer || !formSelectedProduct}
-              style={{ fontWeight: 800, padding: '9px 18px' }}
-            >
-              <CheckCircle size={16} /> Confirm & Place Order
-            </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleConfirmPlaceOrder({ andPrint: true })}
+                disabled={!formSelectedCustomer || !formSelectedProduct}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <Printer size={15} /> Place & Print Bill
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleConfirmPlaceOrder({ andWhatsApp: formAutoWhatsApp })}
+                disabled={!formSelectedCustomer || !formSelectedProduct}
+                style={{ fontWeight: 800, padding: '9px 18px' }}
+              >
+                <CheckCircle size={16} /> Confirm & Place Order
+              </button>
+            </div>
           </div>
         </div>
       </Modal>
@@ -2995,6 +3191,69 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                 <div>Invoice: <strong>{placedSuccessOrder.invoice_no}</strong></div>
                 <div>Date: <strong>{formatDate(placedSuccessOrder.date)}</strong></div>
               </div>
+            </div>
+
+            {/* WhatsApp Invoice Direct Share Banner */}
+            <div
+              style={{
+                background: '#F0FDF4',
+                border: '1px solid #BBF7D0',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    background: '#25D366',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    flexShrink: 0,
+                    boxShadow: '0 2px 8px rgba(37, 211, 102, 0.35)',
+                  }}
+                >
+                  <WhatsAppIcon size={20} color="#fff" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#166534', fontSize: '0.88rem' }}>
+                    Send Invoice & Agreement via WhatsApp
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#15803D' }}>
+                    Recipient: <strong>{placedSuccessOrder.customer_name}</strong> (📞 {placedSuccessOrder.customer_whatsapp || placedSuccessOrder.customer_phone})
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSendWhatsAppInvoice(placedSuccessOrder)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#25D366',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
+                }}
+              >
+                <WhatsAppIcon size={15} color="#fff" /> WhatsApp Invoice Now
+              </button>
             </div>
 
             {/* 2-Column Summary Cards: Client & Item */}
@@ -3096,17 +3355,40 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
             {/* Modal Actions */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', flexWrap: 'wrap', gap: '8px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setIsOrderSuccessModalOpen(false);
-                  setIsPrintModalOpen(true);
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-              >
-                <Printer size={15} /> Print Agreement / Bill
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsAppInvoice(placedSuccessOrder)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#25D366',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
+                  }}
+                >
+                  <WhatsAppIcon size={16} color="#fff" /> WhatsApp Invoice
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setIsOrderSuccessModalOpen(false);
+                    setIsPrintModalOpen(true);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  <Printer size={15} /> Print Agreement / Bill
+                </button>
+              </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
@@ -3243,6 +3525,24 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     <CreditCard size={14} /> Payments & Advances
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => handleSendWhatsAppInvoice(activeSelectedOrder)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 700,
+                    color: '#15803D',
+                    borderColor: '#86EFAC',
+                    background: '#F0FDF4',
+                  }}
+                  title="Send Invoice to Customer via WhatsApp"
+                >
+                  <WhatsAppIcon size={14} color="#15803D" /> WhatsApp Invoice
+                </button>
+
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -3423,7 +3723,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               </div>
             </div>
 
-            <div className="modal-actions">
+            <div className="modal-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -3431,14 +3731,35 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
               >
                 Close
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => handlePrintSingleInvoicePDF(activeSelectedOrder)}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}
-              >
-                <Printer size={15} /> Download / Print PDF
-              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => handleSendWhatsAppInvoice(activeSelectedOrder)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 700,
+                    color: '#15803D',
+                    borderColor: '#86EFAC',
+                    background: '#F0FDF4',
+                  }}
+                  title="Send Invoice to Customer via WhatsApp"
+                >
+                  <WhatsAppIcon size={14} color="#15803D" /> Send via WhatsApp
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => handlePrintSingleInvoicePDF(activeSelectedOrder)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}
+                >
+                  <Printer size={15} /> Download / Print PDF
+                </button>
+              </div>
             </div>
           </div>
         )}
