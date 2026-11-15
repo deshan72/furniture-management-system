@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Wallet,
   Building,
+  Building2,
   User,
   Clock,
   FileText,

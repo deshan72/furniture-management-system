@@ -297,6 +297,9 @@ export const INITIAL_SYSTEM_ROLES = [
       'dashboard',
       'orders',
       'payments',
+      'center-cash-payments',
+      'single-customer-payments',
+      'sales-targets',
       'returns',
       'products',
       'categories',
@@ -534,11 +537,13 @@ export const hasPageAccess = (roleOrUser, pageId) => {
   // The Main Dashboard is ALWAYS accessible to avoid lockout
   if (pageId === 'dashboard') return true;
 
-  // Intercept reports aliases
-  const targetIds =
-    pageId === 'reports' || pageId === 'reports-sales'
-      ? ['reports', 'reports-sales']
-      : [pageId];
+  // Intercept reports and payments aliases
+  let targetIds = [pageId];
+  if (pageId === 'reports' || pageId === 'reports-sales') {
+    targetIds = ['reports', 'reports-sales'];
+  } else if (pageId === 'center-cash-payments' || pageId === 'single-customer-payments' || pageId === 'payments') {
+    targetIds = ['payments', 'center-cash-payments', 'single-customer-payments'];
+  }
 
   // Check from live roles catalog
   try {
