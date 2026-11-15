@@ -11,18 +11,25 @@ export const REPORT_TYPES = [
     badge: 'Sales',
   },
   {
+    id: 'profit_margin',
+    label: 'Profit & Loss Report',
+    subtitle: 'Daily, monthly, and yearly net profit, revenue vs production COGS',
+    iconName: 'TrendingUp',
+    badge: 'Profits',
+  },
+  {
+    id: 'cash_collection',
+    label: 'Cash Collections Report',
+    subtitle: 'Daily & monthly field cash recovery, advances, centers & routes',
+    iconName: 'Wallet',
+    badge: 'Cash',
+  },
+  {
     id: 'inventory_valuation',
     label: 'Stock Valuation',
     subtitle: 'Finished furniture inventory, cost valuation, and reorder levels',
     iconName: 'Package',
     badge: 'Stock',
-  },
-  {
-    id: 'profit_margin',
-    label: 'Profit & Margins',
-    subtitle: 'Gross revenue vs. cost of goods sold (COGS) and net margin %',
-    iconName: 'TrendingUp',
-    badge: 'Margins',
   },
 ];
 
@@ -519,4 +526,197 @@ export const printReportToPDF = ({
   printHtmlDocument(docHtml, {
     title: `DNS_${String(reportTitle || 'Report').replace(/[^a-zA-Z0-9_-]/g, '_')}`,
   });
+};
+
+/**
+ * Aggregates daily profit and loss figures across orders and expenses.
+ */
+export const aggregateDailyProfits = (orders = [], expenses = []) => {
+  const map = {};
+
+  orders.forEach((o) => {
+    const d = String(o.date || o.created_at || '').slice(0, 10);
+    if (!d) return;
+    if (!map[d]) {
+      map[d] = { date: d, ordersCount: 0, revenue: 0, cogs: 0, expenses: 0 };
+    }
+    const rev = Number(o.gross_amount) || 0;
+    const cogs = Number(o.cogs) || (Number(o.cost_price) ? Number(o.cost_price) * (Number(o.quantity) || 1) : Math.round(rev * 0.65));
+    map[d].ordersCount += 1;
+    map[d].revenue += rev;
+    map[d].cogs += cogs;
+  });
+
+  expenses.forEach((e) => {
+    const d = String(e.date || e.created_at || '').slice(0, 10);
+    if (!d) return;
+    if (!map[d]) {
+      map[d] = { date: d, ordersCount: 0, revenue: 0, cogs: 0, expenses: 0 };
+    }
+    map[d].expenses += Number(e.amount) || 0;
+  });
+
+  return Object.values(map)
+    .map((row) => {
+      const grossProfit = row.revenue - row.cogs;
+      const netProfit = grossProfit - row.expenses;
+      const marginPct = row.revenue > 0 ? Math.round((netProfit / row.revenue) * 100) : 0;
+      return {
+        ...row,
+        grossProfit,
+        netProfit,
+        marginPct,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+};
+
+/**
+ * Aggregates monthly profit and loss figures (YYYY-MM).
+ */
+export const aggregateMonthlyProfits = (orders = [], expenses = []) => {
+  const map = {};
+
+  orders.forEach((o) => {
+    const d = String(o.date || o.created_at || '').slice(0, 7);
+    if (!d) return;
+    if (!map[d]) {
+      map[d] = { month: d, ordersCount: 0, revenue: 0, cogs: 0, expenses: 0 };
+    }
+    const rev = Number(o.gross_amount) || 0;
+    const cogs = Number(o.cogs) || (Number(o.cost_price) ? Number(o.cost_price) * (Number(o.quantity) || 1) : Math.round(rev * 0.65));
+    map[d].ordersCount += 1;
+    map[d].revenue += rev;
+    map[d].cogs += cogs;
+  });
+
+  expenses.forEach((e) => {
+    const d = String(e.date || e.created_at || '').slice(0, 7);
+    if (!d) return;
+    if (!map[d]) {
+      map[d] = { month: d, ordersCount: 0, revenue: 0, cogs: 0, expenses: 0 };
+    }
+    map[d].expenses += Number(e.amount) || 0;
+  });
+
+  return Object.values(map)
+    .map((row) => {
+      const grossProfit = row.revenue - row.cogs;
+      const netProfit = grossProfit - row.expenses;
+      const marginPct = row.revenue > 0 ? Math.round((netProfit / row.revenue) * 100) : 0;
+      return {
+        ...row,
+        grossProfit,
+        netProfit,
+        marginPct,
+      };
+    })
+    .sort((a, b) => b.month.localeCompare(a.month));
+};
+
+/**
+ * Aggregates yearly profit and loss figures (YYYY).
+ */
+export const aggregateYearlyProfits = (orders = [], expenses = []) => {
+  const map = {};
+
+  orders.forEach((o) => {
+    const d = String(o.date || o.created_at || '').slice(0, 4);
+    if (!d) return;
+    if (!map[d]) {
+      map[d] = { year: d, ordersCount: 0, revenue: 0, cogs: 0, expenses: 0 };
+    }
+    const rev = Number(o.gross_amount) || 0;
+    const cogs = Number(o.cogs) || (Number(o.cost_price) ? Number(o.cost_price) * (Number(o.quantity) || 1) : Math.round(rev * 0.65));
+    map[d].ordersCount += 1;
+    map[d].revenue += rev;
+    map[d].cogs += cogs;
+  });
+
+  expenses.forEach((e) => {
+    const d = String(e.date || e.created_at || '').slice(0, 4);
+    if (!d) return;
+    if (!map[d]) {
+      map[d] = { year: d, ordersCount: 0, revenue: 0, cogs: 0, expenses: 0 };
+    }
+    map[d].expenses += Number(e.amount) || 0;
+  });
+
+  return Object.values(map)
+    .map((row) => {
+      const grossProfit = row.revenue - row.cogs;
+      const netProfit = grossProfit - row.expenses;
+      const marginPct = row.revenue > 0 ? Math.round((netProfit / row.revenue) * 100) : 0;
+      return {
+        ...row,
+        grossProfit,
+        netProfit,
+        marginPct,
+      };
+    })
+    .sort((a, b) => b.year.localeCompare(a.year));
+};
+
+/**
+ * Aggregates cash collections by date, center/route, and payment method.
+ */
+export const aggregateCashCollections = (payments = []) => {
+  const dailyMap = {};
+  const centerMap = {};
+  const methodMap = {};
+
+  let totalCollected = 0;
+
+  payments.forEach((p) => {
+    const amt = Number(p.amount) || 0;
+    totalCollected += amt;
+
+    // Daily
+    const d = String(p.date || p.created_at || '').slice(0, 10);
+    if (d) {
+      if (!dailyMap[d]) {
+        dailyMap[d] = { date: d, count: 0, total: 0, cash: 0, bank: 0, online: 0, cheque: 0 };
+      }
+      dailyMap[d].count += 1;
+      dailyMap[d].total += amt;
+      const m = String(p.payment_method || 'Cash').toLowerCase();
+      if (m.includes('cash')) dailyMap[d].cash += amt;
+      else if (m.includes('bank')) dailyMap[d].bank += amt;
+      else if (m.includes('cheque')) dailyMap[d].cheque += amt;
+      else dailyMap[d].online += amt;
+    }
+
+    // Center / Route
+    const c = String(p.center_code || 'Single Direct').trim().toUpperCase();
+    if (!centerMap[c]) {
+      centerMap[c] = { centerCode: c, count: 0, total: 0 };
+    }
+    centerMap[c].count += 1;
+    centerMap[c].total += amt;
+
+    // Payment Method
+    const method = String(p.payment_method || 'Cash').trim();
+    if (!methodMap[method]) {
+      methodMap[method] = { method, count: 0, total: 0 };
+    }
+    methodMap[method].count += 1;
+    methodMap[method].total += amt;
+  });
+
+  const dailyList = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
+  const centerList = Object.values(centerMap).sort((a, b) => b.total - a.total);
+  const methodList = Object.values(methodMap)
+    .map((m) => ({
+      ...m,
+      pct: totalCollected > 0 ? Math.round((m.total / totalCollected) * 100) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    totalCollected,
+    totalCount: payments.length,
+    dailyList,
+    centerList,
+    methodList,
+  };
 };

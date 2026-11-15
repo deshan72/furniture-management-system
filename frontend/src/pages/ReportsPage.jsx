@@ -3,6 +3,8 @@ import {
   BarChart3,
   Package,
   TrendingUp,
+  Wallet,
+  CreditCard,
   Download,
   Printer,
   Search,
@@ -24,17 +26,31 @@ import {
   CheckCircle2,
   ExternalLink,
   Hammer,
+  Share2,
+  SlidersHorizontal,
+  Filter,
+  ArrowUpRight,
+  ArrowDownRight,
+  Percent,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
+import Modal from '../components/Modal';
 import { formatLKR, formatDate, formatDateTime } from '../utils/formatters';
 import { formatCenterCode } from '../utils/centersData';
 import { INITIAL_PRODUCTS } from '../utils/productUtils';
+import { loadSavedPayments, sanitizeOrphanedPayments } from '../utils/paymentsData';
 import {
   REPORT_TYPES,
   loadAllOrders,
+  loadAllExpenses,
   exportReportToCSV,
   printReportToPDF,
+  aggregateDailyProfits,
+  aggregateMonthlyProfits,
+  aggregateYearlyProfits,
+  aggregateCashCollections,
 } from '../utils/reportsData';
+import { apiRequest } from '../services/api';
 
 // Helper: Extract Initials from Customer Name
 const getInitials = (name) => {
@@ -51,13 +67,19 @@ export default function ReportsPage({
   onNavigate = null,
 }) {
   const getValidReport = (type) => {
-    return ['sales_revenue', 'inventory_valuation', 'profit_margin'].includes(type)
+    return ['sales_revenue', 'profit_margin', 'cash_collection', 'inventory_valuation'].includes(type)
       ? type
       : 'sales_revenue';
   };
 
   // Active Report Type State
   const [activeReport, setActiveReport] = useState(() => getValidReport(initialReportType));
+
+  // Sub-tabs for Profit Report: 'daily' | 'monthly' | 'yearly' | 'orders'
+  const [profitPeriodTab, setProfitPeriodTab] = useState('daily');
+
+  // Sub-tabs for Cash Collection Report: 'receipts' | 'daily' | 'centers' | 'methods'
+  const [cashCollectionSubTab, setCashCollectionSubTab] = useState('receipts');
 
   // View Mode: 'table' | 'cards'
   const [viewMode, setViewMode] = useState('table');
@@ -74,10 +96,11 @@ export default function ReportsPage({
   }, [initialReportType]);
 
   // Filter States
-  const [datePreset, setDatePreset] = useState('all'); // 'today', 'week', 'month', 'quarter', 'ytd', 'all', 'custom'
+  const [datePreset, setDatePreset] = useState('all'); // 'all', 'today', 'yesterday', 'week', 'month', 'quarter', 'ytd', 'custom'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [centerFilter, setCenterFilter] = useState(selectedCenter || 'all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all'); // 'all', 'Cash', 'Bank Transfer', 'Online Deposit', 'Cheque'
   const [searchQuery, setSearchQuery] = useState('');
 
   // Sync center filter if selectedCenter prop changes
@@ -87,8 +110,10 @@ export default function ReportsPage({
     }
   }, [selectedCenter]);
 
-  // Sourced Data from LocalStorage with safe fallbacks
+  // Sourced Data from LocalStorage & APIs with real-time updates
   const [orders, setOrders] = useState(() => loadAllOrders());
+  const [payments, setPayments] = useState(() => loadSavedPayments());
+  const [expenses, setExpenses] = useState(() => loadAllExpenses());
 
   const [products, setProducts] = useState(() => {
     try {
@@ -101,10 +126,46 @@ export default function ReportsPage({
     return INITIAL_PRODUCTS;
   });
 
-  // Sync with live storage updates when orders or products change
+  // Sync fresh data from API / Supabase on mount and listen to storage events
   useEffect(() => {
+    let isMounted = true;
+
+    // Fetch live orders
+    apiRequest('/orders')
+      .then((res) => {
+        if (!isMounted) return;
+        const fetchedList = Array.isArray(res) ? res : res && Array.isArray(res.data) ? res.data : null;
+        if (fetchedList && fetchedList.length > 0) {
+          setOrders((prev) => {
+            const dbIds = new Set(fetchedList.map((d) => d.id));
+            const localOnly = prev.filter((p) => !dbIds.has(p.id));
+            return [...fetchedList, ...localOnly];
+          });
+        }
+      })
+      .catch((e) => console.warn('Reports orders API sync notice:', e));
+
+    // Fetch live payments
+    apiRequest('/payments')
+      .then((res) => {
+        if (!isMounted) return;
+        const fetchedPayments = Array.isArray(res) ? res : res && Array.isArray(res.data) ? res.data : null;
+        if (fetchedPayments && fetchedPayments.length > 0) {
+          setPayments((prev) => {
+            const dbIds = new Set(fetchedPayments.map((d) => d.id));
+            const localOnly = prev.filter((p) => !dbIds.has(p.id));
+            const merged = [...fetchedPayments, ...localOnly];
+            return sanitizeOrphanedPayments(merged, loadAllOrders());
+          });
+        }
+      })
+      .catch((e) => console.warn('Reports payments API sync notice:', e));
+
+    // Real-time synchronization event listeners
     const handleStorage = () => {
       setOrders(loadAllOrders());
+      setPayments(loadSavedPayments());
+      setExpenses(loadAllExpenses());
       try {
         const savedP = localStorage.getItem('dnd_products_list');
         if (savedP) {
@@ -113,42 +174,68 @@ export default function ReportsPage({
         }
       } catch {}
     };
+
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('dnd_orders_updated', handleStorage);
+    window.addEventListener('dnd_payments_updated', handleStorage);
+    window.addEventListener('dnd_customers_updated', handleStorage);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('dnd_orders_updated', handleStorage);
+      window.removeEventListener('dnd_payments_updated', handleStorage);
+      window.removeEventListener('dnd_customers_updated', handleStorage);
+    };
   }, []);
 
-  // Calculate Date Boundaries based on Presets
-  const dateRangeBounds = useMemo(() => {
+  // Quick Date Presets Handler
+  const handleDatePreset = (preset) => {
+    setDatePreset(preset);
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
 
-    if (datePreset === 'today') {
-      return { start: todayStr, end: todayStr };
-    }
-    if (datePreset === 'week') {
+    if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      setStartDate(yStr);
+      setEndDate(yStr);
+    } else if (preset === 'week') {
       const day = now.getDay();
       const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
       const monday = new Date(now.setDate(diffToMonday));
-      return { start: monday.toISOString().slice(0, 10), end: todayStr };
-    }
-    if (datePreset === 'month') {
+      setStartDate(monday.toISOString().slice(0, 10));
+      setEndDate(todayStr);
+    } else if (preset === 'month') {
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { start: firstDay.toISOString().slice(0, 10), end: todayStr };
-    }
-    if (datePreset === 'quarter') {
+      setStartDate(firstDay.toISOString().slice(0, 10));
+      setEndDate(todayStr);
+    } else if (preset === 'quarter') {
       const currentQuarter = Math.floor(now.getMonth() / 3);
       const firstDayQ = new Date(now.getFullYear(), currentQuarter * 3, 1);
-      return { start: firstDayQ.toISOString().slice(0, 10), end: todayStr };
-    }
-    if (datePreset === 'ytd') {
+      setStartDate(firstDayQ.toISOString().slice(0, 10));
+      setEndDate(todayStr);
+    } else if (preset === 'ytd') {
       const firstDayYear = new Date(now.getFullYear(), 0, 1);
-      return { start: firstDayYear.toISOString().slice(0, 10), end: todayStr };
+      setStartDate(firstDayYear.toISOString().slice(0, 10));
+      setEndDate(todayStr);
     }
-    if (datePreset === 'custom') {
+  };
+
+  // Calculate Date Boundaries
+  const dateRangeBounds = useMemo(() => {
+    if (startDate || endDate) {
       return { start: startDate, end: endDate };
     }
     return { start: '', end: '' };
-  }, [datePreset, startDate, endDate]);
+  }, [startDate, endDate]);
 
   // Check if a record date is within the active date filter
   const isDateInRange = (dateStr) => {
@@ -171,6 +258,34 @@ export default function ReportsPage({
     return cCode === formatCenterCode(centerFilter);
   };
 
+  // Reset all filters
+  const handleResetFilters = () => {
+    setDatePreset('all');
+    setStartDate('');
+    setEndDate('');
+    setCenterFilter('all');
+    setPaymentMethodFilter('all');
+    setSearchQuery('');
+  };
+
+  const isAnyFilterActive =
+    datePreset !== 'all' ||
+    centerFilter !== 'all' ||
+    paymentMethodFilter !== 'all' ||
+    Boolean(searchQuery.trim()) ||
+    Boolean(startDate) ||
+    Boolean(endDate);
+
+  // Active filter count
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (datePreset !== 'all' || startDate || endDate) count += 1;
+    if (centerFilter !== 'all') count += 1;
+    if (paymentMethodFilter !== 'all') count += 1;
+    if (searchQuery.trim()) count += 1;
+    return count;
+  }, [datePreset, startDate, endDate, centerFilter, paymentMethodFilter, searchQuery]);
+
   // Current center filter label text
   const currentCenterLabel = useMemo(() => {
     if (!centerFilter || centerFilter === 'all') return 'All Centers (Island-Wide)';
@@ -183,31 +298,20 @@ export default function ReportsPage({
 
   // Current date range text for reports header
   const currentDateRangeLabel = useMemo(() => {
-    if (datePreset === 'all') return 'All Recorded History (Cumulative)';
-    if (datePreset === 'today') return `Today (${formatDate(dateRangeBounds.start)})`;
-    if (datePreset === 'week') return `This Week (${formatDate(dateRangeBounds.start)} to ${formatDate(dateRangeBounds.end)})`;
-    if (datePreset === 'month') return `This Month (${formatDate(dateRangeBounds.start)} to ${formatDate(dateRangeBounds.end)})`;
-    if (datePreset === 'quarter') return `This Quarter (${formatDate(dateRangeBounds.start)} to ${formatDate(dateRangeBounds.end)})`;
-    if (datePreset === 'ytd') return `Year to Date (${formatDate(dateRangeBounds.start)} to ${formatDate(dateRangeBounds.end)})`;
-    if (datePreset === 'custom') {
-      return `${startDate ? formatDate(startDate) : 'Start'} to ${endDate ? formatDate(endDate) : 'End'}`;
+    if (datePreset === 'all' && !startDate && !endDate) return 'All Recorded History (Cumulative)';
+    if (datePreset === 'today') return `Today (${formatDate(startDate)})`;
+    if (datePreset === 'yesterday') return `Yesterday (${formatDate(startDate)})`;
+    if (datePreset === 'week') return `This Week (${formatDate(startDate)} to ${formatDate(endDate)})`;
+    if (datePreset === 'month') return `This Month (${formatDate(startDate)} to ${formatDate(endDate)})`;
+    if (datePreset === 'quarter') return `This Quarter (${formatDate(startDate)} to ${formatDate(endDate)})`;
+    if (datePreset === 'ytd') return `Year to Date (${formatDate(startDate)} to ${formatDate(endDate)})`;
+    if (startDate && endDate) {
+      return `${formatDate(startDate)} to ${formatDate(endDate)}`;
     }
+    if (startDate) return `From ${formatDate(startDate)}`;
+    if (endDate) return `Up to ${formatDate(endDate)}`;
     return 'Active Period';
-  }, [datePreset, dateRangeBounds, startDate, endDate]);
-
-  // Reset all filters
-  const handleResetFilters = () => {
-    setDatePreset('all');
-    setStartDate('');
-    setEndDate('');
-    setCenterFilter('all');
-    setSearchQuery('');
-  };
-
-  const isAnyFilterActive =
-    datePreset !== 'all' ||
-    centerFilter !== 'all' ||
-    searchQuery.trim().length > 0;
+  }, [datePreset, startDate, endDate]);
 
   // =========================================================
   // 1. FILTERED REPORT DATASETS
@@ -218,6 +322,10 @@ export default function ReportsPage({
     return orders.filter((o) => {
       if (!isDateInRange(o.date)) return false;
       if (!isCenterMatch(o.branch_code, o.center_code)) return false;
+      if (paymentMethodFilter !== 'all') {
+        const pm = String(o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment')).toLowerCase();
+        if (!pm.includes(paymentMethodFilter.toLowerCase())) return false;
+      }
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const inv = String(o.invoice_no || o.contract_no || o.id || '').toLowerCase();
@@ -235,7 +343,7 @@ export default function ReportsPage({
       }
       return true;
     });
-  }, [orders, dateRangeBounds, centerFilter, searchQuery]);
+  }, [orders, dateRangeBounds, centerFilter, paymentMethodFilter, searchQuery]);
 
   // Report 2: Inventory & Stock Valuation Dataset
   const filteredInventoryData = useMemo(() => {
@@ -253,10 +361,9 @@ export default function ReportsPage({
     });
   }, [products, searchQuery]);
 
-  // Report 3: Profit & Loss / Margin Dataset
+  // Report 3: Profit & Loss / Margin Dataset (Orders with COGS & Margins)
   const filteredProfitData = useMemo(() => {
     return filteredSalesData.map((o) => {
-      // Find approximate matching product to calculate cost of production
       const summary = String(o.items_summary || o.item_name || '').toLowerCase();
       const matchedProd = products.find((p) => {
         if (!p) return false;
@@ -283,6 +390,138 @@ export default function ReportsPage({
     });
   }, [filteredSalesData, products]);
 
+  // Filtered Expenses
+  const filteredExpensesData = useMemo(() => {
+    return expenses.filter((e) => {
+      if (!isDateInRange(e.date)) return false;
+      if (!isCenterMatch(e.branch_code, e.center_code)) return false;
+      return true;
+    });
+  }, [expenses, dateRangeBounds, centerFilter]);
+
+  // Daily, Monthly, Yearly Profit Aggregations
+  const dailyProfitRows = useMemo(() => {
+    return aggregateDailyProfits(filteredProfitData, filteredExpensesData);
+  }, [filteredProfitData, filteredExpensesData]);
+
+  const monthlyProfitRows = useMemo(() => {
+    return aggregateMonthlyProfits(filteredProfitData, filteredExpensesData);
+  }, [filteredProfitData, filteredExpensesData]);
+
+  const yearlyProfitRows = useMemo(() => {
+    return aggregateYearlyProfits(filteredProfitData, filteredExpensesData);
+  }, [filteredProfitData, filteredExpensesData]);
+
+  // High-Level Profit KPIs
+  const profitKpis = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const thisMonthStr = todayStr.slice(0, 7);
+    const thisYearStr = todayStr.slice(0, 4);
+
+    // Today's Profit
+    const todayRow = dailyProfitRows.find((r) => r.date === todayStr);
+    const todayProfit = todayRow ? todayRow.netProfit : 0;
+
+    // This Month's Profit
+    const monthRow = monthlyProfitRows.find((r) => r.month === thisMonthStr);
+    const monthProfit = monthRow ? monthRow.netProfit : 0;
+
+    // This Year's Profit
+    const yearRow = yearlyProfitRows.find((r) => r.year === thisYearStr);
+    const yearProfit = yearRow ? yearRow.netProfit : 0;
+
+    // Overall Period Profit & Margin
+    const totalRev = filteredProfitData.reduce((s, p) => s + (Number(p.gross_amount) || 0), 0);
+    const totalCOGS = filteredProfitData.reduce((s, p) => s + (Number(p.cogs) || 0), 0);
+    const totalExp = filteredExpensesData.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const totalNetProfit = totalRev - totalCOGS - totalExp;
+    const overallMargin = totalRev > 0 ? Math.round((totalNetProfit / totalRev) * 100) : 0;
+
+    return {
+      todayProfit,
+      monthProfit,
+      yearProfit,
+      totalRev,
+      totalCOGS,
+      totalExp,
+      totalNetProfit,
+      overallMargin,
+    };
+  }, [dailyProfitRows, monthlyProfitRows, yearlyProfitRows, filteredProfitData, filteredExpensesData]);
+
+  // Report 4: Cash Collections Dataset
+  const filteredPaymentsData = useMemo(() => {
+    return payments.filter((p) => {
+      // Date filter
+      if (!isDateInRange(p.date || p.created_at)) return false;
+
+      // Center filter
+      if (centerFilter && centerFilter !== 'all') {
+        const pCenter = formatCenterCode(p.center_code);
+        if (centerFilter.includes('/')) {
+          const [, selC] = centerFilter.split('/');
+          if (pCenter !== formatCenterCode(selC)) return false;
+        } else if (pCenter !== formatCenterCode(centerFilter)) {
+          return false;
+        }
+      }
+
+      // Payment method filter
+      if (paymentMethodFilter !== 'all') {
+        const m = String(p.payment_method || '').toLowerCase();
+        if (!m.includes(paymentMethodFilter.toLowerCase())) return false;
+      }
+
+      // Live search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const match =
+          String(p.receipt_no || '').toLowerCase().includes(q) ||
+          String(p.customer_name || '').toLowerCase().includes(q) ||
+          String(p.customer_nic || '').toLowerCase().includes(q) ||
+          String(p.customer_phone || '').toLowerCase().includes(q) ||
+          String(p.contract_no || '').toLowerCase().includes(q) ||
+          String(p.invoice_no || '').toLowerCase().includes(q) ||
+          String(p.payment_type || '').toLowerCase().includes(q) ||
+          String(p.notes || '').toLowerCase().includes(q);
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [payments, dateRangeBounds, centerFilter, paymentMethodFilter, searchQuery]);
+
+  // Cash Collection Aggregations
+  const cashCollectionStats = useMemo(() => {
+    return aggregateCashCollections(filteredPaymentsData);
+  }, [filteredPaymentsData]);
+
+  // High-Level Cash Collection KPIs
+  const cashKpis = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const thisMonthStr = todayStr.slice(0, 7);
+
+    const todayCollected = payments
+      .filter((p) => String(p.date || '').slice(0, 10) === todayStr)
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+    const monthCollected = payments
+      .filter((p) => String(p.date || '').slice(0, 7) === thisMonthStr)
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+
+    const periodCollected = filteredPaymentsData.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const uniqueDays = new Set(filteredPaymentsData.map((p) => String(p.date).slice(0, 10))).size || 1;
+    const avgDailyRecovery = Math.round(periodCollected / uniqueDays);
+
+    return {
+      todayCollected,
+      monthCollected,
+      periodCollected,
+      avgDailyRecovery,
+      totalReceipts: filteredPaymentsData.length,
+    };
+  }, [payments, filteredPaymentsData]);
+
   // Active Report Object Definition
   const activeReportObj = REPORT_TYPES.find((r) => r.id === activeReport) || REPORT_TYPES[0];
 
@@ -298,43 +537,40 @@ export default function ReportsPage({
 
   const handleExportCSV = () => {
     const meta = {
-      'DNS Home Solutions': 'Official Management Report Ledger',
-      'Report Type': activeReportObj.label,
-      'Regional Hub': currentCenterLabel,
-      'Time Horizon': currentDateRangeLabel,
-      'Generated On': formatDateTime(new Date().toISOString()),
+      dateRange: currentDateRangeLabel,
+      center: currentCenterLabel,
     };
 
     if (activeReport === 'sales_revenue') {
       const headers = [
         'Invoice No',
-        'Contract No',
         'Date',
-        'Customer ID',
         'Customer Name',
+        'NIC / ID',
         'Phone',
-        'Regional Hub',
-        'Furniture Items',
+        'Center Hub',
+        'Furniture Summary',
+        'Category',
         'Gross Amount (LKR)',
         'Advance Paid (LKR)',
         'Balance Due (LKR)',
-        'Payment Method',
-        'Status',
+        'Payment Mode',
+        'Order Status',
       ];
       const rows = filteredSalesData.map((o) => [
-        o.invoice_no || o.id,
-        o.contract_no || '-',
-        o.date,
-        o.customer_id || o.customer_nic || '-',
+        o.invoice_no || o.contract_no || o.id,
+        formatDate(o.date),
         o.customer_name || 'Client',
+        o.customer_id || o.customer_nic || '-',
         o.customer_phone || '-',
-        `${o.branch_code || 'MHG'}/${o.center_code || 'C001'}`,
+        `${o.branch_code || 'MHG'}/${formatCenterCode(o.center_code || 'C001')}`,
         o.items_summary || o.item_name || 'Solid Wood Furniture',
+        o.category || 'wood',
         Number(o.gross_amount) || 0,
         Number(o.advance_paid) || 0,
         Number(o.balance_due) || 0,
-        o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment'),
-        o.status || 'Active',
+        o.payment_method || 'Cash',
+        o.status || 'Active Loan',
       ]);
       const totalGross = filteredSalesData.reduce((s, o) => s + (Number(o.gross_amount) || 0), 0);
       const totalAdv = filteredSalesData.reduce((s, o) => s + (Number(o.advance_paid) || 0), 0);
@@ -342,89 +578,106 @@ export default function ReportsPage({
       const summaryRow = ['TOTALS', '', '', '', '', '', '', `${filteredSalesData.length} Orders`, totalGross, totalAdv, totalBal, '', ''];
 
       exportReportToCSV({
-        filename: `DNS_Home_Solutions_Sales_Turnover_${Date.now()}`,
-        reportTitle: 'Sales Turnover & Invoice Revenue Audit',
-        headers,
-        rows,
-        summaryRow,
-        metadata: meta,
-      });
-    } else if (activeReport === 'inventory_valuation') {
-      const headers = [
-        'Item Code',
-        'Product Name',
-        'Category',
-        'Wood / Material',
-        'Stock Units',
-        'Unit Cost (LKR)',
-        'Selling Price (LKR)',
-        'Cost Valuation (LKR)',
-        'Retail Valuation (LKR)',
-      ];
-      const rows = filteredInventoryData.map((p) => [
-        p.item_code,
-        p.name,
-        p.category,
-        p.wood_type || 'Timber',
-        Number(p.stock_quantity) || 0,
-        Number(p.cost_price) || 0,
-        Number(p.selling_price) || 0,
-        (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0),
-        (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
-      ]);
-      const totalCostVal = filteredInventoryData.reduce(
-        (s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0),
-        0
-      );
-      const totalRetailVal = filteredInventoryData.reduce(
-        (s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
-        0
-      );
-      const summaryRow = ['TOTALS', '', '', '', '', '', '', totalCostVal, totalRetailVal];
-
-      exportReportToCSV({
-        filename: `DNS_Home_Solutions_Stock_Valuation_${Date.now()}`,
-        reportTitle: 'Inventory Stock Valuation & Model Catalog Report',
+        filename: `DNS_Sales_Revenue_${new Date().toISOString().slice(0, 10)}`,
+        reportTitle: 'Sales & Invoiced Revenue Report',
         headers,
         rows,
         summaryRow,
         metadata: meta,
       });
     } else if (activeReport === 'profit_margin') {
-      const headers = [
-        'Invoice No',
-        'Date',
-        'Customer Name',
-        'Items Description',
-        'Gross Revenue (LKR)',
-        'Estimated COGS (LKR)',
-        'Gross Profit (LKR)',
-        'Gross Margin %',
-        'Payment Method',
-      ];
-      const rows = filteredProfitData.map((p) => [
-        p.invoice_no || p.contract_no || p.id,
-        p.date,
+      if (profitPeriodTab === 'daily') {
+        const headers = ['Date', 'Orders Count', 'Gross Revenue (LKR)', 'COGS (LKR)', 'Expenses (LKR)', 'Net Profit (LKR)', 'Margin %'];
+        const rows = dailyProfitRows.map((r) => [r.date, r.ordersCount, r.revenue, r.cogs, r.expenses, r.netProfit, `${r.marginPct}%`]);
+        exportReportToCSV({
+          filename: `DNS_Daily_Profit_Report_${new Date().toISOString().slice(0, 10)}`,
+          reportTitle: 'Daily Profit & Loss Report',
+          headers,
+          rows,
+          metadata: meta,
+        });
+      } else if (profitPeriodTab === 'monthly') {
+        const headers = ['Month', 'Orders Count', 'Gross Revenue (LKR)', 'COGS (LKR)', 'Expenses (LKR)', 'Net Profit (LKR)', 'Margin %'];
+        const rows = monthlyProfitRows.map((r) => [r.month, r.ordersCount, r.revenue, r.cogs, r.expenses, r.netProfit, `${r.marginPct}%`]);
+        exportReportToCSV({
+          filename: `DNS_Monthly_Profit_Report_${new Date().toISOString().slice(0, 10)}`,
+          reportTitle: 'Monthly Profit & Loss Report',
+          headers,
+          rows,
+          metadata: meta,
+        });
+      } else if (profitPeriodTab === 'yearly') {
+        const headers = ['Year', 'Orders Count', 'Gross Revenue (LKR)', 'COGS (LKR)', 'Expenses (LKR)', 'Net Profit (LKR)', 'Margin %'];
+        const rows = yearlyProfitRows.map((r) => [r.year, r.ordersCount, r.revenue, r.cogs, r.expenses, r.netProfit, `${r.marginPct}%`]);
+        exportReportToCSV({
+          filename: `DNS_Yearly_Profit_Report_${new Date().toISOString().slice(0, 10)}`,
+          reportTitle: 'Yearly Profit & Loss Report',
+          headers,
+          rows,
+          metadata: meta,
+        });
+      } else {
+        const headers = ['Invoice No', 'Date', 'Customer', 'Furniture Item', 'Revenue (LKR)', 'COGS (LKR)', 'Gross Profit (LKR)', 'Margin %'];
+        const rows = filteredProfitData.map((p) => [
+          p.invoice_no || p.contract_no || p.id,
+          formatDate(p.date),
+          p.customer_name || 'Client',
+          p.matched_item || p.items_summary || p.item_name,
+          Number(p.gross_amount) || 0,
+          Number(p.cogs) || 0,
+          Number(p.gross_profit) || 0,
+          `${p.margin_pct}%`,
+        ]);
+        exportReportToCSV({
+          filename: `DNS_Order_Profits_${new Date().toISOString().slice(0, 10)}`,
+          reportTitle: 'Order-by-Order Profit Breakdown',
+          headers,
+          rows,
+          metadata: meta,
+        });
+      }
+    } else if (activeReport === 'cash_collection') {
+      const headers = ['Receipt No', 'Date', 'Customer Name', 'NIC / Phone', 'Ref / Contract', 'Payment Type', 'Center Hub', 'Payment Method', 'Collected By', 'Amount (LKR)'];
+      const rows = filteredPaymentsData.map((p) => [
+        p.receipt_no || p.id,
+        formatDate(p.date),
         p.customer_name || 'Client',
-        p.items_summary || p.item_name || 'Solid Wood Furniture',
-        Number(p.gross_amount) || 0,
-        Number(p.cogs) || 0,
-        Number(p.gross_profit) || 0,
-        `${p.margin_pct || 0}%`,
-        p.payment_method || (p.payment_type === 'cash' ? 'Cash' : 'Installment Loan'),
+        `${p.customer_nic || ''} ${p.customer_phone || ''}`.trim(),
+        p.contract_no || p.invoice_no || '-',
+        p.payment_type || 'Installment',
+        p.center_code || 'Direct Single',
+        p.payment_method || 'Cash',
+        p.collected_by || 'Officer',
+        Number(p.amount) || 0,
       ]);
-      const totalRev = filteredProfitData.reduce((s, p) => s + (Number(p.gross_amount) || 0), 0);
-      const totalCOGS = filteredProfitData.reduce((s, p) => s + (Number(p.cogs) || 0), 0);
-      const totalProfit = totalRev - totalCOGS;
-      const overallMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
-      const summaryRow = ['TOTALS', '', '', '', totalRev, totalCOGS, totalProfit, `${overallMargin}%`, ''];
+      const summaryRow = ['TOTALS', '', '', '', '', '', '', '', `${filteredPaymentsData.length} Receipts`, cashKpis.periodCollected];
 
       exportReportToCSV({
-        filename: `DNS_Home_Solutions_Profit_Margins_${Date.now()}`,
-        reportTitle: 'Gross Profit Margins & Cost Analysis Report',
+        filename: `DNS_Cash_Collections_${new Date().toISOString().slice(0, 10)}`,
+        reportTitle: 'Official Cash Collections Report',
         headers,
         rows,
         summaryRow,
+        metadata: meta,
+      });
+    } else if (activeReport === 'inventory_valuation') {
+      const headers = ['Item Code', 'Furniture Model', 'Category', 'Wood / Material', 'In Stock', 'Cost Price (LKR)', 'Cost Valuation (LKR)', 'Retail Price (LKR)', 'Retail Valuation (LKR)'];
+      const rows = filteredInventoryData.map((p) => [
+        p.item_code,
+        p.name,
+        p.category,
+        p.wood_type || 'Melamine/Teak',
+        Number(p.stock_quantity) || 0,
+        Number(p.cost_price) || 0,
+        (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0),
+        Number(p.selling_price) || 0,
+        (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
+      ]);
+      exportReportToCSV({
+        filename: `DNS_Inventory_Valuation_${new Date().toISOString().slice(0, 10)}`,
+        reportTitle: 'Inventory Stock Valuation Report',
+        headers,
+        rows,
         metadata: meta,
       });
     }
@@ -435,151 +688,153 @@ export default function ReportsPage({
       const totalGross = filteredSalesData.reduce((s, o) => s + (Number(o.gross_amount) || 0), 0);
       const totalAdv = filteredSalesData.reduce((s, o) => s + (Number(o.advance_paid) || 0), 0);
       const totalBal = filteredSalesData.reduce((s, o) => s + (Number(o.balance_due) || 0), 0);
-      const fullyPaidOrders = filteredSalesData.filter((o) => Number(o.balance_due) <= 0);
 
       printReportToPDF({
-        reportTitle: 'Sales Turnover & Revenue Audit Report',
-        subtitle: 'Customer invoice transactions, advance collections, and delivery status',
+        reportTitle: 'Sales & Invoiced Revenue Report',
+        subtitle: 'Official Customer Sales, Contract Value, Advances, and Receivables Ledger',
         dateRangeText: currentDateRangeLabel,
         centerText: currentCenterLabel,
         kpiCards: [
-          { label: 'Total Invoices', value: filteredSalesData.length, sub: 'Orders generated' },
-          { label: 'Gross Revenue', value: formatLKR(totalGross), color: '#1E4D8C' },
+          { label: 'Total Invoiced Sales', value: formatLKR(totalGross), color: '#2563EB' },
           { label: 'Advances Collected', value: formatLKR(totalAdv), color: '#10B981' },
-          { label: 'Fully Settled', value: `${fullyPaidOrders.length} Orders`, color: '#059669' },
+          { label: 'Outstanding Balance', value: formatLKR(totalBal), color: '#DC2626' },
+          { label: 'Total Invoices', value: filteredSalesData.length, sub: 'Generated orders' },
         ],
         tableHeaders: [
           { label: 'Invoice No' },
           { label: 'Date' },
           { label: 'Customer' },
-          { label: 'Hub' },
-          { label: 'Items' },
+          { label: 'Center' },
+          { label: 'Item Description' },
           { label: 'Gross (LKR)', align: 'right' },
           { label: 'Advance (LKR)', align: 'right' },
-          { label: 'Balance Due (LKR)', align: 'right' },
+          { label: 'Balance (LKR)', align: 'right' },
           { label: 'Status', align: 'center' },
         ],
         tableRows: filteredSalesData.map((o) => [
-          `<span style="font-family: monospace; font-weight: 700; color: #1E4D8C;">${o.invoice_no || o.contract_no || o.id}</span>`,
+          `<span style="font-family: monospace; font-weight: 700;">${o.invoice_no || o.contract_no || o.id}</span>`,
           formatDate(o.date),
-          `<strong>${o.customer_name || 'Client'}</strong><br><span style="color: #64748B; font-size: 9px;">${o.customer_id || o.customer_nic || ''}</span>`,
-          `${o.branch_code || 'MHG'}/${o.center_code || 'C001'}`,
+          o.customer_name || 'Client',
+          `${o.branch_code || 'MHG'}/${formatCenterCode(o.center_code || 'C001')}`,
           o.items_summary || o.item_name || 'Solid Wood Furniture',
           formatLKR(Number(o.gross_amount) || 0),
           formatLKR(Number(o.advance_paid) || 0),
-          formatLKR(Number(o.balance_due) || 0),
-          `<span style="font-weight: 700; color: ${(Number(o.balance_due) || 0) > 0 ? '#D97706' : '#10B981'};">${o.status || 'Active'}</span>`,
+          `<strong style="color: ${Number(o.balance_due) > 0 ? '#DC2626' : '#16A34A'};">${formatLKR(Number(o.balance_due) || 0)}</strong>`,
+          `<span class="badge badge-subtle">${o.status || 'Active Loan'}</span>`,
+        ]),
+        summaryCells: ['TOTALS', '', '', '', `${filteredSalesData.length} Orders`, formatLKR(totalGross), formatLKR(totalAdv), formatLKR(totalBal), ''],
+      });
+    } else if (activeReport === 'profit_margin') {
+      printReportToPDF({
+        reportTitle: 'Profit & Loss Performance Report',
+        subtitle: 'Executive Daily, Monthly & Yearly Profit Margin Analysis (Revenue vs COGS)',
+        dateRangeText: currentDateRangeLabel,
+        centerText: currentCenterLabel,
+        kpiCards: [
+          { label: "Today's Profit", value: formatLKR(profitKpis.todayProfit), color: '#10B981' },
+          { label: "This Month's Profit", value: formatLKR(profitKpis.monthProfit), color: '#2563EB' },
+          { label: "This Year's Profit", value: formatLKR(profitKpis.yearProfit), color: '#7C3AED' },
+          { label: 'Net Profit Margin %', value: `${profitKpis.overallMargin}%`, color: '#059669' },
+        ],
+        tableHeaders: [
+          { label: 'Date / Period' },
+          { label: 'Orders Count', align: 'center' },
+          { label: 'Revenue (LKR)', align: 'right' },
+          { label: 'COGS (LKR)', align: 'right' },
+          { label: 'Expenses (LKR)', align: 'right' },
+          { label: 'Net Profit (LKR)', align: 'right' },
+          { label: 'Margin %', align: 'center' },
+        ],
+        tableRows: (profitPeriodTab === 'daily' ? dailyProfitRows : profitPeriodTab === 'monthly' ? monthlyProfitRows : yearlyProfitRows).map((r) => [
+          r.date || r.month || r.year,
+          r.ordersCount,
+          formatLKR(r.revenue),
+          formatLKR(r.cogs),
+          formatLKR(r.expenses),
+          `<strong style="color: ${r.netProfit >= 0 ? '#10B981' : '#DC2626'};">${formatLKR(r.netProfit)}</strong>`,
+          `<strong>${r.marginPct}%</strong>`,
         ]),
         summaryCells: [
           'TOTALS',
-          '',
-          '',
-          '',
-          `${filteredSalesData.length} Orders`,
-          formatLKR(totalGross),
-          formatLKR(totalAdv),
-          formatLKR(totalBal),
-          '',
+          filteredProfitData.length,
+          formatLKR(profitKpis.totalRev),
+          formatLKR(profitKpis.totalCOGS),
+          formatLKR(profitKpis.totalExp),
+          formatLKR(profitKpis.totalNetProfit),
+          `${profitKpis.overallMargin}%`,
         ],
       });
+    } else if (activeReport === 'cash_collection') {
+      printReportToPDF({
+        reportTitle: 'Official Cash Collections Report',
+        subtitle: 'Daily Center Inflows, Single Customer Routes, Advances & Payment Receipts',
+        dateRangeText: currentDateRangeLabel,
+        centerText: currentCenterLabel,
+        kpiCards: [
+          { label: 'Collected Today', value: formatLKR(cashKpis.todayCollected), color: '#10B981' },
+          { label: 'This Month Collections', value: formatLKR(cashKpis.monthCollected), color: '#2563EB' },
+          { label: 'Period Total Inflow', value: formatLKR(cashKpis.periodCollected), color: '#059669' },
+          { label: 'Total Receipts Issued', value: cashKpis.totalReceipts, color: '#7C3AED' },
+        ],
+        tableHeaders: [
+          { label: 'Receipt No' },
+          { label: 'Date' },
+          { label: 'Customer Name' },
+          { label: 'Ref / Contract' },
+          { label: 'Payment Type' },
+          { label: 'Center Hub' },
+          { label: 'Payment Method' },
+          { label: 'Amount (LKR)', align: 'right' },
+        ],
+        tableRows: filteredPaymentsData.map((p) => [
+          `<span style="font-family: monospace; font-weight: 700;">#${p.receipt_no || p.id}</span>`,
+          formatDate(p.date),
+          p.customer_name || 'Client',
+          p.contract_no || p.invoice_no || '-',
+          p.payment_type || 'Installment',
+          p.center_code || 'Direct Single',
+          p.payment_method || 'Cash',
+          `<strong style="color: #10B981;">${formatLKR(Number(p.amount) || 0)}</strong>`,
+        ]),
+        summaryCells: ['TOTALS', '', '', '', '', '', `${filteredPaymentsData.length} Receipts`, formatLKR(cashKpis.periodCollected)],
+      });
     } else if (activeReport === 'inventory_valuation') {
-      const totalCostVal = filteredInventoryData.reduce(
-        (s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0),
-        0
-      );
-      const totalRetailVal = filteredInventoryData.reduce(
-        (s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
-        0
-      );
+      const totalCostVal = filteredInventoryData.reduce((s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0), 0);
+      const totalRetailVal = filteredInventoryData.reduce((s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0), 0);
       const totalUnits = filteredInventoryData.reduce((s, p) => s + (Number(p.stock_quantity) || 0), 0);
 
       printReportToPDF({
-        reportTitle: 'Inventory Valuation & Finished Stock Report',
-        subtitle: 'Cost price asset value vs. potential retail turnover in showrooms',
+        reportTitle: 'Finished Furniture Inventory Stock Valuation Report',
+        subtitle: 'Warehouse Physical Stock, Raw Material Production Cost, and Marked Retail Valuation',
         dateRangeText: currentDateRangeLabel,
         centerText: currentCenterLabel,
         kpiCards: [
-          { label: 'Total Models', value: filteredInventoryData.length, sub: 'Active furniture lines' },
-          { label: 'Total Physical Stock', value: `${totalUnits} Units`, color: '#1E4D8C' },
+          { label: 'Total Models', value: filteredInventoryData.length, color: '#2563EB' },
+          { label: 'Physical Units in Stock', value: totalUnits, color: '#10B981' },
           { label: 'Cost Valuation (COGS)', value: formatLKR(totalCostVal), color: '#F59E0B' },
-          { label: 'Retail Value (Selling)', value: formatLKR(totalRetailVal), color: '#10B981' },
+          { label: 'Retail Valuation', value: formatLKR(totalRetailVal), color: '#8B5CF6' },
         ],
         tableHeaders: [
           { label: 'Item Code' },
-          { label: 'Product Model' },
+          { label: 'Model Name' },
           { label: 'Category' },
-          { label: 'Wood / Finish' },
-          { label: 'Stock', align: 'center' },
-          { label: 'Unit Cost', align: 'right' },
-          { label: 'Selling Price', align: 'right' },
+          { label: 'Material' },
+          { label: 'Stock Qty', align: 'center' },
+          { label: 'Cost Price (LKR)', align: 'right' },
           { label: 'Cost Value (LKR)', align: 'right' },
-          { label: 'Retail Value (LKR)', align: 'right' },
+          { label: 'Retail Price (LKR)', align: 'right' },
         ],
-        tableRows: filteredInventoryData.map((p) => {
-          const qty = Number(p.stock_quantity) || 0;
-          const cost = Number(p.cost_price) || 0;
-          const price = Number(p.selling_price) || 0;
-          return [
-            `<span style="font-family: monospace; font-weight: 700; color: #1E4D8C;">${p.item_code}</span>`,
-            `<strong>${p.name}</strong>`,
-            p.category,
-            `${p.wood_type || 'Wood'} (${p.finish || 'Matte'})`,
-            `<strong style="color: ${qty <= (p.reorder_level || 2) ? '#EF4444' : '#10B981'};">${qty}</strong>`,
-            formatLKR(cost),
-            formatLKR(price),
-            formatLKR(qty * cost),
-            formatLKR(qty * price),
-          ];
-        }),
-        summaryCells: ['TOTAL VALUATION', '', '', '', `${totalUnits} Units`, '', '', formatLKR(totalCostVal), formatLKR(totalRetailVal)],
-      });
-    } else if (activeReport === 'profit_margin') {
-      const totalRev = filteredProfitData.reduce((s, p) => s + (Number(p.gross_amount) || 0), 0);
-      const totalCOGS = filteredProfitData.reduce((s, p) => s + (Number(p.cogs) || 0), 0);
-      const totalProfit = totalRev - totalCOGS;
-      const overallMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
-
-      printReportToPDF({
-        reportTitle: 'Gross Profit Margins & Cost Analysis Report',
-        subtitle: 'Revenue generated vs. manufacturing material and carpentry labor costs',
-        dateRangeText: currentDateRangeLabel,
-        centerText: currentCenterLabel,
-        kpiCards: [
-          { label: 'Total Revenue', value: formatLKR(totalRev), color: '#1E4D8C' },
-          { label: 'Estimated COGS', value: formatLKR(totalCOGS), color: '#D97706' },
-          { label: 'Gross Profit', value: formatLKR(totalProfit), color: '#10B981' },
-          { label: 'Overall Margin %', value: `${overallMargin}%`, color: '#9333EA' },
-        ],
-        tableHeaders: [
-          { label: 'Invoice No' },
-          { label: 'Date' },
-          { label: 'Customer' },
-          { label: 'Furniture Item' },
-          { label: 'Revenue (LKR)', align: 'right' },
-          { label: 'COGS (LKR)', align: 'right' },
-          { label: 'Gross Profit (LKR)', align: 'right' },
-          { label: 'Margin %', align: 'center' },
-        ],
-        tableRows: filteredProfitData.map((p) => [
-          `<span style="font-family: monospace; font-weight: 700;">${p.invoice_no || p.contract_no || p.id}</span>`,
-          formatDate(p.date),
-          p.customer_name || 'Client',
-          p.items_summary || p.item_name || 'Solid Wood Furniture',
-          formatLKR(Number(p.gross_amount) || 0),
-          formatLKR(Number(p.cogs) || 0),
-          `<strong style="color: #10B981;">${formatLKR(Number(p.gross_profit) || 0)}</strong>`,
-          `<strong>${p.margin_pct || 0}%</strong>`,
+        tableRows: filteredInventoryData.map((p) => [
+          `<span style="font-family: monospace; font-weight: 700;">${p.item_code}</span>`,
+          p.name,
+          p.category,
+          p.wood_type || 'Melamine/Teak',
+          p.stock_quantity,
+          formatLKR(p.cost_price),
+          formatLKR((Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0)),
+          formatLKR(p.selling_price),
         ]),
-        summaryCells: [
-          'TOTALS',
-          '',
-          '',
-          '',
-          formatLKR(totalRev),
-          formatLKR(totalCOGS),
-          formatLKR(totalProfit),
-          `${overallMargin}%`,
-        ],
+        summaryCells: ['TOTALS', '', '', '', totalUnits, '', formatLKR(totalCostVal), formatLKR(totalRetailVal)],
       });
     }
   };
@@ -626,6 +881,84 @@ export default function ReportsPage({
             title="Average Order Value"
             value={formatLKR(avgOrder)}
             subtitle="Per client furniture order"
+            icon={TrendingUp}
+            color="#8B5CF6"
+            bg="rgba(139, 92, 246, 0.12)"
+          />
+        </div>
+      );
+    }
+
+    if (activeReport === 'profit_margin') {
+      return (
+        <div className="stats-grid">
+          <StatCard
+            title="Today's Net Profit (දෛනික ලාභය)"
+            value={formatLKR(profitKpis.todayProfit)}
+            subtitle="Today's sales revenue minus COGS"
+            icon={CheckCircle}
+            color="#10B981"
+            bg="rgba(16, 185, 129, 0.12)"
+          />
+          <StatCard
+            title="This Month's Profit (මාසික ලාභය)"
+            value={formatLKR(profitKpis.monthProfit)}
+            subtitle="Current calendar month net profit"
+            icon={Calendar}
+            color="#2563EB"
+            bg="rgba(37, 99, 235, 0.12)"
+          />
+          <StatCard
+            title="This Year's Profit (වාර්ෂික ලාභය)"
+            value={formatLKR(profitKpis.yearProfit)}
+            subtitle="Current annual cumulative net profit"
+            icon={TrendingUp}
+            color="#7C3AED"
+            bg="rgba(124, 58, 237, 0.12)"
+          />
+          <StatCard
+            title="Average Net Margin %"
+            value={`${profitKpis.overallMargin}%`}
+            subtitle="Overall profitability margin ratio"
+            icon={Percent}
+            color="#059669"
+            bg="rgba(5, 150, 105, 0.12)"
+          />
+        </div>
+      );
+    }
+
+    if (activeReport === 'cash_collection') {
+      return (
+        <div className="stats-grid">
+          <StatCard
+            title="Collected Today (අද එකතු කළ මුදල)"
+            value={formatLKR(cashKpis.todayCollected)}
+            subtitle="Across centers & single routes"
+            icon={CheckCircle}
+            color="#10B981"
+            bg="rgba(16, 185, 129, 0.12)"
+          />
+          <StatCard
+            title="This Month Collections (මාසික එකතුව)"
+            value={formatLKR(cashKpis.monthCollected)}
+            subtitle="Monthly total cash recoveries"
+            icon={Calendar}
+            color="#2563EB"
+            bg="rgba(37, 99, 235, 0.12)"
+          />
+          <StatCard
+            title="Period Inflow (තෝරාගත් කාල සීමාව)"
+            value={formatLKR(cashKpis.periodCollected)}
+            subtitle={`From ${cashKpis.totalReceipts} payment receipts issued`}
+            icon={Wallet}
+            color="#059669"
+            bg="rgba(5, 150, 105, 0.12)"
+          />
+          <StatCard
+            title="Average Daily Recovery"
+            value={formatLKR(cashKpis.avgDailyRecovery)}
+            subtitle="Cash recovery velocity per day"
             icon={TrendingUp}
             color="#8B5CF6"
             bg="rgba(139, 92, 246, 0.12)"
@@ -683,50 +1016,6 @@ export default function ReportsPage({
       );
     }
 
-    if (activeReport === 'profit_margin') {
-      const totalRev = filteredProfitData.reduce((s, p) => s + (Number(p.gross_amount) || 0), 0);
-      const totalCOGS = filteredProfitData.reduce((s, p) => s + (Number(p.cogs) || 0), 0);
-      const totalProfit = totalRev - totalCOGS;
-      const overallMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
-
-      return (
-        <div className="stats-grid">
-          <StatCard
-            title="Gross Revenue"
-            value={formatLKR(totalRev)}
-            subtitle={`${filteredProfitData.length} completed furniture sales`}
-            icon={BarChart3}
-            color="#2563EB"
-            bg="rgba(37, 99, 235, 0.12)"
-          />
-          <StatCard
-            title="Estimated COGS"
-            value={formatLKR(totalCOGS)}
-            subtitle="Timber, lacquer, and labor cost"
-            icon={Hammer}
-            color="#F59E0B"
-            bg="rgba(245, 158, 11, 0.12)"
-          />
-          <StatCard
-            title="Gross Profit"
-            value={formatLKR(totalProfit)}
-            subtitle="Revenue minus production cost"
-            icon={CheckCircle}
-            color="#10B981"
-            bg="rgba(16, 185, 129, 0.12)"
-          />
-          <StatCard
-            title="Overall Margin"
-            value={`${overallMargin}%`}
-            subtitle="Average gross profit margin"
-            icon={TrendingUp}
-            color="#9333EA"
-            bg="rgba(147, 51, 234, 0.12)"
-          />
-        </div>
-      );
-    }
-
     return null;
   };
 
@@ -745,259 +1034,87 @@ export default function ReportsPage({
         <table className="custom-table" style={{ width: '100%', minWidth: '1180px', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '2px solid #E2E8F0' }}>
-              <th style={{ width: '14%', minWidth: '150px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+              <th style={{ width: '14%', minWidth: '150px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Invoice & Contract
               </th>
-              <th style={{ width: '10%', minWidth: '110px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                Date
+              <th style={{ width: '10%', minWidth: '110px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Order Date
               </th>
-              <th style={{ width: '22%', minWidth: '220px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Client Profile & NIC
-              </th>
-              <th style={{ width: '10%', minWidth: '110px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                Hub Center
+              <th style={{ width: '18%', minWidth: '180px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Client Details
               </th>
               <th style={{ width: '18%', minWidth: '190px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Furniture Item
+                Furniture Item Ordered
               </th>
-              <th style={{ width: '12%', minWidth: '130px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                Order Value
+              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
+                Gross Total
               </th>
-              <th style={{ width: '12%', minWidth: '130px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <th style={{ width: '11%', minWidth: '110px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
                 Advance Paid
               </th>
-              <th style={{ width: '12%', minWidth: '130px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right', whiteSpace: 'nowrap' }}>
+              <th style={{ width: '11%', minWidth: '110px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
                 Balance Due
               </th>
-              <th style={{ width: '10%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                Payment Mode
-              </th>
-              <th style={{ width: '10%', minWidth: '115px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                Status
-              </th>
-              <th style={{ width: '8%', minWidth: '85px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                Actions
+              <th style={{ width: '6%', minWidth: '70px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
+                Action
               </th>
             </tr>
           </thead>
           <tbody>
             {filteredSalesData.length === 0 ? (
               <tr>
-                <td colSpan={11} style={{ textAlign: 'center', padding: '48px 24px', color: '#64748B' }}>
-                  <Package size={36} color="#94A3B8" style={{ margin: '0 auto 8px', display: 'block' }} />
+                <td colSpan={8} style={{ textAlign: 'center', padding: '50px 20px', color: '#64748B' }}>
                   <strong>No sales invoice records match the selected filters.</strong>
-                  <div style={{ fontSize: '0.8rem', marginTop: '4px' }}>Try switching date presets or clearing the search query.</div>
                 </td>
               </tr>
             ) : (
               filteredSalesData.map((o, idx) => {
-                const isEven = idx % 2 === 0;
-                const pMethod = o.payment_method || (o.payment_type === 'cash' ? 'Cash' : 'Installment');
                 const isPaid = Number(o.balance_due) <= 0;
                 return (
-                  <tr
-                    key={o.id || idx}
-                    style={{
-                      background: isEven ? '#FFFFFF' : '#F8FAFC',
-                      borderBottom: '1px solid #E2E8F0',
-                      transition: 'background 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#EFF6FF')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = isEven ? '#FFFFFF' : '#F8FAFC')}
-                  >
-                    {/* Invoice & Contract */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                      <div
-                        style={{
-                          fontFamily: 'monospace',
-                          fontWeight: 800,
-                          fontSize: '0.82rem',
-                          color: '#1E4D8C',
-                          background: '#EFF6FF',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #BFDBFE',
-                          display: 'inline-block',
-                        }}
-                      >
-                        🧾 {o.invoice_no || o.id}
-                      </div>
-                      {o.contract_no && (
-                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '3px', fontFamily: 'monospace' }}>
-                          📜 {o.contract_no}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Date */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', whiteSpace: 'nowrap', fontSize: '0.82rem', color: '#334155' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <Calendar size={13} color="#64748B" />
-                        <span>{formatDate(o.date)}</span>
-                      </div>
-                    </td>
-
-                    {/* Client Profile */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div
-                          style={{
-                            width: '34px',
-                            height: '34px',
-                            borderRadius: '50%',
-                            background: '#EFF6FF',
-                            border: '1.5px solid #BFDBFE',
-                            color: '#1E4D8C',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 800,
-                            fontSize: '0.75rem',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {getInitials(o.customer_name)}
-                        </div>
-                        <div style={{ overflow: 'hidden' }}>
-                          <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                            {o.customer_name || 'Valued Client'}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
-                            <span className="nic-pill" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.68rem', padding: '1px 6px', background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '4px' }}>
-                              🆔 {o.customer_id || o.customer_nic || 'N/A'}
-                            </span>
-                            {o.customer_phone && (
-                              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                📞 {o.customer_phone}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Hub */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          background: '#F1F5F9',
-                          border: '1px solid #CBD5E1',
-                          color: '#334155',
-                        }}
-                      >
-                        📍 {o.branch_code || 'MHG'}/{formatCenterCode(o.center_code || 'C001')}
-                      </span>
-                    </td>
-
-                    {/* Furniture Item */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#1E293B' }}>
-                        🪵 {o.items_summary || o.item_name || 'Handcrafted Furniture'}
+                  <tr key={o.id || idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                    <td style={{ padding: '12px' }}>
+                      <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#1E4D8C', fontSize: '0.86rem' }}>
+                        {o.invoice_no || o.contract_no || o.id}
                       </div>
                       <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                        {o.item_code ? `Code: ${o.item_code} • ` : ''}Qty: {o.quantity || 1}
+                        {o.branch_code || 'MHG'}/{formatCenterCode(o.center_code || 'C001')}
                       </div>
                     </td>
-
-                    {/* Gross Order Value */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0F172A', fontFamily: 'var(--font-heading)' }}>
-                        {formatLKR(Number(o.gross_amount) || 0)}
-                      </span>
+                    <td style={{ padding: '12px', fontSize: '0.82rem', color: '#475569' }}>
+                      {formatDate(o.date)}
                     </td>
-
-                    {/* Advance Paid */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontWeight: 700,
-                          fontSize: '0.84rem',
-                          color: '#059669',
-                          background: 'rgba(16, 185, 129, 0.1)',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                        }}
-                      >
-                        + {formatLKR(Number(o.advance_paid) || 0)}
-                      </span>
+                    <td style={{ padding: '12px' }}>
+                      <div style={{ fontWeight: 800, color: '#0F172A', fontSize: '0.86rem' }}>{o.customer_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                        NIC: {o.customer_nic || o.customer_id || '-'} • 📞 {o.customer_phone || '-'}
+                      </div>
                     </td>
-
-                    {/* Balance Due */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontWeight: 800,
-                          fontSize: '0.86rem',
-                          color: isPaid ? '#10B981' : '#D97706',
-                          background: isPaid ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.12)',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          border: `1px solid ${isPaid ? '#A7F3D0' : '#FDE68A'}`,
-                        }}
-                      >
-                        {formatLKR(Number(o.balance_due) || 0)}
-                      </span>
+                    <td style={{ padding: '12px' }}>
+                      <div style={{ fontWeight: 700, color: '#334155', fontSize: '0.84rem' }}>
+                        {o.items_summary || o.item_name || 'Solid Wood Furniture'}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#2563EB', marginTop: '2px' }}>
+                        {o.category || 'Custom Furniture'}
+                      </div>
                     </td>
-
-                    {/* Payment Mode */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          background: pMethod.toLowerCase().includes('cash') ? '#ECFDF5' : '#EFF6FF',
-                          color: pMethod.toLowerCase().includes('cash') ? '#047857' : '#1D4ED8',
-                          border: `1px solid ${pMethod.toLowerCase().includes('cash') ? '#A7F3D0' : '#BFDBFE'}`,
-                        }}
-                      >
-                        {pMethod.toLowerCase().includes('cash') ? '💵 Cash' : '🏦 ' + pMethod}
-                      </span>
+                    <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.88rem', color: '#0F172A' }}>
+                      {formatLKR(o.gross_amount)}
                     </td>
-
-                    {/* Status */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                          color: isPaid ? '#15803D' : '#B45309',
-                          border: `1px solid ${isPaid ? '#86EFAC' : '#FDE68A'}`,
-                        }}
-                      >
-                        {isPaid ? '✓ Fully Paid' : '⏳ Active Loan'}
-                      </span>
+                    <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.88rem', color: '#10B981' }}>
+                      {formatLKR(o.advance_paid)}
                     </td>
-
-                    {/* Quick View Button */}
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, fontSize: '0.88rem', color: isPaid ? '#10B981' : '#DC2626' }}>
+                      {formatLKR(o.balance_due)}
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
                       <button
                         type="button"
-                        className="btn btn-outline"
                         onClick={() => handleOpenDetail(o)}
-                        title="View Full Order Breakdown"
-                        style={{ padding: '4px 8px', fontSize: '0.74rem', borderRadius: '6px' }}
+                        className="btn btn-secondary"
+                        style={{ padding: '5px 8px', fontSize: '0.74rem' }}
+                        title="View full audit record"
                       >
-                        <Eye size={13} /> View
+                        <Eye size={13} />
                       </button>
                     </td>
                   </tr>
@@ -1007,20 +1124,20 @@ export default function ReportsPage({
           </tbody>
           {filteredSalesData.length > 0 && (
             <tfoot>
-              <tr style={{ background: '#F1F5F9', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
-                <td colSpan={5} style={{ padding: '14px 16px', textAlign: 'right', textTransform: 'uppercase', color: '#1E293B', fontSize: '0.78rem' }}>
+              <tr style={{ background: '#F1F5F9', borderTop: '2px solid #CBD5E1', fontWeight: 900, fontSize: '0.86rem' }}>
+                <td colSpan={4} style={{ padding: '14px 12px', color: '#1E293B' }}>
                   Summary Total ({filteredSalesData.length} Orders):
                 </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#1E4D8C', fontSize: '0.92rem' }}>
+                <td style={{ padding: '14px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#0F172A' }}>
                   {formatLKR(totalGross)}
                 </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#059669', fontSize: '0.92rem' }}>
-                  +{formatLKR(totalAdv)}
+                <td style={{ padding: '14px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#10B981' }}>
+                  {formatLKR(totalAdv)}
                 </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#D97706', fontSize: '0.92rem' }}>
+                <td style={{ padding: '14px 12px', textAlign: 'right', fontFamily: 'monospace', color: totalBal > 0 ? '#DC2626' : '#10B981' }}>
                   {formatLKR(totalBal)}
                 </td>
-                <td colSpan={3}></td>
+                <td></td>
               </tr>
             </tfoot>
           )}
@@ -1028,327 +1145,695 @@ export default function ReportsPage({
       );
     }
 
-    // 2. Stock Valuation Table
+    // 2. Profit & Loss Report Tables (Daily, Monthly, Yearly, and Order Breakdown)
+    if (activeReport === 'profit_margin') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Sub-Tab Navigation for Profit Breakdown */}
+          <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid #E2E8F0', paddingBottom: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setProfitPeriodTab('daily')}
+              style={{
+                border: 'none',
+                background: profitPeriodTab === 'daily' ? '#1E4D8C' : '#F1F5F9',
+                color: profitPeriodTab === 'daily' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Calendar size={15} /> 📅 Daily Profit (දෛනික ලාභය) ({dailyProfitRows.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProfitPeriodTab('monthly')}
+              style={{
+                border: 'none',
+                background: profitPeriodTab === 'monthly' ? '#1E4D8C' : '#F1F5F9',
+                color: profitPeriodTab === 'monthly' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Calendar size={15} /> 🗓️ Monthly Profit (මාසික ලාභය) ({monthlyProfitRows.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProfitPeriodTab('yearly')}
+              style={{
+                border: 'none',
+                background: profitPeriodTab === 'yearly' ? '#1E4D8C' : '#F1F5F9',
+                color: profitPeriodTab === 'yearly' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <TrendingUp size={15} /> 📈 Yearly Profit (වාර්ෂික ලාභය) ({yearlyProfitRows.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProfitPeriodTab('orders')}
+              style={{
+                border: 'none',
+                background: profitPeriodTab === 'orders' ? '#1E4D8C' : '#F1F5F9',
+                color: profitPeriodTab === 'orders' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <List size={15} /> 📋 Order-by-Order Breakdown ({filteredProfitData.length})
+            </button>
+          </div>
+
+          {/* Daily Profit View */}
+          {profitPeriodTab === 'daily' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '950px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', textAlign: 'left', width: '16%' }}>Date (දිනය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '12%' }}>Orders Count</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Gross Revenue (ආදායම)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Production COGS (වියදම)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Daily Net Profit (දෛනික ශුද්ධ ලාභය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '18%' }}>Margin %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyProfitRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No sales or profit records found for the selected period.
+                    </td>
+                  </tr>
+                ) : (
+                  dailyProfitRows.map((r, idx) => (
+                    <tr key={r.date} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                      <td style={{ padding: '12px', fontWeight: 800, color: '#0F172A' }}>
+                        {formatDate(r.date)}
+                        {r.date === new Date().toISOString().slice(0, 10) && (
+                          <span style={{ marginLeft: '8px', fontSize: '0.68rem', background: '#DCFCE7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                            TODAY
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700 }}>
+                        {r.ordersCount} Orders
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800 }}>
+                        {formatLKR(r.revenue)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#F59E0B', fontWeight: 700 }}>
+                        {formatLKR(r.cogs)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: r.netProfit >= 0 ? '#10B981' : '#DC2626', fontSize: '0.94rem' }}>
+                        {formatLKR(r.netProfit)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', background: r.marginPct >= 25 ? '#DCFCE7' : '#FEF3C7', color: r.marginPct >= 25 ? '#166534' : '#B45309', padding: '3px 8px', borderRadius: '12px', fontWeight: 800 }}>
+                          {r.marginPct}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* Monthly Profit View */}
+          {profitPeriodTab === 'monthly' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '950px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', textAlign: 'left', width: '20%' }}>Month (මාසය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '12%' }}>Total Orders</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Monthly Revenue (ආදායම)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Total Production Cost</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Monthly Net Profit (මාසික ලාභය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '14%' }}>Net Margin %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyProfitRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No monthly profit history available.
+                    </td>
+                  </tr>
+                ) : (
+                  monthlyProfitRows.map((r, idx) => (
+                    <tr key={r.month} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                      <td style={{ padding: '12px', fontWeight: 800, color: '#0F172A', fontSize: '0.92rem' }}>
+                        📅 {r.month}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700 }}>
+                        {r.ordersCount} Orders
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800 }}>
+                        {formatLKR(r.revenue)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#F59E0B', fontWeight: 700 }}>
+                        {formatLKR(r.cogs)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: r.netProfit >= 0 ? '#10B981' : '#DC2626', fontSize: '0.96rem' }}>
+                        {formatLKR(r.netProfit)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.8rem', background: '#DBEAFE', color: '#1E40AF', padding: '3px 10px', borderRadius: '12px', fontWeight: 800 }}>
+                          {r.marginPct}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* Yearly Profit View */}
+          {profitPeriodTab === 'yearly' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '950px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', textAlign: 'left', width: '22%' }}>Financial Year (වර්ෂය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '14%' }}>Annual Orders</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Annual Revenue (ආදායම)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Annual Production Cost</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '18%' }}>Annual Net Profit (වාර්ෂික ලාභය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '10%' }}>Margin %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {yearlyProfitRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No yearly profit data found.
+                    </td>
+                  </tr>
+                ) : (
+                  yearlyProfitRows.map((r, idx) => (
+                    <tr key={r.year} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                      <td style={{ padding: '12px', fontWeight: 900, color: '#1E4D8C', fontSize: '1rem' }}>
+                        🏛️ Year {r.year}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700 }}>
+                        {r.ordersCount} Orders
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800 }}>
+                        {formatLKR(r.revenue)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#F59E0B', fontWeight: 700 }}>
+                        {formatLKR(r.cogs)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: r.netProfit >= 0 ? '#10B981' : '#DC2626', fontSize: '1rem' }}>
+                        {formatLKR(r.netProfit)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.84rem', background: '#DCFCE7', color: '#166534', padding: '3px 10px', borderRadius: '12px', fontWeight: 800 }}>
+                          {r.marginPct}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* Orders Itemized Breakdown View */}
+          {profitPeriodTab === 'orders' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '1050px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', width: '14%' }}>Invoice No</th>
+                  <th style={{ padding: '12px', width: '10%' }}>Date</th>
+                  <th style={{ padding: '12px', width: '20%' }}>Customer Name</th>
+                  <th style={{ padding: '12px', width: '20%' }}>Furniture Model</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '12%' }}>Selling Price</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '12%' }}>Est. COGS</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '12%' }}>Gross Profit</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '10%' }}>Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProfitData.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No order breakdown records available for selected filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProfitData.map((p, idx) => (
+                    <tr key={p.id || idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                      <td style={{ padding: '12px', fontFamily: 'monospace', fontWeight: 800, color: '#1E4D8C' }}>
+                        {p.invoice_no || p.contract_no || p.id}
+                      </td>
+                      <td style={{ padding: '12px', fontSize: '0.82rem', color: '#475569' }}>
+                        {formatDate(p.date)}
+                      </td>
+                      <td style={{ padding: '12px', fontWeight: 700, color: '#0F172A' }}>
+                        {p.customer_name}
+                      </td>
+                      <td style={{ padding: '12px', color: '#334155' }}>
+                        {p.matched_item || p.items_summary || p.item_name}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800 }}>
+                        {formatLKR(p.gross_amount)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#F59E0B' }}>
+                        {formatLKR(p.cogs)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#10B981' }}>
+                        {formatLKR(p.gross_profit)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', background: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                          {p.margin_pct}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      );
+    }
+
+    // 3. Cash Collections Report Tables
+    if (activeReport === 'cash_collection') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Sub-Tabs for Cash Collection Views */}
+          <div style={{ display: 'flex', gap: '8px', borderBottom: '2px solid #E2E8F0', paddingBottom: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setCashCollectionSubTab('receipts')}
+              style={{
+                border: 'none',
+                background: cashCollectionSubTab === 'receipts' ? '#10B981' : '#F1F5F9',
+                color: cashCollectionSubTab === 'receipts' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <FileText size={15} /> 📋 All Receipts (සියලුම ලදුපත්) ({filteredPaymentsData.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCashCollectionSubTab('daily')}
+              style={{
+                border: 'none',
+                background: cashCollectionSubTab === 'daily' ? '#10B981' : '#F1F5F9',
+                color: cashCollectionSubTab === 'daily' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Calendar size={15} /> 📅 Daily Cash Summary (දිනපතා සාරාංශය) ({cashCollectionStats.dailyList.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCashCollectionSubTab('centers')}
+              style={{
+                border: 'none',
+                background: cashCollectionSubTab === 'centers' ? '#10B981' : '#F1F5F9',
+                color: cashCollectionSubTab === 'centers' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Building2 size={15} /> 🏢 Centers & Routes (මධ්‍යස්ථාන හා Routes) ({cashCollectionStats.centerList.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCashCollectionSubTab('methods')}
+              style={{
+                border: 'none',
+                background: cashCollectionSubTab === 'methods' ? '#10B981' : '#F1F5F9',
+                color: cashCollectionSubTab === 'methods' ? '#FFFFFF' : '#475569',
+                padding: '8px 18px',
+                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <CreditCard size={15} /> 💳 Payment Methods (ගෙවීම් ක්‍රම)
+            </button>
+          </div>
+
+          {/* View 1: All Receipts Ledger */}
+          {cashCollectionSubTab === 'receipts' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '1100px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', width: '13%' }}>Receipt #</th>
+                  <th style={{ padding: '12px', width: '11%' }}>Date</th>
+                  <th style={{ padding: '12px', width: '18%' }}>Customer Details</th>
+                  <th style={{ padding: '12px', width: '15%' }}>Contract / Ref</th>
+                  <th style={{ padding: '12px', width: '12%' }}>Type</th>
+                  <th style={{ padding: '12px', width: '11%' }}>Method</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '14%' }}>Amount Paid</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '6%' }}>Slip</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPaymentsData.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No payment receipts match the selected filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPaymentsData.map((p, idx) => (
+                    <tr key={p.id || idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                      <td style={{ padding: '12px', fontFamily: 'monospace', fontWeight: 800, color: '#1E4D8C' }}>
+                        #{p.receipt_no || p.id}
+                      </td>
+                      <td style={{ padding: '12px', fontSize: '0.82rem', color: '#475569' }}>
+                        {formatDate(p.date)}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <div style={{ fontWeight: 800, color: '#0F172A' }}>{p.customer_name || 'Client'}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                          NIC: {p.customer_nic || '-'} • 📞 {p.customer_phone || '-'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#2563EB', fontWeight: 700 }}>
+                          {p.contract_no || p.invoice_no || '-'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                          {p.center_code || 'Direct Single'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                          {p.payment_type || 'Installment'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                          {p.payment_method || 'Cash'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#10B981', fontSize: '0.94rem' }}>
+                        {formatLKR(p.amount)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDetail(p)}
+                          className="btn btn-secondary"
+                          style={{ padding: '5px 8px', fontSize: '0.74rem' }}
+                          title="Inspect receipt"
+                        >
+                          <Eye size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {filteredPaymentsData.length > 0 && (
+                <tfoot>
+                  <tr style={{ background: '#F1F5F9', borderTop: '2px solid #CBD5E1', fontWeight: 900, fontSize: '0.88rem' }}>
+                    <td colSpan={6} style={{ padding: '14px 12px', color: '#1E293B' }}>
+                      Total Cash Collections ({filteredPaymentsData.length} Receipts):
+                    </td>
+                    <td style={{ padding: '14px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#10B981', fontSize: '1rem' }}>
+                      {formatLKR(cashKpis.periodCollected)}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          )}
+
+          {/* View 2: Daily Cash Summary Table */}
+          {cashCollectionSubTab === 'daily' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '950px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', width: '18%' }}>Collection Date (දිනය)</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '14%' }}>Receipts Count</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '17%' }}>Cash (LKR)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '17%' }}>Bank Transfer (LKR)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '17%' }}>Online / Cheque (LKR)</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '17%' }}>Total Inflow (LKR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashCollectionStats.dailyList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No daily collections found for selected period.
+                    </td>
+                  </tr>
+                ) : (
+                  cashCollectionStats.dailyList.map((d, idx) => (
+                    <tr key={d.date} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                      <td style={{ padding: '12px', fontWeight: 800, color: '#0F172A' }}>
+                        {formatDate(d.date)}
+                        {d.date === new Date().toISOString().slice(0, 10) && (
+                          <span style={{ marginLeft: '8px', fontSize: '0.68rem', background: '#DCFCE7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                            TODAY
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700 }}>
+                        {d.count} Receipts
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontWeight: 700 }}>
+                        {formatLKR(d.cash)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#2563EB', fontWeight: 700 }}>
+                        {formatLKR(d.bank)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#D97706', fontWeight: 700 }}>
+                        {formatLKR(d.online + d.cheque)}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#10B981', fontSize: '0.94rem' }}>
+                        {formatLKR(d.total)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* View 3: Center & Route Collections Table */}
+          {cashCollectionSubTab === 'centers' && (
+            <table className="custom-table" style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                  <th style={{ padding: '12px', width: '30%' }}>Regional Center / Route Hub</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '20%' }}>Receipts Issued</th>
+                  <th style={{ padding: '12px', textAlign: 'right', width: '25%' }}>Total Cash Collected</th>
+                  <th style={{ padding: '12px', textAlign: 'center', width: '25%' }}>Contribution %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashCollectionStats.centerList.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                      No center collection statistics available.
+                    </td>
+                  </tr>
+                ) : (
+                  cashCollectionStats.centerList.map((c, idx) => {
+                    const pct = cashKpis.periodCollected > 0 ? Math.round((c.total / cashKpis.periodCollected) * 100) : 0;
+                    return (
+                      <tr key={c.centerCode} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                        <td style={{ padding: '12px', fontWeight: 800, color: '#1E4D8C' }}>
+                          🏢 {c.centerCode}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700 }}>
+                          {c.count} Payments
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#10B981', fontSize: '0.95rem' }}>
+                          {formatLKR(c.total)}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <span style={{ fontSize: '0.78rem', background: '#EFF6FF', color: '#1D4ED8', padding: '3px 10px', borderRadius: '10px', fontWeight: 800 }}>
+                            {pct}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
+
+          {/* View 4: Payment Methods Distribution Cards */}
+          {cashCollectionSubTab === 'methods' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+              {cashCollectionStats.methodList.map((m) => (
+                <div
+                  key={m.method}
+                  style={{
+                    background: '#FFFFFF',
+                    borderRadius: '12px',
+                    border: '1.5px solid #E2E8F0',
+                    padding: '18px 20px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <CreditCard size={18} color="#2563EB" /> {m.method}
+                    </div>
+                    <span style={{ fontSize: '0.74rem', background: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: '10px', fontWeight: 800 }}>
+                      {m.pct}%
+                    </span>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Total Inflow</div>
+                    <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#10B981', marginTop: '2px', fontFamily: 'monospace' }}>
+                      {formatLKR(m.total)}
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '4px' }}>
+                      {m.count} confirmed transaction(s)
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // 4. Stock Valuation Table
     if (activeReport === 'inventory_valuation') {
-      const totalCostVal = filteredInventoryData.reduce(
-        (s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0),
-        0
-      );
-      const totalRetailVal = filteredInventoryData.reduce(
-        (s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0),
-        0
-      );
+      const totalCostVal = filteredInventoryData.reduce((s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0), 0);
+      const totalRetailVal = filteredInventoryData.reduce((s, p) => s + (Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0), 0);
       const totalUnits = filteredInventoryData.reduce((s, p) => s + (Number(p.stock_quantity) || 0), 0);
 
       return (
-        <table className="custom-table" style={{ width: '100%', minWidth: '1150px', borderCollapse: 'collapse' }}>
+        <table className="custom-table" style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '2px solid #E2E8F0' }}>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Item Code
-              </th>
-              <th style={{ width: '25%', minWidth: '240px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Product Model & Finish
-              </th>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Category
-              </th>
-              <th style={{ width: '10%', minWidth: '90px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
-                Stock Units
-              </th>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Unit Cost
-              </th>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Selling Price
-              </th>
-              <th style={{ width: '14%', minWidth: '140px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Cost Value
-              </th>
-              <th style={{ width: '14%', minWidth: '140px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Retail Value
-              </th>
+            <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+              <th style={{ padding: '12px', width: '12%' }}>Item Code</th>
+              <th style={{ padding: '12px', width: '22%' }}>Model Name</th>
+              <th style={{ padding: '12px', width: '14%' }}>Category</th>
+              <th style={{ padding: '12px', width: '14%' }}>Material</th>
+              <th style={{ padding: '12px', textAlign: 'center', width: '10%' }}>Stock Units</th>
+              <th style={{ padding: '12px', textAlign: 'right', width: '14%' }}>Cost Valuation</th>
+              <th style={{ padding: '12px', textAlign: 'right', width: '14%' }}>Retail Valuation</th>
             </tr>
           </thead>
           <tbody>
             {filteredInventoryData.length === 0 ? (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '48px 24px', color: '#64748B' }}>
-                  <Package size={36} color="#94A3B8" style={{ margin: '0 auto 8px', display: 'block' }} />
-                  <strong>No inventory models found in database.</strong>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
+                  No stock items match your search.
                 </td>
               </tr>
             ) : (
-              filteredInventoryData.map((p, idx) => {
-                const qty = Number(p.stock_quantity) || 0;
-                const cost = Number(p.cost_price) || 0;
-                const price = Number(p.selling_price) || 0;
-                const isEven = idx % 2 === 0;
-                const isLow = qty <= (p.reorder_level || 2);
-                return (
-                  <tr
-                    key={p.id || idx}
-                    style={{
-                      background: isEven ? '#FFFFFF' : '#F8FAFC',
-                      borderBottom: '1px solid #E2E8F0',
-                      transition: 'background 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#EFF6FF')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = isEven ? '#FFFFFF' : '#F8FAFC')}
-                  >
-                    <td style={{ padding: '12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          fontFamily: 'monospace',
-                          fontWeight: 800,
-                          fontSize: '0.84rem',
-                          color: '#1E4D8C',
-                          background: '#EFF6FF',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #BFDBFE',
-                        }}
-                      >
-                        {p.item_code}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0F172A' }}>
-                        {p.name}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                        {p.wood_type || 'Timber'} • {p.finish || 'Matte Lacquer'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                      <span
-                        style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          background: '#F1F5F9',
-                          color: '#475569',
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {p.category}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'center' }}>
-                      <span
-                        style={{
-                          fontWeight: 800,
-                          fontSize: '0.88rem',
-                          color: isLow ? '#DC2626' : '#0F172A',
-                          background: isLow ? '#FEE2E2' : '#F1F5F9',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          border: isLow ? '1px solid #FECACA' : 'none',
-                        }}
-                      >
-                        {qty}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.84rem', color: '#475569' }}>
-                        {formatLKR(cost)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.86rem', color: '#0F172A' }}>
-                        {formatLKR(price)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#475569' }}>
-                        {formatLKR(qty * cost)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#059669' }}>
-                        {formatLKR(qty * price)}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
+              filteredInventoryData.map((p, idx) => (
+                <tr key={p.id || idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
+                  <td style={{ padding: '12px', fontFamily: 'monospace', fontWeight: 800, color: '#1E4D8C' }}>
+                    {p.item_code}
+                  </td>
+                  <td style={{ padding: '12px', fontWeight: 800, color: '#0F172A' }}>
+                    {p.name}
+                  </td>
+                  <td style={{ padding: '12px', color: '#475569' }}>
+                    {p.category}
+                  </td>
+                  <td style={{ padding: '12px', color: '#475569' }}>
+                    {p.wood_type || 'Melamine/Teak'}
+                  </td>
+                  <td style={{ padding: '12px', textAlign: 'center', fontWeight: 800 }}>
+                    {p.stock_quantity}
+                  </td>
+                  <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#F59E0B', fontWeight: 800 }}>
+                    {formatLKR((Number(p.stock_quantity) || 0) * (Number(p.cost_price) || 0))}
+                  </td>
+                  <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#10B981', fontWeight: 900 }}>
+                    {formatLKR((Number(p.stock_quantity) || 0) * (Number(p.selling_price) || 0))}
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
           {filteredInventoryData.length > 0 && (
             <tfoot>
-              <tr style={{ background: '#F1F5F9', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
-                <td colSpan={3} style={{ padding: '14px 16px', textAlign: 'right', textTransform: 'uppercase', color: '#1E293B', fontSize: '0.78rem' }}>
-                  Stock Portfolio Total:
-                </td>
-                <td style={{ padding: '14px 12px', textAlign: 'center', color: '#1E4D8C', fontSize: '0.9rem' }}>
-                  {totalUnits} Units
-                </td>
-                <td colSpan={2}></td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#64748B', fontSize: '0.92rem' }}>
-                  {formatLKR(totalCostVal)}
-                </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#059669', fontSize: '0.95rem' }}>
-                  {formatLKR(totalRetailVal)}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      );
-    }
-
-    // 3. Profit & Margins Table
-    if (activeReport === 'profit_margin') {
-      const totalRev = filteredProfitData.reduce((s, p) => s + (Number(p.gross_amount) || 0), 0);
-      const totalCOGS = filteredProfitData.reduce((s, p) => s + (Number(p.cogs) || 0), 0);
-      const totalProfit = totalRev - totalCOGS;
-      const overallMargin = totalRev > 0 ? Math.round((totalProfit / totalRev) * 100) : 0;
-
-      return (
-        <table className="custom-table" style={{ width: '100%', minWidth: '1120px', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)', borderBottom: '2px solid #E2E8F0' }}>
-              <th style={{ width: '14%', minWidth: '140px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Invoice No
-              </th>
-              <th style={{ width: '11%', minWidth: '110px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Date
-              </th>
-              <th style={{ width: '18%', minWidth: '180px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Client Name
-              </th>
-              <th style={{ width: '21%', minWidth: '200px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Furniture Item
-              </th>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Revenue
-              </th>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Estimated COGS
-              </th>
-              <th style={{ width: '12%', minWidth: '120px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
-                Gross Profit
-              </th>
-              <th style={{ width: '10%', minWidth: '95px', padding: '14px 12px', fontSize: '0.74rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
-                Margin %
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProfitData.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={{ textAlign: 'center', padding: '48px 24px', color: '#64748B' }}>
-                  <TrendingUp size={36} color="#94A3B8" style={{ margin: '0 auto 8px', display: 'block' }} />
-                  <strong>No profit margin data found for current filters.</strong>
-                </td>
-              </tr>
-            ) : (
-              filteredProfitData.map((p, idx) => {
-                const isEven = idx % 2 === 0;
-                return (
-                  <tr
-                    key={p.id || idx}
-                    style={{
-                      background: isEven ? '#FFFFFF' : '#F8FAFC',
-                      borderBottom: '1px solid #E2E8F0',
-                      transition: 'background 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#EFF6FF')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = isEven ? '#FFFFFF' : '#F8FAFC')}
-                  >
-                    <td style={{ padding: '12px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          fontFamily: 'monospace',
-                          fontWeight: 800,
-                          fontSize: '0.82rem',
-                          color: '#1E4D8C',
-                          background: '#EFF6FF',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          border: '1px solid #BFDBFE',
-                        }}
-                      >
-                        🧾 {p.invoice_no || p.contract_no || p.id}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', whiteSpace: 'nowrap', fontSize: '0.82rem', color: '#334155' }}>
-                      {formatDate(p.date)}
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                      <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>
-                        {p.customer_name || 'Client'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#1E293B' }}>
-                        🪵 {p.items_summary || p.item_name || 'Solid Wood Furniture'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1E293B' }}>
-                        {formatLKR(Number(p.gross_amount) || 0)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.86rem', color: '#64748B' }}>
-                        {formatLKR(Number(p.cogs) || 0)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          fontWeight: 800,
-                          fontSize: '0.9rem',
-                          color: '#059669',
-                          background: 'rgba(16, 185, 129, 0.1)',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                        }}
-                      >
-                        +{formatLKR(Number(p.gross_profit) || 0)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', verticalAlign: 'middle', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          background: '#F3E8FF',
-                          color: '#7E22CE',
-                          border: '1px solid #E9D5FF',
-                        }}
-                      >
-                        {p.margin_pct || 0}%
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-          {filteredProfitData.length > 0 && (
-            <tfoot>
-              <tr style={{ background: '#F1F5F9', borderTop: '2px solid #CBD5E1', fontWeight: 800 }}>
-                <td colSpan={4} style={{ padding: '14px 16px', textAlign: 'right', textTransform: 'uppercase', color: '#1E293B', fontSize: '0.78rem' }}>
-                  Total Profitability Summary:
-                </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#1E4D8C', fontSize: '0.95rem' }}>
-                  {formatLKR(totalRev)}
-                </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#64748B', fontSize: '0.92rem' }}>
-                  {formatLKR(totalCOGS)}
-                </td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#059669', fontSize: '0.98rem' }}>
-                  +{formatLKR(totalProfit)}
-                </td>
-                <td style={{ padding: '14px 12px', textAlign: 'center', color: '#9333EA', fontSize: '0.92rem' }}>
-                  {overallMargin}%
-                </td>
+              <tr style={{ background: '#F1F5F9', borderTop: '2px solid #CBD5E1', fontWeight: 900 }}>
+                <td colSpan={4} style={{ padding: '14px 12px' }}>Total Stock Valuation:</td>
+                <td style={{ padding: '14px 12px', textAlign: 'center' }}>{totalUnits} Units</td>
+                <td style={{ padding: '14px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#F59E0B' }}>{formatLKR(totalCostVal)}</td>
+                <td style={{ padding: '14px 12px', textAlign: 'right', fontFamily: 'monospace', color: '#10B981' }}>{formatLKR(totalRetailVal)}</td>
               </tr>
             </tfoot>
           )}
@@ -1359,124 +1844,16 @@ export default function ReportsPage({
     return null;
   };
 
-  // =========================================================
-  // 5. EXECUTIVE CARDS VIEW (ALTERNATIVE TO TABLE)
-  // =========================================================
-
-  const renderActiveCardsView = () => {
-    if (activeReport === 'sales_revenue') {
-      if (filteredSalesData.length === 0) {
-        return (
-          <div style={{ textAlign: 'center', padding: '48px 24px', background: '#fff', borderRadius: '12px', border: '1px solid #E2E8F0', color: '#64748B' }}>
-            <Package size={36} color="#94A3B8" style={{ margin: '0 auto 8px', display: 'block' }} />
-            <strong>No sales orders found matching filters.</strong>
-          </div>
-        );
-      }
-      return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
-          {filteredSalesData.map((o) => {
-            const isPaid = Number(o.balance_due) <= 0;
-            return (
-              <div
-                key={o.id}
-                style={{
-                  background: '#FFFFFF',
-                  borderRadius: '12px',
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                  padding: '16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.84rem', color: '#1E4D8C', background: '#EFF6FF', padding: '3px 8px', borderRadius: '6px', border: '1px solid #BFDBFE' }}>
-                    🧾 {o.invoice_no || o.id}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 800,
-                      padding: '3px 8px',
-                      borderRadius: '12px',
-                      background: isPaid ? '#DCFCE7' : '#FEF3C7',
-                      color: isPaid ? '#15803D' : '#B45309',
-                    }}
-                  >
-                    {isPaid ? '✓ Fully Paid' : '⏳ Active Loan'}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: '#EFF6FF', border: '1.5px solid #BFDBFE', color: '#1E4D8C', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.82rem' }}>
-                    {getInitials(o.customer_name)}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0F172A' }}>{o.customer_name}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>🆔 {o.customer_id || o.customer_nic} • 📍 {o.branch_code}/{o.center_code}</div>
-                  </div>
-                </div>
-
-                <div style={{ padding: '8px 10px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.82rem' }}>
-                  <div style={{ fontWeight: 700, color: '#1E293B' }}>🪵 {o.items_summary || o.item_name}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>📅 Date: {formatDate(o.date)}</div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #F1F5F9', paddingTop: '10px' }}>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Total Value</div>
-                    <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A' }}>{formatLKR(Number(o.gross_amount) || 0)}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Balance Due</div>
-                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: isPaid ? '#10B981' : '#D97706' }}>
-                      {formatLKR(Number(o.balance_due) || 0)}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  onClick={() => handleOpenDetail(o)}
-                  style={{ width: '100%', justifyContent: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px' }}
-                >
-                  <Eye size={14} /> View Order Breakdown
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    // Default fallback to table for other reports
-    return renderActiveTable();
-  };
-
   return (
-    <div className="reports-page-container" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-      {/* =========================================================
-          1. EXECUTIVE REPORT TYPE SELECTOR (STREAMLINED 3-PILL RIBBON)
-          ========================================================= */}
+    <div className="reports-page-container" style={{ display: 'flex', flexDirection: 'column', gap: '18px', paddingBottom: '40px' }}>
+      {/* 1. EXECUTIVE REPORT TYPE SELECTOR (4-PILL RIBBON) */}
       <div
         style={{
           background: '#FFFFFF',
           borderRadius: '14px',
           border: '1px solid #E2E8F0',
           boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-          padding: '14px 18px',
+          padding: '16px 20px',
           display: 'flex',
           flexDirection: 'column',
           gap: '14px',
@@ -1488,7 +1865,7 @@ export default function ReportsPage({
               OFFICIAL EXECUTIVE AUDITS
             </span>
             <h2 style={{ margin: '4px 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.3px' }}>
-              Financial & Operational Reports Hub
+              Financial & Operational Reports Hub (මූල්‍ය හා මෙහෙයුම් වාර්තා)
             </h2>
           </div>
 
@@ -1517,12 +1894,12 @@ export default function ReportsPage({
           </div>
         </div>
 
-        {/* 3 Active Report Switcher Pills */}
+        {/* 4 Active Report Switcher Pills */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '12px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '10px',
             borderTop: '1px solid #F1F5F9',
             paddingTop: '12px',
           }}
@@ -1531,8 +1908,9 @@ export default function ReportsPage({
             const isActive = activeReport === rep.id;
             let count = 0;
             if (rep.id === 'sales_revenue') count = filteredSalesData.length;
-            if (rep.id === 'inventory_valuation') count = filteredInventoryData.length;
             if (rep.id === 'profit_margin') count = filteredProfitData.length;
+            if (rep.id === 'cash_collection') count = filteredPaymentsData.length;
+            if (rep.id === 'inventory_valuation') count = filteredInventoryData.length;
 
             return (
               <button
@@ -1543,7 +1921,7 @@ export default function ReportsPage({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
-                  padding: '12px 16px',
+                  padding: '12px 14px',
                   borderRadius: '12px',
                   border: isActive ? '2px solid #1E4D8C' : '1px solid #E2E8F0',
                   background: isActive ? '#1E4D8C' : '#FFFFFF',
@@ -1570,8 +1948,9 @@ export default function ReportsPage({
                   }}
                 >
                   {rep.id === 'sales_revenue' && <BarChart3 size={18} />}
-                  {rep.id === 'inventory_valuation' && <Package size={18} />}
                   {rep.id === 'profit_margin' && <TrendingUp size={18} />}
+                  {rep.id === 'cash_collection' && <Wallet size={18} />}
+                  {rep.id === 'inventory_valuation' && <Package size={18} />}
                 </div>
                 <div style={{ overflow: 'hidden', flex: 1 }}>
                   <div style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', fontWeight: 800 }}>
@@ -1594,31 +1973,30 @@ export default function ReportsPage({
         </div>
       </div>
 
-      {/* =========================================================
-          2. FILTER & SEARCH CONTROL TOOLBAR
-          ========================================================= */}
+      {/* 2. USER-FRIENDLY FILTER & SEARCH COMMAND CONTROL PANEL */}
       <div
         style={{
           background: '#FFFFFF',
           borderRadius: '14px',
           border: '1px solid #E2E8F0',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-          padding: '14px 18px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+          padding: '16px 20px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '12px',
+          gap: '14px',
         }}
       >
+        {/* Row 1: Search Box + Center Selector + Payment Method Filter + View Mode Switch + Reset */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           {/* Search Box */}
-          <div style={{ position: 'relative', flex: '1 1 320px' }}>
+          <div style={{ position: 'relative', flex: '1 1 280px', minWidth: '240px' }}>
             <Search
               size={16}
               style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }}
             />
             <input
               type="text"
-              placeholder={`Search in ${activeReportObj.label} by client, invoice, code, or description...`}
+              placeholder={`🔍 Search in ${activeReportObj.label} by Client, NIC, Phone, Invoice, Ref...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -1653,7 +2031,7 @@ export default function ReportsPage({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Center Selector */}
+            {/* Center Selector Dropdown */}
             <select
               value={centerFilter}
               onChange={(e) => setCenterFilter(e.target.value)}
@@ -1665,7 +2043,7 @@ export default function ReportsPage({
                 fontWeight: 600,
                 color: '#1E293B',
                 background: '#F8FAFC',
-                minWidth: '220px',
+                minWidth: '200px',
               }}
             >
               <option value="all">🌐 All Centers (Island-Wide)</option>
@@ -1679,76 +2057,68 @@ export default function ReportsPage({
               })}
             </select>
 
-            {/* View Mode Switcher */}
-            <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '5px 10px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  background: viewMode === 'table' ? '#FFFFFF' : 'transparent',
-                  color: viewMode === 'table' ? '#1E4D8C' : '#64748B',
-                  boxShadow: viewMode === 'table' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
-                <List size={14} /> Table
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('cards')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  padding: '5px 10px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  background: viewMode === 'cards' ? '#FFFFFF' : 'transparent',
-                  color: viewMode === 'cards' ? '#1E4D8C' : '#64748B',
-                  boxShadow: viewMode === 'cards' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                }}
-              >
-                <LayoutGrid size={14} /> Cards
-              </button>
-            </div>
+            {/* Payment Method Selector Dropdown */}
+            <select
+              value={paymentMethodFilter}
+              onChange={(e) => setPaymentMethodFilter(e.target.value)}
+              style={{
+                padding: '9px 12px',
+                borderRadius: '8px',
+                border: '1.5px solid #CBD5E1',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                color: '#1E293B',
+                background: '#F8FAFC',
+                minWidth: '160px',
+              }}
+            >
+              <option value="all">💳 All Payment Methods</option>
+              <option value="Cash">💵 Cash Only</option>
+              <option value="Bank Transfer">🏦 Bank Transfer</option>
+              <option value="Online Deposit">🌐 Online Deposit</option>
+              <option value="Cheque">📜 Cheque</option>
+            </select>
 
-            {/* Reset Button */}
+            {/* Reset Button with active filters badge */}
             {isAnyFilterActive && (
               <button
                 type="button"
-                className="btn btn-secondary"
                 onClick={handleResetFilters}
-                style={{ padding: '8px 12px', fontSize: '0.8rem', gap: '4px', borderRadius: '8px' }}
+                className="btn btn-secondary"
+                style={{ padding: '8px 14px', fontSize: '0.8rem', gap: '5px', borderRadius: '8px', fontWeight: 800 }}
+                title="Reset all search, date and center filters"
               >
-                <RotateCcw size={13} /> Reset
+                <RotateCcw size={13} /> Reset ({activeFiltersCount})
               </button>
             )}
           </div>
         </div>
 
-        {/* Date Range Quick Chips */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', borderTop: '1px solid #F1F5F9', paddingTop: '10px' }}>
+        {/* Row 2: Quick 1-Click Date Presets + Inline Pickers */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            borderTop: '1px solid #F1F5F9',
+            paddingTop: '12px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>Period:</span>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Calendar size={13} /> Period:
+            </span>
 
             {[
               { id: 'all', label: 'All Time' },
               { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
               { id: 'week', label: 'This Week' },
               { id: 'month', label: 'This Month' },
               { id: 'quarter', label: 'This Quarter' },
-              { id: 'ytd', label: 'Year to Date' },
+              { id: 'ytd', label: 'This Year (YTD)' },
               { id: 'custom', label: 'Custom Range' },
             ].map((p) => {
               const active = datePreset === p.id;
@@ -1756,9 +2126,9 @@ export default function ReportsPage({
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => setDatePreset(p.id)}
+                  onClick={() => handleDatePreset(p.id)}
                   style={{
-                    padding: '4px 10px',
+                    padding: '5px 11px',
                     borderRadius: '20px',
                     border: active ? '1.5px solid #1E4D8C' : '1px solid #CBD5E1',
                     background: active ? '#EFF6FF' : '#FFFFFF',
@@ -1766,6 +2136,7 @@ export default function ReportsPage({
                     fontSize: '0.76rem',
                     fontWeight: active ? 800 : 600,
                     cursor: 'pointer',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   {p.label}
@@ -1773,20 +2144,28 @@ export default function ReportsPage({
               );
             })}
 
-            {datePreset === 'custom' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+            {/* Custom Date Pickers */}
+            {(datePreset === 'custom' || startDate || endDate) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px', background: '#F8FAFC', padding: '3px 8px', borderRadius: '8px', border: '1px solid #CBD5E1' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B' }}>From:</span>
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  style={{ padding: '4px 8px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #CBD5E1' }}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  style={{ padding: '3px 6px', fontSize: '0.76rem', borderRadius: '4px', border: '1px solid #CBD5E1' }}
                 />
-                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>to</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B' }}>To:</span>
                 <input
                   type="date"
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  style={{ padding: '4px 8px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #CBD5E1' }}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  style={{ padding: '3px 6px', fontSize: '0.76rem', borderRadius: '4px', border: '1px solid #CBD5E1' }}
                 />
               </div>
             )}
@@ -1797,221 +2176,130 @@ export default function ReportsPage({
             <span>Active Range: <strong>{currentDateRangeLabel}</strong></span>
           </div>
         </div>
+
+        {/* Row 3: Active Filters Summary Tag Ribbon */}
+        {isAnyFilterActive && (
+          <div
+            style={{
+              background: '#F8FAFC',
+              border: '1px solid #E2E8F0',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px',
+              fontSize: '0.78rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, color: '#1E4D8C' }}>Applied Filters:</span>
+              {(startDate || endDate || datePreset !== 'all') && (
+                <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                  📅 {currentDateRangeLabel}
+                </span>
+              )}
+              {centerFilter !== 'all' && (
+                <span style={{ background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                  📍 {currentCenterLabel}
+                </span>
+              )}
+              {paymentMethodFilter !== 'all' && (
+                <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                  💳 Method: {paymentMethodFilter}
+                </span>
+              )}
+              {searchQuery && (
+                <span style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #CBD5E1', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                  🔍 "{searchQuery}"
+                </span>
+              )}
+            </div>
+
+            <span style={{ color: '#64748B', fontWeight: 700 }}>
+              Showing {activeReport === 'sales_revenue' ? filteredSalesData.length : activeReport === 'profit_margin' ? filteredProfitData.length : activeReport === 'cash_collection' ? filteredPaymentsData.length : filteredInventoryData.length} records matching criteria
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* =========================================================
-          3. DYNAMIC STAT CARDS FOR ACTIVE REPORT
-          ========================================================= */}
+      {/* 3. EXECUTIVE KPI STAT CARDS */}
       {renderActiveStatCards()}
 
-      {/* =========================================================
-          4. MAIN REPORT DATA CONTAINER (TABLE / CARDS VIEW)
-          ========================================================= */}
+      {/* 4. ACTIVE DATA TABLE */}
       <div
         style={{
           background: '#FFFFFF',
           borderRadius: '14px',
           border: '1px solid #E2E8F0',
           boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-          overflow: 'hidden',
+          padding: '18px 20px',
+          overflowX: 'auto',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '14px 20px',
-            borderBottom: '1px solid #E2E8F0',
-            background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
-          }}
-        >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                {activeReportObj.label} Report Ledger
-              </h3>
-              <span style={{ fontSize: '0.74rem', fontWeight: 800, background: '#EFF6FF', color: '#1E4D8C', padding: '2px 8px', borderRadius: '12px', border: '1px solid #BFDBFE' }}>
-                Official Business Record
-              </span>
-            </div>
-            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '2px' }}>
-              Filtered by: {currentCenterLabel} • {currentDateRangeLabel}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={handleExportCSV}
-              style={{ padding: '6px 12px', fontSize: '0.78rem', gap: '5px' }}
-            >
-              <Download size={14} /> Download CSV
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={handlePrintPDF}
-              style={{ padding: '6px 12px', fontSize: '0.78rem', gap: '5px' }}
-            >
-              <Printer size={14} /> Print PDF
-            </button>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {activeReportObj.iconName === 'TrendingUp' && <TrendingUp size={20} color="#10B981" />}
+              {activeReportObj.iconName === 'Wallet' && <Wallet size={20} color="#2563EB" />}
+              {activeReportObj.iconName === 'BarChart3' && <BarChart3 size={20} color="#2563EB" />}
+              {activeReportObj.iconName === 'Package' && <Package size={20} color="#F59E0B" />}
+              {activeReportObj.label} Statement
+            </h3>
+            <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+              {activeReportObj.subtitle}
+            </span>
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto', padding: viewMode === 'cards' ? '18px' : '0' }}>
-          {viewMode === 'table' ? renderActiveTable() : renderActiveCardsView()}
-        </div>
+        {renderActiveTable()}
       </div>
 
-      {/* =========================================================
-          5. AUDIT DETAIL MODAL
-          ========================================================= */}
-      {isDetailModalOpen && selectedRecord && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px',
-          }}
-          onClick={() => setIsDetailModalOpen(false)}
-        >
-          <div
-            style={{
-              background: '#FFFFFF',
-              borderRadius: '16px',
-              maxWidth: '560px',
-              width: '100%',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-              border: '1px solid #CBD5E1',
-              overflow: 'hidden',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '16px 20px',
-                background: '#1E4D8C',
-                color: '#FFFFFF',
-              }}
-            >
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>
-                  Record Audit Breakdown
-                </h3>
-                <span style={{ fontSize: '0.76rem', color: '#BFDBFE' }}>
-                  {selectedRecord.invoice_no || selectedRecord.contract_no || selectedRecord.ref_no || selectedRecord.id}
-                </span>
+      {/* 5. RECORD DETAIL INSPECTION MODAL */}
+      <Modal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        title="Audit Record Details"
+      >
+        {selectedRecord && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.84rem' }}>
+            <div style={{ background: '#F8FAFC', padding: '14px', borderRadius: '8px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748B' }}>Reference ID:</span>
+                <strong style={{ fontFamily: 'monospace', color: '#1E4D8C' }}>{selectedRecord.receipt_no || selectedRecord.invoice_no || selectedRecord.contract_no || selectedRecord.id}</strong>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsDetailModalOpen(false)}
-                style={{ background: 'none', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '4px' }}
-              >
-                <X size={20} />
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748B' }}>Customer Name:</span>
+                <strong>{selectedRecord.customer_name || 'Client'}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748B' }}>Date:</span>
+                <span>{formatDate(selectedRecord.date)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748B' }}>Center Hub:</span>
+                <span>{selectedRecord.center_code || 'Direct Single'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #CBD5E1', paddingTop: '8px' }}>
+                <span style={{ fontWeight: 800 }}>Total Value / Amount:</span>
+                <strong style={{ color: '#10B981', fontSize: '1rem' }}>{formatLKR(selectedRecord.amount || selectedRecord.gross_amount)}</strong>
+              </div>
             </div>
 
-            {/* Modal Body */}
-            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '70vh', overflowY: 'auto' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Client Name</div>
-                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0F172A', marginTop: '2px' }}>
-                    {selectedRecord.customer_name || 'N/A'}
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
-                    NIC: {selectedRecord.customer_id || selectedRecord.customer_nic || 'N/A'}
-                  </div>
-                </div>
-
-                <div style={{ padding: '10px 12px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Hub & Location</div>
-                  <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0F172A', marginTop: '2px' }}>
-                    {selectedRecord.branch_code || 'MHG'}/{formatCenterCode(selectedRecord.center_code || 'C001')}
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
-                    Date: {formatDate(selectedRecord.date)}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ padding: '12px 14px', background: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                <div style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Furniture Item / Specification</div>
-                <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#1E293B', marginTop: '4px' }}>
-                  🪵 {selectedRecord.items_summary || selectedRecord.item_name || 'Handcrafted Furniture'}
-                </div>
-                {selectedRecord.item_code && (
-                  <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
-                    Item Code: {selectedRecord.item_code} • Qty: {selectedRecord.quantity || 1}
-                  </div>
-                )}
-              </div>
-
-              <div style={{ padding: '12px 14px', background: '#EFF6FF', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: '#1E4D8C', fontWeight: 700, textTransform: 'uppercase' }}>Gross Value</div>
-                    <div style={{ fontWeight: 800, fontSize: '1rem', color: '#0F172A', marginTop: '2px' }}>
-                      {formatLKR(Number(selectedRecord.gross_amount) || 0)}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700, textTransform: 'uppercase' }}>Advance Paid</div>
-                    <div style={{ fontWeight: 800, fontSize: '1rem', color: '#059669', marginTop: '2px' }}>
-                      {formatLKR(Number(selectedRecord.advance_paid) || 0)}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: '#D97706', fontWeight: 700, textTransform: 'uppercase' }}>Balance Due</div>
-                    <div style={{ fontWeight: 800, fontSize: '1rem', color: '#D97706', marginTop: '2px' }}>
-                      {formatLKR(Number(selectedRecord.balance_due) || 0)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {selectedRecord.notes && (
-                <div style={{ fontSize: '0.8rem', color: '#64748B', fontStyle: 'italic' }}>
-                  📝 Note: {selectedRecord.notes}
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', padding: '14px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setIsDetailModalOpen(false)}
+                style={{ padding: '8px 18px', fontWeight: 700 }}
               >
-                Close View
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  setIsDetailModalOpen(false);
-                  handlePrintPDF();
-                }}
-              >
-                <Printer size={15} /> Print Official Document
+                Close
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
