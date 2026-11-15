@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { formatLKR, formatDate } from '../utils/formatters';
+import { getCustomerWeekday } from '../utils/collectionUtils';
 import {
   loadSavedOrders,
   saveOrdersToStorage,
@@ -571,12 +572,15 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
 
     setFormPaymentType('installment');
     setFormDocumentCharge(1000);
-    setFormLoanFrequency('monthly');
+    setFormLoanFrequency('weekly');
     setFormLoanTerms(12);
 
-    const nextMonth = new Date();
-    nextMonth.setDate(nextMonth.getDate() + 30);
-    setFormFirstDueDate(nextMonth.toISOString().slice(0, 10));
+    // Default first due date to 1 week (+7 days) from today, matching the purchase day of the week
+    const nextWeekDate = new Date();
+    nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+    if (nextWeekDate.getDay() === 6) nextWeekDate.setDate(nextWeekDate.getDate() - 1); // Sat -> Fri
+    if (nextWeekDate.getDay() === 0) nextWeekDate.setDate(nextWeekDate.getDate() + 1); // Sun -> Mon
+    setFormFirstDueDate(nextWeekDate.toISOString().slice(0, 10));
 
     setFormPaymentMethod('Cash');
     setFormNotes('');
@@ -3032,18 +3036,50 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                     </div>
                   </div>
 
-                  {/* First Due Date */}
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800 }}>
-                      First Due Date
-                    </label>
-                    <input
-                      type="date"
-                      className="form-input"
-                      value={formFirstDueDate}
-                      onChange={(e) => setFormFirstDueDate(e.target.value)}
-                    />
-                  </div>
+                  {/* First Due Date & Weekday Assignment */}
+                  {(() => {
+                    const dueWeekday = formFirstDueDate ? getCustomerWeekday({ first_due_date: formFirstDueDate }) : null;
+                    return (
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 800, margin: 0 }}>
+                            First Due Date *
+                          </label>
+                          {dueWeekday && (
+                            <span
+                              style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                color: dueWeekday.color,
+                                background: dueWeekday.bg,
+                                border: `1px solid ${dueWeekday.border}`,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              📅 {dueWeekday.nameEn} ({dueWeekday.nameSi})
+                            </span>
+                          )}
+                        </div>
+                        <input
+                          type="date"
+                          className="form-input"
+                          value={formFirstDueDate}
+                          onChange={(e) => setFormFirstDueDate(e.target.value)}
+                        />
+                        {dueWeekday && (
+                          <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '3px' }}>
+                            Weekly Cash Collection Day: <strong style={{ color: dueWeekday.color }}>{dueWeekday.nameEn} ({dueWeekday.nameSi})</strong>
+                            {dueWeekday.isWeekendAdjusted && (
+                              <span style={{ color: '#D97706', marginLeft: '4px' }}>
+                                (Weekend {dueWeekday.originalDay} moved to {dueWeekday.nameEn})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Upfront Cash Payable Today Box */}
                   <div

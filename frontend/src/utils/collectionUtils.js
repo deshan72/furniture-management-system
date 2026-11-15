@@ -511,3 +511,411 @@ export const generateFieldCollectionSheetHtml = (stats) => {
   `;
 };
 
+// ============================================================================
+// 5-DAY WEEKLY SINGLE CUSTOMER COLLECTION HELPERS
+// ============================================================================
+
+export const WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+
+export const WEEKDAYS_CONFIG = {
+  monday: {
+    key: 'monday',
+    dayNumber: 1,
+    nameEn: 'Monday',
+    nameSi: 'සඳුදා',
+    color: '#2563EB',
+    bg: '#EFF6FF',
+    border: '#BFDBFE',
+    badgeClass: 'badge-blue',
+  },
+  tuesday: {
+    key: 'tuesday',
+    dayNumber: 2,
+    nameEn: 'Tuesday',
+    nameSi: 'අඟහරුවාදා',
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    border: '#DDD6FE',
+    badgeClass: 'badge-purple',
+  },
+  wednesday: {
+    key: 'wednesday',
+    dayNumber: 3,
+    nameEn: 'Wednesday',
+    nameSi: 'බදාදා',
+    color: '#059669',
+    bg: '#ECFDF5',
+    border: '#A7F3D0',
+    badgeClass: 'badge-green',
+  },
+  thursday: {
+    key: 'thursday',
+    dayNumber: 4,
+    nameEn: 'Thursday',
+    nameSi: 'බ්‍රහස්පතින්දා',
+    color: '#D97706',
+    bg: '#FFFBEB',
+    border: '#FDE68A',
+    badgeClass: 'badge-amber',
+  },
+  friday: {
+    key: 'friday',
+    dayNumber: 5,
+    nameEn: 'Friday',
+    nameSi: 'සිකුරාදා',
+    color: '#DC2626',
+    bg: '#FEF2F2',
+    border: '#FECACA',
+    badgeClass: 'badge-rose',
+  },
+};
+
+/**
+ * Returns today's weekday key ('monday' ... 'friday').
+ * Weekend (Sat/Sun) is mapped to Friday or Monday.
+ */
+export const getCurrentWeekdayKey = () => {
+  const d = new Date().getDay(); // 0 = Sun, 1 = Mon, ... 6 = Sat
+  if (d === 0) return 'monday';
+  if (d === 6) return 'friday';
+  if (d === 1) return 'monday';
+  if (d === 2) return 'tuesday';
+  if (d === 3) return 'wednesday';
+  if (d === 4) return 'thursday';
+  if (d === 5) return 'friday';
+  return 'monday';
+};
+
+/**
+ * Maps an order to one of the 5 working weekdays based on its first_due_date or purchase date.
+ * If the date falls on Saturday, it is mapped to Friday; Sunday is mapped to Monday.
+ */
+export const getCustomerWeekday = (order) => {
+  if (!order) return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: 1 };
+
+  const rawDateStr = order.first_due_date || order.date || order.created_at;
+  if (!rawDateStr) {
+    return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: 1 };
+  }
+
+  try {
+    const d = new Date(rawDateStr);
+    if (!isNaN(d.getTime())) {
+      const dayNum = d.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
+      if (dayNum === 1) return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: dayNum };
+      if (dayNum === 2) return { ...WEEKDAYS_CONFIG.tuesday, rawDayNumber: dayNum };
+      if (dayNum === 3) return { ...WEEKDAYS_CONFIG.wednesday, rawDayNumber: dayNum };
+      if (dayNum === 4) return { ...WEEKDAYS_CONFIG.thursday, rawDayNumber: dayNum };
+      if (dayNum === 5) return { ...WEEKDAYS_CONFIG.friday, rawDayNumber: dayNum };
+      if (dayNum === 6) {
+        // Saturday mapped to Friday for 5-day weekday field collections
+        return { ...WEEKDAYS_CONFIG.friday, rawDayNumber: dayNum, isWeekendAdjusted: true, originalDay: 'Saturday' };
+      }
+      if (dayNum === 0) {
+        // Sunday mapped to Monday
+        return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: dayNum, isWeekendAdjusted: true, originalDay: 'Sunday' };
+      }
+    }
+  } catch {}
+
+  return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: 1 };
+};
+
+/**
+ * Calculates 5-Day Weekly Collection Statistics for single customers.
+ * Distributes active installment customers across Monday to Friday.
+ */
+export const calculate5DayWeeklyStats = (orders = [], payments = []) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Initialize weekday buckets + all bucket
+  const stats = {
+    monday: {
+      ...WEEKDAYS_CONFIG.monday,
+      totalClients: 0,
+      targetAmount: 0,
+      collectedToday: 0,
+      pendingShortfall: 0,
+      pendingList: [],
+      confirmedList: [],
+      allClients: [],
+    },
+    tuesday: {
+      ...WEEKDAYS_CONFIG.tuesday,
+      totalClients: 0,
+      targetAmount: 0,
+      collectedToday: 0,
+      pendingShortfall: 0,
+      pendingList: [],
+      confirmedList: [],
+      allClients: [],
+    },
+    wednesday: {
+      ...WEEKDAYS_CONFIG.wednesday,
+      totalClients: 0,
+      targetAmount: 0,
+      collectedToday: 0,
+      pendingShortfall: 0,
+      pendingList: [],
+      confirmedList: [],
+      allClients: [],
+    },
+    thursday: {
+      ...WEEKDAYS_CONFIG.thursday,
+      totalClients: 0,
+      targetAmount: 0,
+      collectedToday: 0,
+      pendingShortfall: 0,
+      pendingList: [],
+      confirmedList: [],
+      allClients: [],
+    },
+    friday: {
+      ...WEEKDAYS_CONFIG.friday,
+      totalClients: 0,
+      targetAmount: 0,
+      collectedToday: 0,
+      pendingShortfall: 0,
+      pendingList: [],
+      confirmedList: [],
+      allClients: [],
+    },
+    all: {
+      key: 'all',
+      nameEn: 'All Customers',
+      nameSi: 'සියලුම ගනුදෙනුකරුවන්',
+      color: '#0F172A',
+      bg: '#F8FAFC',
+      border: '#E2E8F0',
+      badgeClass: 'badge-dark',
+      totalClients: 0,
+      targetAmount: 0,
+      collectedToday: 0,
+      pendingShortfall: 0,
+      pendingList: [],
+      confirmedList: [],
+      allClients: [],
+    },
+  };
+
+  orders.forEach((order) => {
+    const bal = Number(order.balance_due) || 0;
+    const isSettled = bal <= 0;
+
+    // Filter receipts for this order
+    const ordReceipts = payments.filter(
+      (p) => p.order_id === order.id || (order.contract_no && p.contract_no === order.contract_no)
+    );
+
+    // Payments collected today for this order
+    const todayReceipts = ordReceipts.filter(
+      (p) => String(p.date || '').slice(0, 10) === todayStr
+    );
+    const collectedTodayForOrder = todayReceipts.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // Installment target calculation
+    const instVal = Number(order.installment_value) || 0;
+    const termCount = Number(order.loan_terms) || 12;
+    const computedInst = instVal > 0 ? instVal : bal > 0 ? Math.round(bal / termCount) : 0;
+    const targetVal = bal > 0 ? Math.min(computedInst, bal) : 0;
+
+    // Get assigned weekday
+    const dayInfo = getCustomerWeekday(order);
+    const dayKey = dayInfo.dayKey;
+
+    const enriched = {
+      ...order,
+      dayInfo,
+      installmentDue: targetVal,
+      collectedToday: collectedTodayForOrder,
+      isPaidToday: collectedTodayForOrder > 0,
+      isSettled,
+      todayReceipts,
+      receiptsCount: ordReceipts.length,
+    };
+
+    // Add to specific weekday bucket
+    const bucket = stats[dayKey];
+    if (bucket) {
+      bucket.totalClients += 1;
+      bucket.targetAmount += targetVal;
+      bucket.collectedToday += collectedTodayForOrder;
+      bucket.allClients.push(enriched);
+
+      if (collectedTodayForOrder > 0 || isSettled) {
+        bucket.confirmedList.push(enriched);
+      } else {
+        bucket.pendingList.push(enriched);
+      }
+    }
+
+    // Add to 'all' bucket
+    stats.all.totalClients += 1;
+    stats.all.targetAmount += targetVal;
+    stats.all.collectedToday += collectedTodayForOrder;
+    stats.all.allClients.push(enriched);
+
+    if (collectedTodayForOrder > 0 || isSettled) {
+      stats.all.confirmedList.push(enriched);
+    } else {
+      stats.all.pendingList.push(enriched);
+    }
+  });
+
+  // Calculate shortfalls for all buckets
+  Object.keys(stats).forEach((k) => {
+    stats[k].pendingShortfall = Math.max(0, stats[k].targetAmount - stats[k].collectedToday);
+  });
+
+  return stats;
+};
+
+/**
+ * Generates an official printable Single Customer Daily Collection Sheet for a specific weekday.
+ */
+export const generateSingleCustomerDaySheetHtml = ({
+  dayKey = 'monday',
+  dayNameEn = 'Monday',
+  dayNameSi = 'සඳුදා',
+  dateStr = new Date().toISOString().slice(0, 10),
+  clients = [],
+  officerName = 'Showroom Executive',
+  targetAmount = 0,
+}) => {
+  const rowsHtml = clients
+    .map((c, idx) => {
+      const isPaid = c.isPaidToday;
+      const statusBadge = isPaid
+        ? '<span style="color: #166534; font-weight: 800; font-size: 10px;">PAID TODAY</span>'
+        : Number(c.balance_due) <= 0
+        ? '<span style="color: #2563EB; font-weight: 800; font-size: 10px;">SETTLED</span>'
+        : '<span style="color: #D97706; font-weight: 800; font-size: 10px;">DUE</span>';
+
+      return `
+        <tr>
+          <td style="text-align: center; font-weight: 700;">${idx + 1}</td>
+          <td>
+            <strong>${c.customer_name || 'Customer'}</strong>
+            <div style="font-size: 10px; color: #475569;">NIC: ${c.customer_nic || c.customer_id || '-'}</div>
+          </td>
+          <td>
+            <div>📞 <strong>${c.customer_phone || '-'}</strong></div>
+            <div style="font-size: 9.5px; color: #64748B;">${c.customer_address || 'Maharagama / Direct'}</div>
+          </td>
+          <td>
+            <div style="font-weight: 600;">${c.item_name || 'Furniture Item'}</div>
+            <div style="font-family: monospace; font-size: 9.5px; color: #2563EB;">${c.contract_no || '-'}</div>
+          </td>
+          <td style="text-align: right; font-weight: 800; color: #1E4D8C;">
+            ${formatLKR(c.installmentDue || c.installment_value || 0)}
+          </td>
+          <td style="text-align: right; font-weight: 700; color: ${Number(c.balance_due) > 0 ? '#DC2626' : '#15803D'};">
+            ${formatLKR(c.balance_due || 0)}
+          </td>
+          <td style="text-align: right; font-weight: 800; color: #166534;">
+            ${c.collectedToday > 0 ? formatLKR(c.collectedToday) : '<span style="color: #94A3B8;">________</span>'}
+          </td>
+          <td style="text-align: center;">${statusBadge}</td>
+          <td style="height: 28px; border-bottom: 1px solid #CBD5E1;"></td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Single Customer Weekly Collection Sheet - ${dayNameEn}</title>
+        <style>
+          @page { size: A4 landscape; margin: 10mm; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0F172A; margin: 0; padding: 12px; font-size: 11px; }
+          .header-box { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1E4D8C; padding-bottom: 8px; margin-bottom: 12px; }
+          .brand-title { font-size: 18px; font-weight: 900; color: #1E4D8C; margin: 0; }
+          .subtitle { font-size: 10px; color: #64748B; margin: 2px 0 0 0; }
+          .day-badge { background: #1E4D8C; color: #fff; padding: 4px 12px; border-radius: 6px; font-weight: 900; font-size: 13px; text-transform: uppercase; }
+          .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; }
+          .meta-label { font-size: 9.5px; color: #64748B; font-weight: 700; text-transform: uppercase; }
+          .meta-val { font-weight: 800; color: #0F172A; margin-top: 2px; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          th { background: #F1F5F9; color: #1E293B; padding: 7px 6px; text-align: left; border: 1px solid #CBD5E1; font-weight: 800; font-size: 9.5px; text-transform: uppercase; }
+          td { padding: 6px; border: 1px solid #E2E8F0; vertical-align: middle; }
+          .footer-box { display: flex; justify-content: space-between; margin-top: 36px; padding-top: 10px; }
+          .sign-col { width: 28%; text-align: center; }
+          .sign-line { border-bottom: 1.5px solid #475569; height: 32px; margin-bottom: 4px; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header-box">
+          <div>
+            <h1 class="brand-title">D N S HOME SOLUTIONS</h1>
+            <p class="subtitle">Single Customer 5-Day Weekly Installment Field Collection Sheet</p>
+          </div>
+          <div style="text-align: right;">
+            <div class="day-badge">${dayNameEn} (${dayNameSi})</div>
+            <div style="font-size: 10px; color: #64748B; margin-top: 4px;">Collection Date: <strong>${formatDate(dateStr)}</strong></div>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div>
+            <div class="meta-label">Collection Day</div>
+            <div class="meta-val">${dayNameEn} / ${dayNameSi} (Weekly Cycle)</div>
+          </div>
+          <div>
+            <div class="meta-label">Collecting Officer</div>
+            <div class="meta-val">${officerName}</div>
+          </div>
+          <div>
+            <div class="meta-label">Scheduled Clients</div>
+            <div class="meta-val">${clients.length} Customers</div>
+          </div>
+          <div>
+            <div class="meta-label">Day Target (LKR)</div>
+            <div class="meta-val" style="color: #1E4D8C; font-size: 13px;">${formatLKR(targetAmount)}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25px; text-align: center;">#</th>
+              <th>Customer Name & NIC</th>
+              <th>Phone & Delivery Address</th>
+              <th>Contract & Item</th>
+              <th style="text-align: right;">Due (Rs.)</th>
+              <th style="text-align: right;">Balance (Rs.)</th>
+              <th style="text-align: right;">Collected (Rs.)</th>
+              <th style="text-align: center; width: 60px;">Status</th>
+              <th style="width: 90px; text-align: center;">Client Signature</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || `<tr><td colspan="9" style="padding: 20px; text-align: center; color: #64748B;">No single customers scheduled for ${dayNameEn}.</td></tr>`}
+          </tbody>
+        </table>
+
+        <div class="footer-box">
+          <div class="sign-col">
+            <div class="sign-line"></div>
+            <div><strong>Field Collection Officer</strong></div>
+            <div style="font-size: 9px; color: #64748B;">Cash Collected & Received</div>
+          </div>
+          <div class="sign-col">
+            <div class="sign-line"></div>
+            <div><strong>Showroom / Center Manager</strong></div>
+            <div style="font-size: 9px; color: #64748B;">Verified & Cross-checked</div>
+          </div>
+          <div class="sign-col">
+            <div class="sign-line"></div>
+            <div><strong>Head Office Accounts Cashier</strong></div>
+            <div style="font-size: 9px; color: #64748B;">Logged to System Database</div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+};
+

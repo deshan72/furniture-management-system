@@ -23,14 +23,15 @@ import {
   Check,
   FileText,
   ExternalLink,
-  Wallet
+  Wallet,
+  MessageCircle,
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { loadSavedOrders, saveOrdersToStorage } from '../utils/ordersData';
 import {
   loadSavedPayments,
   savePaymentsToStorage,
-  generateNextReceiptNo
+  generateNextReceiptNo,
 } from '../utils/paymentsData';
 import { loadSavedCenters } from '../utils/centersData';
 import { loadSavedCustomers } from '../utils/customersData';
@@ -40,6 +41,14 @@ import { apiRequest } from '../services/api';
 import { getAuthenticatedUser } from '../utils/authData';
 import { addLiveNotification } from '../utils/notificationsData';
 import { calculateNextPaymentDetails } from './PaymentsPage';
+import {
+  calculate5DayWeeklyStats,
+  getCustomerWeekday,
+  getCurrentWeekdayKey,
+  WEEKDAYS_CONFIG,
+  WEEKDAY_KEYS,
+  generateSingleCustomerDaySheetHtml,
+} from '../utils/collectionUtils';
 
 export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onNavigate }) {
   // Master data
@@ -49,11 +58,16 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
   const [customers] = useState(() => loadSavedCustomers());
   const currentUser = getAuthenticatedUser();
 
+  // 5-Day Weekday Route Management State
+  const [selectedWeekday, setSelectedWeekday] = useState(() => getCurrentWeekdayKey());
+  const [dayClientSubTab, setDayClientSubTab] = useState('pending'); // 'pending' | 'confirmed' | 'all'
+  const todayWeekdayKey = useMemo(() => getCurrentWeekdayKey(), []);
+
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('active'); // 'all' | 'active' | 'due_today' | 'settled'
 
-  // Selected Order / Customer Account for Cash Payment
+  // Selected Order / Customer Account for Cash Payment Desk
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   // Payment Form State
@@ -128,7 +142,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
   const stats = useMemo(() => {
     const activeOrders = orders.filter((o) => (Number(o.balance_due) || 0) > 0);
     const totalOutstanding = orders.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0);
-    
+
     // Today's collections
     const todayStr = new Date().toISOString().slice(0, 10);
     const todayPayments = payments.filter((p) => String(p.date || '').slice(0, 10) === todayStr);
@@ -156,7 +170,24 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
     };
   }, [orders, payments]);
 
-  // Filtered Orders List
+  // 5-Day Weekly Stats Distribution (Monday to Friday)
+  const weeklyStats = useMemo(() => {
+    const relevantOrders = selectedCenter === 'all'
+      ? orders
+      : orders.filter((o) => o.center_code === selectedCenter || o.branch_code === selectedCenter);
+    return calculate5DayWeeklyStats(relevantOrders, payments);
+  }, [orders, payments, selectedCenter]);
+
+  // Active day statistics and client lists
+  const activeDayStat = weeklyStats[selectedWeekday] || weeklyStats.monday;
+  const activeDayClients = useMemo(() => {
+    if (!activeDayStat) return [];
+    if (dayClientSubTab === 'pending') return activeDayStat.pendingList;
+    if (dayClientSubTab === 'confirmed') return activeDayStat.confirmedList;
+    return activeDayStat.allClients;
+  }, [activeDayStat, dayClientSubTab]);
+
+  // Filtered Orders List (Directory & Search)
   const filteredAccounts = useMemo(() => {
     return orders.filter((order) => {
       // Center filter
@@ -220,6 +251,25 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   }, [selectedOrder, payments]);
 
+  // Fast pick client into payment desk
+  const handlePickClientForPayment = (client) => {
+    setSelectedOrder(client);
+    const ordReceipts = payments.filter((p) => p.order_id === client.id || p.contract_no === client.contract_no);
+    const details = calculateNextPaymentDetails(client, ordReceipts);
+    if (details && details.nextDueAmount > 0) {
+      setPaymentAmount(String(details.nextDueAmount));
+    } else if (Number(client.balance_due) > 0) {
+      setPaymentAmount(String(client.balance_due));
+    }
+    // Scroll smoothly to active payment desk
+    const deskElem = document.getElementById('single-customer-payment-desk');
+    if (deskElem) {
+      deskElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 380, behavior: 'smooth' });
+    }
+  };
+
   // -------------------------------------------------------------
   // Collect Cash & Generate Official Receipt Handler
   // -------------------------------------------------------------
@@ -252,6 +302,18 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       const newTotalAdvance = (Number(selectedOrder.advance_paid) || 0) + payAmt;
       const isSettled = nextBal <= 0;
 
+      // Advance next due date by 7 days (+1 week) to maintain recurring weekly collection day
+      let nextDueAfterPayment = selectedOrder.first_due_date || selectedOrder.date;
+      if (!isSettled) {
+        try {
+          const baseDate = new Date(selectedOrder.first_due_date || selectedOrder.date || paymentDate);
+          if (!isNaN(baseDate.getTime())) {
+            baseDate.setDate(baseDate.getDate() + 7);
+            nextDueAfterPayment = baseDate.toISOString().slice(0, 10);
+          }
+        } catch {}
+      }
+
       // 1. Create Receipt Object
       const newPayment = {
         id: `pay-${Date.now()}`,
@@ -270,7 +332,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
         payment_method: paymentMethod || 'Cash',
         payment_type: paymentType,
         collected_by: collectedBy || currentUser?.name || 'Showroom Executive',
-        notes: paymentNotes || `Single customer payment for contract ${selectedOrder.contract_no}`,
+        notes: paymentNotes || `Weekly single customer installment collection for ${selectedOrder.contract_no}`,
         balance_after: nextBal,
         created_at: new Date().toISOString(),
       };
@@ -280,12 +342,13 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       setPayments(updatedPayments);
       savePaymentsToStorage(updatedPayments);
 
-      // 3. Update Local Orders State
+      // 3. Update Local Orders State with advanced due date
       const updatedOrder = {
         ...selectedOrder,
         balance_due: nextBal,
         advance_paid: newTotalAdvance,
         installments_paid: newPaidInstallments,
+        first_due_date: nextDueAfterPayment,
         status: isSettled ? 'Fully Paid' : 'Active Loan',
       };
 
@@ -318,6 +381,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
             balance_due: nextBal,
             advance_paid: newTotalAdvance,
             installments_paid: newPaidInstallments,
+            first_due_date: nextDueAfterPayment,
             status: isSettled ? 'Fully Paid' : 'Active Loan',
           }),
         }).catch((e) => console.warn('Order DB update balance notice:', e));
@@ -326,7 +390,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       // 6. Live Notification
       addLiveNotification({
         title: `Cash Collected: ${formatLKR(payAmt)}`,
-        desc: `Receipt #${newPayment.receipt_no} issued to ${newPayment.customer_name}. Remaining Balance: ${formatLKR(nextBal)}.`,
+        desc: `Receipt #${newPayment.receipt_no} issued to ${newPayment.customer_name}. Next Due: ${formatDate(nextDueAfterPayment)}.`,
         category: 'payments',
         type: 'success',
         targetTab: 'single-customer-payments',
@@ -398,19 +462,21 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
 
             <div class="meta-row">
               <div>
-                <strong>Received From (Customer):</strong> ${receipt.customer_name}<br />
-                <span style="color: #64748B;">NIC: ${receipt.customer_nic || 'N/A'} • Phone: ${receipt.customer_phone || 'N/A'}</span>
+                <strong>Customer:</strong> ${receipt.customer_name || 'N/A'}<br />
+                <strong>NIC:</strong> ${receipt.customer_nic || '-'}<br />
+                <strong>Phone:</strong> ${receipt.customer_phone || '-'}
               </div>
               <div style="text-align: right;">
-                <strong>Contract No:</strong> <span style="font-family: monospace; color: #2563EB;">${receipt.contract_no || 'N/A'}</span><br />
-                <strong>Invoice Ref:</strong> ${receipt.invoice_no || 'N/A'} • Center: ${receipt.center_code || 'C001'}
+                <strong>Contract No:</strong> ${receipt.contract_no || 'N/A'}<br />
+                <strong>Invoice No:</strong> ${receipt.invoice_no || 'N/A'}<br />
+                <strong>Collected By:</strong> ${receipt.collected_by || 'Officer'}
               </div>
             </div>
 
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Description / Payment Particulars</th>
+                  <th>Description</th>
                   <th>Payment Mode</th>
                   <th style="text-align: right;">Amount Paid (LKR)</th>
                 </tr>
@@ -418,26 +484,22 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
               <tbody>
                 <tr>
                   <td>
-                    <strong>Customer Installment / Balance Settlement</strong>
-                    <div style="font-size: 9.5px; color: #64748B;">Item: ${orderRef?.item_name || 'Furniture Item'} • Term Payment</div>
+                    <strong>${receipt.payment_type ? receipt.payment_type.toUpperCase() : 'INSTALLMENT'} PAYMENT</strong><br />
+                    <span style="font-size: 10px; color: #64748B;">Item: ${orderRef?.item_name || 'Furniture Package'} • Passbook: ${orderRef?.passbook_no || '-'}</span>
                   </td>
                   <td>${receipt.payment_method || 'Cash'}</td>
-                  <td style="text-align: right;" class="amount-highlight">${formatLKR(receipt.amount)}</td>
-                </tr>
-                <tr style="background: #F8FAFC;">
-                  <td colspan="2" style="font-weight: 700; color: #475569;">
-                    Remaining Balance Due on Account:
+                  <td style="text-align: right;" class="amount-highlight">
+                    ${formatLKR(receipt.amount)}
                   </td>
-                  <td style="text-align: right; font-weight: 900; color: ${receipt.balance_after > 0 ? '#DC2626' : '#16A34A'}; font-size: 12px;">
+                </tr>
+                <tr>
+                  <td colspan="2" style="text-align: right; font-weight: 700;">Remaining Balance Due:</td>
+                  <td style="text-align: right; font-weight: 900; color: ${receipt.balance_after > 0 ? '#DC2626' : '#15803D'};">
                     ${formatLKR(receipt.balance_after)}
                   </td>
                 </tr>
               </tbody>
             </table>
-
-            <div style="margin-top: 14px; font-size: 9px; color: #64748B; background: #FFFBEB; border: 1px solid #FDE68A; padding: 6px 10px; border-radius: 4px;">
-              * Computer-generated official receipt issued by D N S Home Solutions Central System. Retain for warranty & passbook validation.
-            </div>
 
             <div class="signatures">
               <div class="sig-box">
@@ -446,7 +508,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
               </div>
               <div class="sig-box">
                 <div class="sig-line"></div>
-                <div class="sig-label">Collected By: ${receipt.collected_by || 'Authorized Officer'}</div>
+                <div class="sig-label">Authorized Showroom Officer</div>
               </div>
             </div>
           </div>
@@ -454,29 +516,23 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       </html>
     `;
 
-    printHtmlDocument(htmlContent, { title: `DNS_Receipt_${receipt.receipt_no}` });
+    printHtmlDocument(htmlContent);
   };
 
   // -------------------------------------------------------------
-  // Send WhatsApp Receipt Message to Customer
+  // Send WhatsApp Official Receipt Confirmation
   // -------------------------------------------------------------
   const handleSendWhatsAppReceipt = (receipt) => {
-    if (!receipt) return;
-    const phone = receipt.customer_phone;
-    if (!phone) {
-      alert('Customer mobile phone number is missing.');
+    if (!receipt || !receipt.customer_phone) {
+      alert('No valid phone number for this customer.');
       return;
     }
 
-    let cleanPhone = String(phone).replace(/\D/g, '');
-    if (cleanPhone.startsWith('0')) cleanPhone = '94' + cleanPhone.slice(1);
-    else if (!cleanPhone.startsWith('94')) cleanPhone = '94' + cleanPhone;
+    const cleanPhone = receipt.customer_phone.replace(/[^0-9]/g, '');
+    const origin = window.location.origin;
+    const invoiceUrl = receipt.invoice_no ? `${origin}/?invoice=${encodeURIComponent(receipt.invoice_no)}` : '';
 
-    const baseUrl = typeof window !== 'undefined' && window.location ? window.location.origin : '';
-    const invoiceUrl = receipt.invoice_no ? `${baseUrl}/?invoice=${encodeURIComponent(receipt.invoice_no)}` : '';
-
-    const text = `🛋️ *D N S HOME SOLUTIONS*
-*Official Customer Cash Payment Receipt*
+    const text = `🌟 *D N S HOME SOLUTIONS - OFFICIAL CASH RECEIPT*
 ───────────────────────────
 🧾 *Receipt No:* #${receipt.receipt_no}
 📅 *Payment Date:* ${formatDate(receipt.date)}
@@ -501,8 +557,107 @@ ${invoiceUrl ? `
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  // -------------------------------------------------------------
+  // Send Friendly WhatsApp Payment Reminder to Client
+  // -------------------------------------------------------------
+  const handleSendPaymentReminderWhatsApp = (client) => {
+    if (!client || !client.customer_phone) {
+      alert('No phone number recorded for this customer.');
+      return;
+    }
+    const cleanPhone = client.customer_phone.replace(/[^0-9]/g, '');
+    const dayInfo = client.dayInfo || getCustomerWeekday(client);
+    const dueAmt = client.installmentDue || client.installment_value || 0;
+
+    const text = `🌟 *D N S HOME SOLUTIONS - Installment Collection Reminder*
+───────────────────────────
+Customer: *${client.customer_name}*
+Contract No: *${client.contract_no || 'N/A'}*
+Item: *${client.item_name || 'Furniture Item'}*
+
+📅 *Weekly Installment Due (${dayInfo.nameEn} / ${dayInfo.nameSi}):*
+• Installment Amount: *${formatLKR(dueAmt)}*
+• Total Balance Due: *${formatLKR(client.balance_due)}*
+
+Our showroom/field officer is collecting payments today. If you have already paid, please ignore this notice.
+───────────────────────────
+📞 Hotline: 0772345671 / 0703119860
+Thank you for choosing D N S Home Solutions!`;
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // -------------------------------------------------------------
+  // Print Day Collection Sheet
+  // -------------------------------------------------------------
+  const handlePrintDaySheet = () => {
+    const listToPrint = activeDayStat.allClients || [];
+    const htmlDoc = generateSingleCustomerDaySheetHtml({
+      dayKey: selectedWeekday,
+      dayNameEn: activeDayStat.nameEn,
+      dayNameSi: activeDayStat.nameSi,
+      dateStr: new Date().toISOString().slice(0, 10),
+      clients: listToPrint,
+      officerName: currentUser?.name || 'Showroom Executive',
+      targetAmount: activeDayStat.targetAmount,
+    });
+    printHtmlDocument(htmlDoc);
+  };
+
+  // -------------------------------------------------------------
+  // Export Day CSV
+  // -------------------------------------------------------------
+  const handleExportDayCsv = () => {
+    const listToExport = activeDayStat.allClients || [];
+    if (listToExport.length === 0) {
+      alert(`No clients scheduled for ${activeDayStat.nameEn} to export.`);
+      return;
+    }
+    const headers = [
+      '#',
+      'Customer Name',
+      'NIC',
+      'Phone',
+      'Address',
+      'Contract No',
+      'Item',
+      'Installment Due (Rs)',
+      'Balance Due (Rs)',
+      'Collected Today (Rs)',
+      'Status',
+    ];
+    const rows = listToExport.map((c, i) => [
+      i + 1,
+      `"${c.customer_name || ''}"`,
+      `"${c.customer_nic || c.customer_id || ''}"`,
+      `"${c.customer_phone || ''}"`,
+      `"${(c.customer_address || '').replace(/"/g, '""')}"`,
+      `"${c.contract_no || ''}"`,
+      `"${(c.item_name || '').replace(/"/g, '""')}"`,
+      c.installmentDue || c.installment_value || 0,
+      c.balance_due || 0,
+      c.collectedToday || 0,
+      c.isPaidToday ? 'Paid Today' : Number(c.balance_due) <= 0 ? 'Settled' : 'Pending Due',
+    ]);
+    const csvContent =
+      'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute(
+      'download',
+      `Single_Customer_Collection_${activeDayStat.nameEn}_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="single-customer-payments-container" style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
+    <div
+      className="single-customer-payments-container"
+      style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}
+    >
       {/* 1. Header Banner & Action Bar */}
       <div
         className="panel"
@@ -520,11 +675,32 @@ ${invoiceUrl ? `
         }}
       >
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--ash-900)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: '1.4rem',
+              fontWeight: 900,
+              color: 'var(--ash-900)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
             <Wallet size={24} color="var(--primary)" /> Single Customer Cash Payments
           </h2>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)' }}>
-            <span>Search customer accounts, collect individual cash installments, view balances, and issue official receipts</span>
+          <div
+            style={{
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center',
+              marginTop: '4px',
+              fontSize: '0.82rem',
+              color: 'var(--ash-500)',
+            }}
+          >
+            <span>
+              5-Day Weekly Installment Collections (සඳුදා සිට සිකුරාදා දක්වා සතිපතා මුදල් එකතු කිරීමේ ක්‍රමය)
+            </span>
           </div>
         </div>
 
@@ -589,8 +765,446 @@ ${invoiceUrl ? `
         </div>
       </div>
 
-      {/* 3. Live Customer Search Bar */}
-      <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      {/* 3. 5-Day Weekly Cash Collection Route Navigation Ribbon */}
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: '12px',
+          border: '1px solid #E2E8F0',
+          padding: '16px 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              📅 5-Day Weekly Cash Collection Route (සතිපතා මුදල් එකතු කිරීමේ දින 5)
+            </div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#0F172A', marginTop: '2px' }}>
+              Select collection weekday to view scheduled customers, targets & collect cash
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#475569', padding: '4px 10px', borderRadius: '6px', fontWeight: 700 }}>
+              Today: <strong>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* 5 Tabs + All Tab Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+          {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'all'].map((key) => {
+            const isSelected = selectedWeekday === key;
+            const isToday = todayWeekdayKey === key;
+            const tabStat = weeklyStats[key];
+            if (!tabStat) return null;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setSelectedWeekday(key);
+                  setDayClientSubTab('pending');
+                }}
+                style={{
+                  background: isSelected ? tabStat.bg : '#F8FAFC',
+                  border: isSelected ? `2px solid ${tabStat.color}` : '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  position: 'relative',
+                  boxShadow: isSelected ? `0 4px 12px ${tabStat.color}25` : 'none',
+                }}
+              >
+                {isToday && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-8px',
+                      right: '8px',
+                      background: '#DC2626',
+                      color: '#fff',
+                      fontSize: '0.62rem',
+                      fontWeight: 900,
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                      letterSpacing: '0.5px',
+                      boxShadow: '0 2px 4px rgba(220,38,38,0.3)',
+                    }}
+                  >
+                    ★ TODAY
+                  </span>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 900, color: isSelected ? tabStat.color : '#1E293B' }}>
+                    {tabStat.nameEn}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      background: isSelected ? tabStat.color : '#E2E8F0',
+                      color: isSelected ? '#fff' : '#475569',
+                      padding: '2px 7px',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {tabStat.totalClients}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: isSelected ? tabStat.color : '#64748B', fontWeight: 700, marginTop: '2px' }}>
+                  {tabStat.nameSi}
+                </div>
+                <div style={{ marginTop: '8px', borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Target:</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 900, color: isSelected ? tabStat.color : '#0F172A' }}>
+                    {formatLKR(tabStat.targetAmount)}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 4. Selected Day Command Center & Scheduled Clients List */}
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: '12px',
+          border: `1.5px solid ${activeDayStat.border || '#E2E8F0'}`,
+          padding: '20px 24px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+        }}
+      >
+        {/* Day Header & Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', borderBottom: '1px solid #E2E8F0', paddingBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '10px',
+                background: activeDayStat.bg,
+                color: activeDayStat.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 900,
+                fontSize: '1.2rem',
+                border: `1px solid ${activeDayStat.border}`,
+              }}
+            >
+              <Calendar size={22} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0F172A' }}>
+                  {activeDayStat.nameEn} ({activeDayStat.nameSi}) Cash Collection Route
+                </h3>
+                {todayWeekdayKey === selectedWeekday && (
+                  <span style={{ background: '#DC2626', color: '#fff', fontSize: '0.68rem', fontWeight: 900, padding: '2px 8px', borderRadius: '12px' }}>
+                    TODAY'S SCHEDULE
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '2px' }}>
+                Weekly recurring installment schedule for single customers assigned to {activeDayStat.nameEn}
+              </div>
+            </div>
+          </div>
+
+          {/* Print & Export buttons */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handlePrintDaySheet}
+              style={{ padding: '8px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              title={`Print official field sheet for ${activeDayStat.nameEn}`}
+            >
+              <Printer size={15} color="#1E4D8C" /> Print {activeDayStat.nameEn} Collection Sheet
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleExportDayCsv}
+              style={{ padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Export as CSV"
+            >
+              <Download size={14} /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        {/* Day KPI Mini-Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '16px' }}>
+          <div style={{ background: '#F8FAFC', borderRadius: '8px', padding: '12px 14px', border: '1px solid #E2E8F0' }}>
+            <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>Day Target Cash</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1E4D8C', marginTop: '2px' }}>{formatLKR(activeDayStat.targetAmount)}</div>
+            <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '2px' }}>{activeDayStat.totalClients} scheduled clients</div>
+          </div>
+
+          <div style={{ background: '#F0FDF4', borderRadius: '8px', padding: '12px 14px', border: '1px solid #BBF7D0' }}>
+            <div style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 800, textTransform: 'uppercase' }}>Collected Today</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#15803D', marginTop: '2px' }}>{formatLKR(activeDayStat.collectedToday)}</div>
+            <div style={{ fontSize: '0.7rem', color: '#166534', marginTop: '2px' }}>{activeDayStat.confirmedList.length} clients confirmed</div>
+          </div>
+
+          <div style={{ background: '#FEF2F2', borderRadius: '8px', padding: '12px 14px', border: '1px solid #FECACA' }}>
+            <div style={{ fontSize: '0.68rem', color: '#991B1B', fontWeight: 800, textTransform: 'uppercase' }}>Pending Shortfall</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#DC2626', marginTop: '2px' }}>{formatLKR(activeDayStat.pendingShortfall)}</div>
+            <div style={{ fontSize: '0.7rem', color: '#DC2626', marginTop: '2px' }}>{activeDayStat.pendingList.length} clients pending</div>
+          </div>
+        </div>
+
+        {/* Sub-tabs: Pending (X) vs Confirmed (Y) vs All (Z) */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', borderBottom: '1.5px solid #E2E8F0', paddingBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setDayClientSubTab('pending')}
+              style={{
+                border: 'none',
+                background: dayClientSubTab === 'pending' ? '#DC2626' : '#F1F5F9',
+                color: dayClientSubTab === 'pending' ? '#fff' : '#475569',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              ⏳ Pending Collection ({activeDayStat.pendingList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDayClientSubTab('confirmed')}
+              style={{
+                border: 'none',
+                background: dayClientSubTab === 'confirmed' ? '#16A34A' : '#F1F5F9',
+                color: dayClientSubTab === 'confirmed' ? '#fff' : '#475569',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              ✅ Confirmed Today ({activeDayStat.confirmedList.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setDayClientSubTab('all')}
+              style={{
+                border: 'none',
+                background: dayClientSubTab === 'all' ? '#1E293B' : '#F1F5F9',
+                color: dayClientSubTab === 'all' ? '#fff' : '#475569',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              All {activeDayStat.nameEn} Clients ({activeDayStat.allClients.length})
+            </button>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+            Showing {activeDayClients.length} customer records
+          </span>
+        </div>
+
+        {/* Scheduled Clients Table */}
+        <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #CBD5E1', color: '#1E293B' }}>
+                <th style={{ padding: '10px 12px', textAlign: 'center', width: '36px' }}>#</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Customer Details</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Contact & Address</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Item & Contract</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Weekly Due (Rs.)</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Balance Due (Rs.)</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center' }}>Status</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeDayClients.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: '#94A3B8' }}>
+                    {dayClientSubTab === 'pending'
+                      ? `🎉 All single customers scheduled for ${activeDayStat.nameEn} have settled their installment!`
+                      : `No customer records found under ${dayClientSubTab} for ${activeDayStat.nameEn}.`}
+                  </td>
+                </tr>
+              ) : (
+                activeDayClients.map((client, idx) => {
+                  const isSelected = selectedOrder?.id === client.id;
+                  const isPaid = client.isPaidToday;
+                  const bal = Number(client.balance_due) || 0;
+
+                  return (
+                    <tr
+                      key={client.id || idx}
+                      style={{
+                        borderBottom: '1px solid #E2E8F0',
+                        background: isSelected ? '#EFF6FF' : isPaid ? '#F0FDF4' : idx % 2 === 0 ? '#fff' : '#F8FAFC',
+                      }}
+                    >
+                      <td style={{ padding: '10px 12px', textAlign: 'center', color: '#64748B' }}>{idx + 1}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ fontWeight: 800, color: '#0F172A' }}>{client.customer_name}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                          NIC: {client.customer_nic || client.customer_id}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div>
+                          📞 <strong>{client.customer_phone}</strong>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                          {client.customer_address || 'Showroom Direct'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ fontWeight: 700, color: '#334155' }}>{client.item_name}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#2563EB', fontFamily: 'monospace', marginTop: '2px' }}>
+                          {client.contract_no}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#1E4D8C', fontSize: '0.88rem' }}>
+                        {formatLKR(client.installmentDue || client.installment_value || 0)}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: bal > 0 ? '#DC2626' : '#15803D' }}>
+                        {formatLKR(bal)}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        {isPaid ? (
+                          <div>
+                            <span style={{ fontSize: '0.68rem', background: '#DCFCE7', color: '#166534', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                              PAID TODAY
+                            </span>
+                            <div style={{ fontSize: '0.68rem', color: '#166534', marginTop: '2px', fontWeight: 700 }}>
+                              {formatLKR(client.collectedToday)}
+                            </div>
+                          </div>
+                        ) : bal <= 0 ? (
+                          <span style={{ fontSize: '0.68rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                            SETTLED
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.68rem', background: '#FEE2E2', color: '#DC2626', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                            PENDING
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                          {/* Collect Cash Button */}
+                          <button
+                            type="button"
+                            onClick={() => handlePickClientForPayment(client)}
+                            className={`btn ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{
+                              padding: '5px 12px',
+                              fontSize: '0.76rem',
+                              fontWeight: 800,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                            title="Open cash collection desk for this client"
+                          >
+                            <DollarSign size={13} /> {isSelected ? 'Active' : 'Collect Cash'}
+                          </button>
+
+                          {/* WhatsApp Reminder Button */}
+                          {!isPaid && bal > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleSendPaymentReminderWhatsApp(client)}
+                              style={{
+                                background: '#DCFCE7',
+                                color: '#166534',
+                                border: '1px solid #BBF7D0',
+                                padding: '5px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '0.74rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontWeight: 700,
+                              }}
+                              title="Send WhatsApp payment reminder"
+                            >
+                              <MessageCircle size={13} /> Remind
+                            </button>
+                          )}
+
+                          {/* Call Button */}
+                          <a
+                            href={`tel:${client.customer_phone}`}
+                            className="btn btn-secondary"
+                            style={{ padding: '5px 8px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center' }}
+                            title="Call customer"
+                          >
+                            <Phone size={13} />
+                          </a>
+
+                          {/* If paid today, show quick print / receipt buttons */}
+                          {isPaid && client.todayReceipts && client.todayReceipts.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handlePrintReceipt(client.todayReceipts[0])}
+                              style={{
+                                background: '#fff',
+                                border: '1px solid #CBD5E1',
+                                padding: '5px 8px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '0.74rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title="Print today's receipt"
+                            >
+                              <Printer size={13} /> Slip
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 5. Live Customer Universal Search Bar */}
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: '12px',
+          border: '1px solid #E2E8F0',
+          padding: '16px 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: '#94A3B8' }} />
@@ -598,7 +1212,7 @@ ${invoiceUrl ? `
               type="text"
               className="form-input"
               style={{ paddingLeft: '36px', fontSize: '0.88rem' }}
-              placeholder="🔍 Search customer by Name, NIC, Mobile Phone, Contract No (e.g. PN/C003/...), or Invoice..."
+              placeholder="🔍 Search any customer by Name, NIC, Mobile Phone, Contract No, or Invoice across all days..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -606,7 +1220,15 @@ ${invoiceUrl ? `
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', right: '10px', top: '9px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '9px',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94A3B8',
+                }}
               >
                 <X size={15} />
               </button>
@@ -662,66 +1284,110 @@ ${invoiceUrl ? `
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px', maxHeight: '220px', overflowY: 'auto' }}>
-                {filteredAccounts.slice(0, 6).map((ord) => (
-                  <div
-                    key={ord.id}
-                    onClick={() => {
-                      setSelectedOrder(ord);
-                      setSearchQuery('');
-                    }}
-                    style={{
-                      background: selectedOrder?.id === ord.id ? '#EFF6FF' : '#F8FAFC',
-                      border: selectedOrder?.id === ord.id ? '1.5px solid #2563EB' : '1px solid #E2E8F0',
-                      borderRadius: '8px',
-                      padding: '10px 12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{ord.customer_name}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                        NIC: {ord.customer_nic || ord.customer_id} • 📞 {ord.customer_phone}
+                {filteredAccounts.slice(0, 6).map((ord) => {
+                  const weekdayInfo = getCustomerWeekday(ord);
+                  return (
+                    <div
+                      key={ord.id}
+                      onClick={() => {
+                        handlePickClientForPayment(ord);
+                        setSearchQuery('');
+                      }}
+                      style={{
+                        background: selectedOrder?.id === ord.id ? '#EFF6FF' : '#F8FAFC',
+                        border: selectedOrder?.id === ord.id ? '1.5px solid #2563EB' : '1px solid #E2E8F0',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0F172A' }}>{ord.customer_name}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                          NIC: {ord.customer_nic || ord.customer_id} • 📞 {ord.customer_phone}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: weekdayInfo.color, fontWeight: 700, marginTop: '2px' }}>
+                          📅 {weekdayInfo.nameEn} ({weekdayInfo.nameSi}) Route
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.72rem', color: '#2563EB', fontFamily: 'monospace' }}>
-                        {ord.contract_no}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 900, color: Number(ord.balance_due) > 0 ? '#DC2626' : '#16A34A' }}>
+                          {formatLKR(ord.balance_due)}
+                        </div>
+                        <span style={{ fontSize: '0.65rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                          Select & Pay
+                        </span>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.86rem', fontWeight: 900, color: Number(ord.balance_due) > 0 ? '#DC2626' : '#16A34A' }}>
-                        {formatLKR(ord.balance_due)}
-                      </div>
-                      <span style={{ fontSize: '0.65rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        Select & Pay
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* 4. Active Customer Cash Payment Desk (Main Workstation) */}
+      {/* 6. Active Customer Cash Payment Desk (Main Workstation) */}
       {selectedOrder ? (
-        <div style={{ background: '#fff', borderRadius: '12px', border: '1.5px solid #2563EB', padding: '24px', boxShadow: '0 4px 14px rgba(37, 99, 235, 0.08)' }}>
+        <div
+          id="single-customer-payment-desk"
+          style={{
+            background: '#fff',
+            borderRadius: '12px',
+            border: '1.5px solid #2563EB',
+            padding: '24px',
+            boxShadow: '0 4px 14px rgba(37, 99, 235, 0.08)',
+          }}
+        >
           {/* Top Bar of Active Desk */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1.5px solid #E2E8F0', paddingBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#EFF6FF', border: '2px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1D4ED8', fontWeight: 900, fontSize: '1.2rem' }}>
+              <div
+                style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '50%',
+                  background: '#EFF6FF',
+                  border: '2px solid #BFDBFE',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#1D4ED8',
+                  fontWeight: 900,
+                  fontSize: '1.2rem',
+                }}
+              >
                 {selectedOrder.customer_name?.charAt(0)?.toUpperCase() || 'C'}
               </div>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#0F172A' }}>
                     {selectedOrder.customer_name}
                   </h3>
                   <span style={{ fontSize: '0.72rem', background: '#DBEAFE', color: '#1D4ED8', padding: '2px 8px', borderRadius: '12px', fontWeight: 800 }}>
                     Center {selectedOrder.center_code || 'C001'}
                   </span>
+                  {(() => {
+                    const custDay = getCustomerWeekday(selectedOrder);
+                    return (
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          background: custDay.bg,
+                          color: custDay.color,
+                          border: `1px solid ${custDay.border}`,
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        📅 Weekly Route: {custDay.nameEn} ({custDay.nameSi})
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <span><strong>NIC:</strong> {selectedOrder.customer_nic || selectedOrder.customer_id}</span>
@@ -775,7 +1441,7 @@ ${invoiceUrl ? `
                     </div>
                   </div>
                   <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px' }}>
-                    <div style={{ fontSize: '0.68rem', color: '#16A34A', fontWeight: 700 }}>ADVANCE / PAID SO FAR</div>
+                    <div style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 700 }}>ADVANCE / PAID SO FAR</div>
                     <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#16A34A', marginTop: '2px' }}>
                       {formatLKR(selectedOrder.advance_paid)}
                     </div>
@@ -783,7 +1449,15 @@ ${invoiceUrl ? `
                 </div>
 
                 {/* Outstanding Balance Highlight Box */}
-                <div style={{ marginTop: '12px', background: Number(selectedOrder.balance_due) > 0 ? '#FEF2F2' : '#F0FDF4', border: Number(selectedOrder.balance_due) > 0 ? '1.5px solid #FECACA' : '1.5px solid #BBF7D0', borderRadius: '8px', padding: '12px 14px' }}>
+                <div
+                  style={{
+                    marginTop: '12px',
+                    background: Number(selectedOrder.balance_due) > 0 ? '#FEF2F2' : '#F0FDF4',
+                    border: Number(selectedOrder.balance_due) > 0 ? '1.5px solid #FECACA' : '1.5px solid #BBF7D0',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                  }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', fontWeight: 800, color: Number(selectedOrder.balance_due) > 0 ? '#991B1B' : '#166534', textTransform: 'uppercase' }}>
                       Remaining Balance Due:
@@ -798,7 +1472,7 @@ ${invoiceUrl ? `
                 {currentNextDetails && (
                   <div style={{ marginTop: '12px', fontSize: '0.78rem', color: '#334155', background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px' }}>
                     <div>
-                      • <strong>Monthly Installment Due:</strong> <span style={{ color: '#1E4D8C', fontWeight: 800 }}>{formatLKR(currentNextDetails.nextDueAmount)}</span>
+                      • <strong>Weekly Installment Due:</strong> <span style={{ color: '#1E4D8C', fontWeight: 800 }}>{formatLKR(currentNextDetails.nextDueAmount)}</span>
                     </div>
                     <div style={{ marginTop: '4px' }}>
                       • <strong>Terms Paid:</strong> {selectedOrder.installments_paid || 0} of {selectedOrder.loan_terms || 12} Installments
@@ -806,14 +1480,26 @@ ${invoiceUrl ? `
                     {currentNextDetails.nextDueDate && (
                       <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         • <strong>Next Due Date:</strong> {formatDate(currentNextDetails.nextDueDate)}
-                        <span style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 800,
-                          padding: '1px 6px',
-                          borderRadius: '4px',
-                          background: currentNextDetails.statusType === 'overdue' ? '#FEE2E2' : currentNextDetails.statusType === 'today' ? '#FEF3C7' : '#EFF6FF',
-                          color: currentNextDetails.statusType === 'overdue' ? '#DC2626' : currentNextDetails.statusType === 'today' ? '#B45309' : '#1D4ED8',
-                        }}>
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background:
+                              currentNextDetails.statusType === 'overdue'
+                                ? '#FEE2E2'
+                                : currentNextDetails.statusType === 'today'
+                                ? '#FEF3C7'
+                                : '#EFF6FF',
+                            color:
+                              currentNextDetails.statusType === 'overdue'
+                                ? '#DC2626'
+                                : currentNextDetails.statusType === 'today'
+                                ? '#B45309'
+                                : '#1D4ED8',
+                          }}
+                        >
                           {currentNextDetails.statusLabel}
                         </span>
                       </div>
@@ -829,7 +1515,15 @@ ${invoiceUrl ? `
                   href={`/?invoice=${encodeURIComponent(selectedOrder.invoice_no || selectedOrder.id)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ fontSize: '0.74rem', color: '#2563EB', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  style={{
+                    fontSize: '0.74rem',
+                    color: '#2563EB',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
                 >
                   <ExternalLink size={13} /> Open Agreement PDF
                 </a>
@@ -837,7 +1531,18 @@ ${invoiceUrl ? `
             </div>
 
             {/* Right Column: Cash Collection Entry Form */}
-            <form onSubmit={handleCollectCashPayment} style={{ background: '#fff', border: '1px solid #CBD5E1', borderRadius: '10px', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <form
+              onSubmit={handleCollectCashPayment}
+              style={{
+                background: '#fff',
+                border: '1px solid #CBD5E1',
+                borderRadius: '10px',
+                padding: '18px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px' }}>
                 <div style={{ fontWeight: 900, color: '#1E4D8C', fontSize: '0.98rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <DollarSign size={18} /> Collect Cash & Issue Receipt
@@ -923,7 +1628,7 @@ ${invoiceUrl ? `
                     value={paymentType}
                     onChange={(e) => setPaymentType(e.target.value)}
                   >
-                    <option value="installment">Monthly Installment</option>
+                    <option value="installment">Weekly Installment</option>
                     <option value="partial">Partial Installment</option>
                     <option value="settlement">Full Settlement</option>
                     <option value="advance">Advance Payment</option>
@@ -940,7 +1645,7 @@ ${invoiceUrl ? `
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   >
-                    <option value="Cash">Cash (Showroom / Desk)</option>
+                    <option value="Cash">Cash (Showroom / Field)</option>
                     <option value="Bank Transfer">Bank Transfer</option>
                     <option value="Online Deposit">Online Deposit</option>
                     <option value="Cheque">Cheque</option>
@@ -988,7 +1693,7 @@ ${invoiceUrl ? `
                   type="text"
                   className="form-input"
                   style={{ fontSize: '0.82rem' }}
-                  placeholder="e.g. Cash received at Maharagama showroom, passbook stamped..."
+                  placeholder="e.g. Cash collected on weekly collection route, passbook updated..."
                   value={paymentNotes}
                   onChange={(e) => setPaymentNotes(e.target.value)}
                 />
@@ -1090,12 +1795,12 @@ ${invoiceUrl ? `
           <div style={{ fontSize: '2rem', marginBottom: '8px' }}>👤</div>
           <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>No Customer Account Currently Selected</div>
           <div style={{ fontSize: '0.82rem', color: '#3B82F6', marginTop: '4px' }}>
-            Use the search bar above or choose a customer from the table below to collect cash installment and issue an official receipt.
+            Click <strong>"💵 Collect Cash"</strong> on any scheduled client in the 5-day weekday route above or search to collect payment and issue an official receipt.
           </div>
         </div>
       )}
 
-      {/* 5. Directory Table of Customer Credit Accounts */}
+      {/* 7. Directory Table of Customer Credit Accounts */}
       <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '18px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
           <div>
@@ -1103,7 +1808,7 @@ ${invoiceUrl ? `
               <User size={18} color="#2563EB" /> Customer Credit Accounts Directory ({filteredAccounts.length})
             </h3>
             <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-              Click <strong>"Collect Cash"</strong> on any row to open the cash collection desk above
+              Complete portfolio list with weekly collection weekday route indicators
             </span>
           </div>
         </div>
@@ -1114,19 +1819,20 @@ ${invoiceUrl ? `
               <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #CBD5E1', color: '#1E293B' }}>
                 <th style={{ padding: '10px 12px', textAlign: 'center', width: '36px' }}>#</th>
                 <th style={{ padding: '10px 12px', textAlign: 'left' }}>Customer Name & NIC</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Weekly Route</th>
                 <th style={{ padding: '10px 12px', textAlign: 'left' }}>Furniture Item & Contract</th>
                 <th style={{ padding: '10px 12px', textAlign: 'center' }}>Center Hub</th>
                 <th style={{ padding: '10px 12px', textAlign: 'right' }}>Total Value</th>
                 <th style={{ padding: '10px 12px', textAlign: 'right' }}>Advance Paid</th>
                 <th style={{ padding: '10px 12px', textAlign: 'right' }}>Balance Due</th>
-                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Monthly Due</th>
+                <th style={{ padding: '10px 12px', textAlign: 'right' }}>Weekly Due</th>
                 <th style={{ padding: '10px 12px', textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: '#94A3B8' }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: '#94A3B8' }}>
                     No customer accounts match your current filter criteria.
                   </td>
                 </tr>
@@ -1134,6 +1840,8 @@ ${invoiceUrl ? `
                 filteredAccounts.map((ord, idx) => {
                   const bal = Number(ord.balance_due) || 0;
                   const isSelected = selectedOrder?.id === ord.id;
+                  const weekdayInfo = getCustomerWeekday(ord);
+
                   return (
                     <tr
                       key={ord.id}
@@ -1148,6 +1856,22 @@ ${invoiceUrl ? `
                         <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
                           NIC: {ord.customer_nic || ord.customer_id} • 📞 {ord.customer_phone}
                         </div>
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            background: weekdayInfo.bg,
+                            color: weekdayInfo.color,
+                            border: `1px solid ${weekdayInfo.border}`,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {weekdayInfo.nameEn} ({weekdayInfo.nameSi})
+                        </span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ fontWeight: 700, color: '#334155' }}>{ord.item_name}</div>
@@ -1175,10 +1899,7 @@ ${invoiceUrl ? `
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedOrder(ord);
-                            window.scrollTo({ top: 120, behavior: 'smooth' });
-                          }}
+                          onClick={() => handlePickClientForPayment(ord)}
                           className={`btn ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
                           style={{
                             padding: '6px 14px',
@@ -1201,7 +1922,7 @@ ${invoiceUrl ? `
         </div>
       </div>
 
-      {/* 6. Payment Success Modal with 1-Click WhatsApp & Print */}
+      {/* 8. Payment Success Modal with 1-Click WhatsApp & Print */}
       <Modal
         isOpen={isSuccessModalOpen}
         onClose={() => setIsSuccessModalOpen(false)}
@@ -1248,45 +1969,32 @@ ${invoiceUrl ? `
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => handleSendWhatsAppReceipt(lastPaymentRecord)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    background: '#25D366',
-                    color: '#fff',
-                    border: 'none',
-                    padding: '9px 16px',
-                    borderRadius: '8px',
-                    fontWeight: 800,
-                    fontSize: '0.84rem',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(37, 211, 102, 0.35)',
-                  }}
-                >
-                  <Share2 size={16} /> Send WhatsApp Receipt
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handlePrintReceipt(lastPaymentRecord)}
-                  className="btn btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
-                >
-                  <Printer size={15} /> Print Official Receipt
-                </button>
-              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handlePrintReceipt(lastPaymentRecord)}
+                style={{ padding: '9px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              >
+                <Printer size={15} /> Print Official Receipt Slip
+              </button>
 
               <button
                 type="button"
-                onClick={() => setIsSuccessModalOpen(false)}
                 className="btn btn-primary"
-                style={{ padding: '9px 22px', fontWeight: 800 }}
+                onClick={() => handleSendWhatsAppReceipt(lastPaymentRecord)}
+                style={{
+                  background: '#25D366',
+                  borderColor: '#25D366',
+                  color: '#fff',
+                  padding: '9px 18px',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
               >
-                Done
+                <Share2 size={15} /> Send WhatsApp Receipt
               </button>
             </div>
           </div>
