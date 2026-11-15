@@ -1,5 +1,5 @@
-import { formatCenterCode } from './centersData';
-import { formatLKR, formatDate } from './formatters';
+import { formatCenterCode } from './centersData.js';
+import { formatLKR, formatDate } from './formatters.js';
 
 /**
  * Checks whether a center is scheduled for collection on the given date.
@@ -582,34 +582,55 @@ export const getCurrentWeekdayKey = () => {
  * If the date falls on Saturday, it is mapped to Friday; Sunday is mapped to Monday.
  */
 export const getCustomerWeekday = (order) => {
-  if (!order) return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: 1 };
+  if (!order) return { ...WEEKDAYS_CONFIG.monday, key: 'monday', dayKey: 'monday', rawDayNumber: 1 };
 
-  const rawDateStr = order.first_due_date || order.date || order.created_at;
+  // 1. Direct weekday match if order has preferred collection day or day name
+  const prefDay = String(order.collection_day || order.preferred_weekday || '').toLowerCase().trim();
+  if (prefDay.includes('mon')) return { ...WEEKDAYS_CONFIG.monday, key: 'monday', dayKey: 'monday', rawDayNumber: 1 };
+  if (prefDay.includes('tue')) return { ...WEEKDAYS_CONFIG.tuesday, key: 'tuesday', dayKey: 'tuesday', rawDayNumber: 2 };
+  if (prefDay.includes('wed')) return { ...WEEKDAYS_CONFIG.wednesday, key: 'wednesday', dayKey: 'wednesday', rawDayNumber: 3 };
+  if (prefDay.includes('thu')) return { ...WEEKDAYS_CONFIG.thursday, key: 'thursday', dayKey: 'thursday', rawDayNumber: 4 };
+  if (prefDay.includes('fri')) return { ...WEEKDAYS_CONFIG.friday, key: 'friday', dayKey: 'friday', rawDayNumber: 5 };
+
+  // 2. Date parsing (first_due_date, due_date, date, created_at)
+  const rawDateStr = String(order.first_due_date || order.due_date || order.date || order.created_at || '').trim();
   if (!rawDateStr) {
-    return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: 1 };
+    return { ...WEEKDAYS_CONFIG.monday, key: 'monday', dayKey: 'monday', rawDayNumber: 1 };
   }
 
   try {
-    const d = new Date(rawDateStr);
-    if (!isNaN(d.getTime())) {
-      const dayNum = d.getDay(); // 0: Sun, 1: Mon, 2: Tue, 3: Wed, 4: Thu, 5: Fri, 6: Sat
-      if (dayNum === 1) return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: dayNum };
-      if (dayNum === 2) return { ...WEEKDAYS_CONFIG.tuesday, rawDayNumber: dayNum };
-      if (dayNum === 3) return { ...WEEKDAYS_CONFIG.wednesday, rawDayNumber: dayNum };
-      if (dayNum === 4) return { ...WEEKDAYS_CONFIG.thursday, rawDayNumber: dayNum };
-      if (dayNum === 5) return { ...WEEKDAYS_CONFIG.friday, rawDayNumber: dayNum };
-      if (dayNum === 6) {
-        // Saturday mapped to Friday for 5-day weekday field collections
-        return { ...WEEKDAYS_CONFIG.friday, rawDayNumber: dayNum, isWeekendAdjusted: true, originalDay: 'Saturday' };
+    let dayNum = -1;
+    // Check if format is YYYY-MM-DD
+    const isoMatch = rawDateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10);
+      const month = parseInt(isoMatch[2], 10) - 1;
+      const day = parseInt(isoMatch[3], 10);
+      const localDate = new Date(year, month, day, 12, 0, 0); // midday local to avoid timezone drift
+      dayNum = localDate.getDay();
+    } else {
+      const d = new Date(rawDateStr);
+      if (!isNaN(d.getTime())) {
+        dayNum = d.getDay();
       }
-      if (dayNum === 0) {
-        // Sunday mapped to Monday
-        return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: dayNum, isWeekendAdjusted: true, originalDay: 'Sunday' };
-      }
+    }
+
+    if (dayNum === 1) return { ...WEEKDAYS_CONFIG.monday, key: 'monday', dayKey: 'monday', rawDayNumber: dayNum };
+    if (dayNum === 2) return { ...WEEKDAYS_CONFIG.tuesday, key: 'tuesday', dayKey: 'tuesday', rawDayNumber: dayNum };
+    if (dayNum === 3) return { ...WEEKDAYS_CONFIG.wednesday, key: 'wednesday', dayKey: 'wednesday', rawDayNumber: dayNum };
+    if (dayNum === 4) return { ...WEEKDAYS_CONFIG.thursday, key: 'thursday', dayKey: 'thursday', rawDayNumber: dayNum };
+    if (dayNum === 5) return { ...WEEKDAYS_CONFIG.friday, key: 'friday', dayKey: 'friday', rawDayNumber: dayNum };
+    if (dayNum === 6) {
+      // Saturday mapped to Friday for 5-day weekday field collections
+      return { ...WEEKDAYS_CONFIG.friday, key: 'friday', dayKey: 'friday', rawDayNumber: dayNum, isWeekendAdjusted: true, originalDay: 'Saturday' };
+    }
+    if (dayNum === 0) {
+      // Sunday mapped to Monday
+      return { ...WEEKDAYS_CONFIG.monday, key: 'monday', dayKey: 'monday', rawDayNumber: dayNum, isWeekendAdjusted: true, originalDay: 'Sunday' };
     }
   } catch {}
 
-  return { ...WEEKDAYS_CONFIG.monday, rawDayNumber: 1 };
+  return { ...WEEKDAYS_CONFIG.monday, key: 'monday', dayKey: 'monday', rawDayNumber: 1 };
 };
 
 /**
@@ -712,7 +733,7 @@ export const calculate5DayWeeklyStats = (orders = [], payments = []) => {
 
     // Get assigned weekday
     const dayInfo = getCustomerWeekday(order);
-    const dayKey = dayInfo.dayKey;
+    const dayKey = dayInfo.dayKey || dayInfo.key || 'monday';
 
     const enriched = {
       ...order,

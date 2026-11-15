@@ -96,10 +96,19 @@ const compressImageFile = (file, maxDim = 600, quality = 0.8) => {
   });
 };
 
-// Normalizes and formats center codes into 'C001' style (C followed by 3 digits)
+// Normalizes and formats center codes into 'C001' style (or 'Single')
 const formatCenterCode = (val) => {
-  const clean = String(val || '').trim().toUpperCase();
+  let clean = String(val || '').trim();
   if (!clean) return '';
+  const upper = clean.toUpperCase();
+  if (upper === 'SINGLE' || upper === 'NONE' || upper === 'ALL' || upper === 'DIRECT' || upper === 'CSINGLE') {
+    return 'Single';
+  }
+  clean = upper;
+  if (clean.includes('/')) {
+    const parts = clean.split('/');
+    clean = parts[parts.length - 1].trim();
+  }
   const numMatch = clean.match(/^(?:C)?(\d+)$/i);
   if (numMatch) {
     return `C${numMatch[1].padStart(3, '0')}`;
@@ -306,7 +315,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             .filter((c) => !isCustomerDeleted(c, deletedSet))
             .map((c, idx) => migrateCustomerRecord(c, idx))
         );
-      } else {
+      } else if (e?.key === 'dnd_customers_list') {
         const fresh = loadSavedCustomers();
         setCustomers(
           fresh
@@ -350,9 +359,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             const localOnly = prev.filter(
               (p) => !isCustomerDeleted(p, deletedSet) && !dbIds.has(p.id) && !dbNics.has((p.nic || '').trim().toUpperCase())
             );
-            const merged = [...dbCustomers, ...localOnly];
-            saveCustomersToStorage(merged);
-            return merged;
+            return [...dbCustomers, ...localOnly];
           });
         }
       })
@@ -647,38 +654,41 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     const cleanPhone = phoneCheck.cleanPhone;
     const cleanWa = newCustomer.whatsapp ? validatePhone(newCustomer.whatsapp, false).cleanPhone : cleanPhone;
     const nameParts = [newCustomer.first_name, newCustomer.middle_name, newCustomer.last_name].filter(Boolean);
-    const fullName = nameParts.join(' ').trim() || newCustomer.name;
+    const fullName = nameParts.join(' ').trim() || newCustomer.name || 'Valued Customer';
+
+    // Unmark any tombstone deletion for this NIC and name so they are guaranteed visible
+    unmarkCustomerDeleted(cleanNic);
+    unmarkCustomerDeleted(fullName);
 
     // Check if customer with this NIC already exists
     const existingWithNic = customers.find(
       (c) => normalizeNic(c.nic) === normalizeNic(cleanNic)
     );
-    if (existingWithNic && !matchedCustomerAlert) {
-      const confirmUse = window.confirm(
-        `A customer with NIC "${cleanNic}" already exists (${existingWithNic.name}). Do you want to record this transaction under the existing customer?`
-      );
-      if (!confirmUse) return;
-    }
 
-    const totalOrders = matchedCustomerAlert ? matchedCustomerAlert.previousCount + 1 : 1;
+    const totalOrders = matchedCustomerAlert
+      ? matchedCustomerAlert.previousCount + 1
+      : (existingWithNic ? (existingWithNic.total_orders || 1) : 1);
     const assignedCustomerId = cleanNic;
 
-    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const newId = existingWithNic?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
-    });
+    }));
+
+    unmarkCustomerDeleted(newId);
 
     const createdRecord = {
+      ...(existingWithNic || {}),
       id: newId,
       customer_id: assignedCustomerId,
       branch_code: newCustomer.center_code && newCustomer.center_code !== 'Single' ? normalizeIdPart('branch_code', newCustomer.branch_code || 'MHG') : '',
       center_code: newCustomer.center_code && newCustomer.center_code !== 'Single' ? normalizeIdPart('center_code', newCustomer.center_code) : 'Single',
       contract_no: String(totalOrders),
       item_code: '',
-      photo: newCustomer.photo || newCustomer.image_url || '',
-      image_url: newCustomer.photo || newCustomer.image_url || '',
-      first_name: newCustomer.first_name || '',
+      photo: newCustomer.photo || newCustomer.image_url || existingWithNic?.photo || '',
+      image_url: newCustomer.photo || newCustomer.image_url || existingWithNic?.image_url || '',
+      first_name: newCustomer.first_name || (nameParts[0] || ''),
       middle_name: newCustomer.middle_name || '',
       last_name: newCustomer.last_name || '',
       name: fullName,
@@ -689,18 +699,19 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       nic: cleanNic,
       city: newCustomer.city || 'Maharagama',
       address: newCustomer.address || '',
-      category: 'custom_order',
-      outstanding_balance: 0,
-      total_spent: 0,
+      category: newCustomer.category || existingWithNic?.category || 'custom_order',
+      outstanding_balance: Number(existingWithNic?.outstanding_balance) || 0,
+      total_spent: Number(existingWithNic?.total_spent) || 0,
       total_orders: totalOrders,
-      notes: '',
-      created_at: new Date().toISOString(),
+      notes: newCustomer.notes || existingWithNic?.notes || '',
+      created_at: existingWithNic?.created_at || new Date().toISOString(),
     };
 
     // 1. Immediately update React state and localStorage so directory view updates instantaneously
-    unmarkCustomerDeleted(cleanNic);
-    unmarkCustomerDeleted(newId);
-    const updatedList = [createdRecord, ...customers];
+    const otherCustomers = customers.filter(
+      (c) => c.id !== newId && normalizeNic(c.nic) !== normalizeNic(cleanNic)
+    );
+    const updatedList = [createdRecord, ...otherCustomers];
     setCustomers(updatedList);
     saveCustomersToStorage(updatedList);
 
@@ -718,11 +729,22 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
         method: 'POST',
         body: JSON.stringify(createdRecord),
       });
-      if (res && res.data && res.data.id) {
-        const merged = { ...createdRecord, ...res.data };
-        setCustomers((prev) => prev.map((c) => (c.id === createdRecord.id ? merged : c)));
-        const fresh = loadSavedCustomers().map((c) => (c.id === createdRecord.id ? merged : c));
-        saveCustomersToStorage(fresh);
+      if (res && res.data) {
+        const dbId = res.data.id || newId;
+        const merged = { ...createdRecord, ...res.data, id: dbId };
+        setCustomers((prev) => {
+          const hasRecord = prev.some((c) => c.id === newId || c.id === dbId || normalizeNic(c.nic) === normalizeNic(cleanNic));
+          if (hasRecord) {
+            return prev.map((c) => (c.id === newId || c.id === dbId || normalizeNic(c.nic) === normalizeNic(cleanNic) ? merged : c));
+          }
+          return [merged, ...prev];
+        });
+        const currentSaved = loadSavedCustomers();
+        const hasSaved = currentSaved.some((c) => c.id === newId || c.id === dbId || normalizeNic(c.nic) === normalizeNic(cleanNic));
+        const nextSaved = hasSaved
+          ? currentSaved.map((c) => (c.id === newId || c.id === dbId || normalizeNic(c.nic) === normalizeNic(cleanNic) ? merged : c))
+          : [merged, ...currentSaved.filter((c) => c.id !== dbId && normalizeNic(c.nic) !== normalizeNic(cleanNic))];
+        saveCustomersToStorage(nextSaved);
       }
     } catch (dbErr) {
       console.warn('Customer database sync warning:', dbErr);

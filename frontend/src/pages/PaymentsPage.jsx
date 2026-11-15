@@ -244,6 +244,7 @@ export default function PaymentsPage({
   // Filter & Search State for Accounts Tab (The requested table view)
   const [accountSearchQuery, setAccountSearchQuery] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState('all'); // 'all' | 'active' | 'paid'
+  const [accountCenterFilter, setAccountCenterFilter] = useState('all'); // 'all' | 'single' | specific center code
   const [accountDatePreset, setAccountDatePreset] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
   const [accountStartDate, setAccountStartDate] = useState('');
   const [accountEndDate, setAccountEndDate] = useState('');
@@ -337,6 +338,7 @@ export default function PaymentsPage({
   const handleResetAccountFilters = () => {
     setAccountSearchQuery('');
     setAccountStatusFilter('all');
+    setAccountCenterFilter('all');
     setAccountDatePreset('all');
     setAccountStartDate('');
     setAccountEndDate('');
@@ -347,7 +349,8 @@ export default function PaymentsPage({
     accountStartDate ||
     accountEndDate ||
     accountDatePreset !== 'all' ||
-    accountStatusFilter !== 'all'
+    accountStatusFilter !== 'all' ||
+    accountCenterFilter !== 'all'
   );
 
   // Modals State
@@ -1006,15 +1009,20 @@ export default function PaymentsPage({
   // Filtered Accounts (Customer loan contracts and balances)
   const filteredAccounts = useMemo(() => {
     return orders.filter((order) => {
-      // 1. Center filter
-      if (selectedCenter && selectedCenter !== 'all') {
-        const targetCode = formatCenterCode(selectedCenter);
-        const ordCode = formatCenterCode(order.center_code);
-        const contractHasCenter =
-          order.contract_no &&
-          order.contract_no.toUpperCase().includes(`/${targetCode}/`);
-        if (ordCode !== targetCode && !contractHasCenter) {
-          return false;
+      // 1. Center / Route filter for Active Loan Accounts & Advances
+      if (accountCenterFilter !== 'all') {
+        const ordCode = formatCenterCode(order.center_code || '');
+        if (accountCenterFilter === 'single') {
+          const isSingle = ordCode === 'Single' || ordCode === 'C004' || ordCode === 'CSINGLE' || ordCode === 'DIRECT' || !ordCode;
+          if (!isSingle) return false;
+        } else {
+          const targetCode = formatCenterCode(accountCenterFilter);
+          const contractHasCenter =
+            order.contract_no &&
+            order.contract_no.toUpperCase().includes(`/${targetCode}/`);
+          if (ordCode !== targetCode && !contractHasCenter) {
+            return false;
+          }
         }
       }
 
@@ -1032,7 +1040,8 @@ export default function PaymentsPage({
         const matchItem = (order.item_name || order.items_summary)?.toLowerCase().includes(q);
         const matchCode = order.item_code?.toLowerCase().includes(q);
         const matchPhone = order.customer_phone?.includes(q);
-        if (!matchInvoice && !matchContract && !matchCust && !matchNic && !matchItem && !matchCode && !matchPhone) {
+        const matchCenter = (order.center_code || '')?.toLowerCase().includes(q);
+        if (!matchInvoice && !matchContract && !matchCust && !matchNic && !matchItem && !matchCode && !matchPhone && !matchCenter) {
           return false;
         }
       }
@@ -1044,7 +1053,7 @@ export default function PaymentsPage({
 
       return true;
     });
-  }, [orders, selectedCenter, accountStatusFilter, accountSearchQuery, accountStartDate, accountEndDate]);
+  }, [orders, accountCenterFilter, accountStatusFilter, accountSearchQuery, accountStartDate, accountEndDate]);
 
   const activeLoansCount = orders.filter((o) => Number(o.balance_due) > 0).length;
   const settledCount = orders.filter((o) => Number(o.balance_due) <= 0).length;
@@ -2961,6 +2970,47 @@ export default function PaymentsPage({
                 </button>
               </div>
 
+              {/* Route & Regional Center Filter Dropdown */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)', whiteSpace: 'nowrap' }}>
+                  Route / Center:
+                </label>
+                <select
+                  className="form-input"
+                  value={accountCenterFilter}
+                  onChange={(e) => setAccountCenterFilter(e.target.value)}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    borderColor: accountCenterFilter !== 'all' ? 'var(--primary)' : 'var(--ash-300)',
+                    background: accountCenterFilter !== 'all' ? '#EFF6FF' : 'var(--bg-card, #fff)',
+                    color: accountCenterFilter !== 'all' ? '#1D4ED8' : 'var(--ash-800)',
+                    cursor: 'pointer',
+                    minWidth: '180px',
+                  }}
+                >
+                  <option value="all">🌐 All Centers & Single Clients ({orders.length})</option>
+                  <option value="single">
+                    👤 Single Customers (Island Wide / 5-Day Weekly) ({orders.filter((o) => {
+                      const c = formatCenterCode(o.center_code || '');
+                      return c === 'Single' || c === 'C004' || !c;
+                    }).length})
+                  </option>
+                  {centers.map((c) => {
+                    const code = formatCenterCode(c.center_code);
+                    if (code === 'Single') return null;
+                    const count = orders.filter((o) => formatCenterCode(o.center_code) === code).length;
+                    return (
+                      <option key={c.id || c.center_code} value={code}>
+                        📍 {code} — {c.name} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
               {/* Reset Filters Button */}
               {isAnyAccountFilterActive && (
                 <button
@@ -3014,6 +3064,11 @@ export default function PaymentsPage({
                 {accountStatusFilter !== 'all' && (
                   <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, textTransform: 'capitalize' }}>
                     Status: {accountStatusFilter}
+                  </span>
+                )}
+                {accountCenterFilter !== 'all' && (
+                  <span style={{ background: '#EDE9FE', color: '#6D28D9', border: '1px solid #DDD6FE', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    Route: {accountCenterFilter === 'single' ? 'Single Customers (Island Wide)' : accountCenterFilter}
                   </span>
                 )}
               </div>

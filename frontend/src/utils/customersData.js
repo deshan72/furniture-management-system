@@ -212,7 +212,16 @@ export const getDeletedCustomerIds = () => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return new Set(parsed.map((x) => String(x).trim().toUpperCase()));
+        // Purge legacy strings (e.g. human names) so new clients with regular names are never blocked
+        const validIdsOnly = parsed.filter((x) => {
+          if (!x || typeof x !== 'string') return false;
+          const s = x.trim();
+          if (s.startsWith('cust-')) return true;
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)) return true;
+          if (/^[0-9]{9}[vVxX]$/i.test(s) || /^[0-9]{12}$/.test(s)) return true;
+          return false;
+        });
+        return new Set(validIdsOnly.map((x) => String(x).trim().toUpperCase()));
       }
     }
   } catch {}
@@ -224,9 +233,9 @@ export const markCustomerAsDeleted = (customer) => {
     const deletedSet = getDeletedCustomerIds();
     if (customer) {
       if (customer.id) deletedSet.add(String(customer.id).trim().toUpperCase());
-      if (customer.customer_id) deletedSet.add(String(customer.customer_id).trim().toUpperCase());
-      if (customer.nic) deletedSet.add(String(customer.nic).trim().toUpperCase());
-      if (customer.name) deletedSet.add(String(customer.name).trim().toUpperCase());
+      if (customer.nic && String(customer.nic).trim().length >= 9) {
+        deletedSet.add(String(customer.nic).trim().toUpperCase());
+      }
     }
     localStorage.setItem(DELETED_CUSTOMERS_KEY, JSON.stringify(Array.from(deletedSet)));
   } catch (e) {
@@ -258,15 +267,11 @@ export const isCustomerDeleted = (c, deletedSet = null) => {
   if (!c) return false;
   const set = deletedSet || getDeletedCustomerIds();
   const cId = c.id ? String(c.id).trim().toUpperCase() : '';
-  const cCustId = c.customer_id ? String(c.customer_id).trim().toUpperCase() : '';
   const cNic = c.nic ? String(c.nic).trim().toUpperCase() : '';
-  const cName = c.name ? String(c.name).trim().toUpperCase() : '';
 
   return (
     (Boolean(cId) && set.has(cId)) ||
-    (Boolean(cCustId) && set.has(cCustId)) ||
-    (Boolean(cNic) && set.has(cNic)) ||
-    (Boolean(cName) && set.has(cName))
+    (Boolean(cNic) && set.has(cNic))
   );
 };
 
@@ -353,10 +358,9 @@ export const loadSavedCustomers = () => {
 export const saveCustomersToStorage = (customersList) => {
   try {
     localStorage.setItem('dnd_customers_list', JSON.stringify(customersList));
-    // Dispatch in-tab events so active React views sync immediately
+    // Dispatch in-tab event with detail
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('dnd_customers_updated', { detail: customersList }));
-      window.dispatchEvent(new Event('storage'));
     }
   } catch (e) {
     console.warn('Failed saving customers to localStorage:', e);

@@ -609,13 +609,17 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     if (firstCust) {
       setFormCustomerId(firstCust.id);
       setClientSearchText(`${firstCust.name} — NIC: ${firstCust.nic || firstCust.customer_id}`);
-      if (headerCenter && headerCenter !== 'all') {
+      const custCenter = formatCenterCode(firstCust.center_code || '');
+      if (custCenter === 'Single' || custCenter === 'C004' || custCenter === 'CSINGLE') {
+        setFormCenterCode('Single');
+        setFormBranchCode('ISLAND');
+      } else if (headerCenter && headerCenter !== 'all') {
         setFormCenterCode(defaultCenter);
         setFormBranchCode(defaultBranch);
       } else {
-        const custCenter = formatCenterCode(firstCust.center_code || defaultCenter);
-        setFormCenterCode(custCenter);
-        const matchC = centers.find((c) => formatCenterCode(c.center_code) === custCenter);
+        const finalC = custCenter || defaultCenter;
+        setFormCenterCode(finalC);
+        const matchC = centers.find((c) => formatCenterCode(c.center_code) === finalC);
         setFormBranchCode(firstCust.branch_code || matchC?.branch_code || defaultBranch);
       }
       setFormDeliveryAddress(firstCust.address || '');
@@ -672,13 +676,17 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     setFormCustomerId(custId);
     const cust = activeCustomers.find((c) => c.id === custId);
     if (cust) {
-      if (!headerCenter || headerCenter === 'all') {
-        if (cust.center_code) {
-          const chosen = formatCenterCode(cust.center_code);
-          setFormCenterCode(chosen);
-          const matchC = centers.find((c) => formatCenterCode(c.center_code) === chosen);
-          if (matchC?.branch_code) setFormBranchCode(matchC.branch_code);
-        }
+      const custCenter = formatCenterCode(cust.center_code || '');
+      if (custCenter === 'Single' || custCenter === 'C004' || custCenter === 'CSINGLE') {
+        setFormCenterCode('Single');
+        setFormBranchCode('ISLAND');
+      } else if (custCenter) {
+        setFormCenterCode(custCenter);
+        const matchC = centers.find((c) => formatCenterCode(c.center_code) === custCenter);
+        setFormBranchCode(cust.branch_code || matchC?.branch_code || 'MHG');
+      } else if (!headerCenter || headerCenter === 'all') {
+        setFormCenterCode('C001');
+        setFormBranchCode('MHG');
       }
       if (cust.address) setFormDeliveryAddress(cust.address);
     }
@@ -774,9 +782,17 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     };
 
     unmarkCustomerDeleted(cleanNic);
-    const updated = [newCust, ...customers];
+    unmarkCustomerDeleted(newCust.id);
+    unmarkCustomerDeleted(fullName);
+    const updated = [newCust, ...customers.filter((c) => c.id !== newCust.id && c.nic !== cleanNic)];
     setCustomers(updated);
     saveCustomersToStorage(updated);
+
+    // Also persist customer to Supabase/Express API
+    apiRequest('/customers', {
+      method: 'POST',
+      body: JSON.stringify(newCust),
+    }).catch(() => {});
 
     addLiveNotification({
       title: `Client Registered`,
@@ -2705,6 +2721,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                       setFormCenterCode(chosen);
                       const matchC = centers.find((c) => formatCenterCode(c.center_code) === chosen);
                       if (matchC?.branch_code) setFormBranchCode(matchC.branch_code);
+                      else if (chosen === 'Single') setFormBranchCode('ISLAND');
                     }}
                     style={{
                       padding: '4px 10px',
@@ -2718,8 +2735,10 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                       minWidth: '220px',
                     }}
                   >
+                    <option value="Single">👤 Single (Direct Customer - Island Wide / 5-Day Weekly)</option>
                     {centers.map((c) => {
                       const cCode = formatCenterCode(c.center_code);
+                      if (cCode === 'Single') return null;
                       return (
                         <option key={c.id || c.center_code} value={cCode}>
                           {c.branch_code ? `${c.branch_code}/` : ''}{cCode} — {c.name}

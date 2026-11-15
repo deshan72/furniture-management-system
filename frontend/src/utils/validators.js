@@ -18,7 +18,7 @@ export const PHONE_REGEX = /^0[0-9]{9}$/; // Exactly 10 digits starting with 0
  * @returns {{ isValid: boolean, message: string, type: 'old' | 'new' | null, cleanNic: string }}
  */
 export const validateNic = (nic, isRequired = true) => {
-  const clean = String(nic || '').trim().toUpperCase();
+  const clean = String(nic || '').replace(/[\s-]/g, '').trim().toUpperCase();
   if (!clean) {
     return {
       isValid: !isRequired,
@@ -100,7 +100,7 @@ export const validateNic = (nic, isRequired = true) => {
  */
 export const sanitizeNicInput = (value) => {
   if (!value) return '';
-  const val = String(value).trim().toUpperCase();
+  const val = String(value).replace(/[\s-]/g, '').trim().toUpperCase();
   let sanitized = '';
   for (let i = 0; i < val.length && sanitized.length < 12; i++) {
     const ch = val[i];
@@ -199,7 +199,7 @@ export const extractDobFromNic = (nic) => {
  */
 export const validatePhone = (phone, isRequired = true) => {
   const raw = String(phone || '').trim();
-  const clean = raw.replace(/\D/g, '');
+  let clean = raw.replace(/\D/g, '');
 
   if (!raw) {
     return {
@@ -207,6 +207,13 @@ export const validatePhone = (phone, isRequired = true) => {
       message: isRequired ? 'Phone number is required.' : '',
       cleanPhone: '',
     };
+  }
+
+  // Handle +94 or 94 country code prefix
+  if (clean.startsWith('94') && clean.length === 11) {
+    clean = '0' + clean.slice(2);
+  } else if (clean.length === 9 && !clean.startsWith('0')) {
+    clean = '0' + clean;
   }
 
   if (/[a-zA-Z]/.test(raw)) {
@@ -254,11 +261,18 @@ export const validatePhone = (phone, isRequired = true) => {
  */
 export const sanitizePhoneInput = (value) => {
   if (!value) return '';
-  return String(value).replace(/\D/g, '').slice(0, 10);
+  let str = String(value).trim();
+  if (str.startsWith('+94')) {
+    str = '0' + str.slice(3);
+  } else if (str.startsWith('94') && str.length > 10) {
+    str = '0' + str.slice(2);
+  }
+  return str.replace(/\D/g, '').slice(0, 10);
 };
 
 /**
  * Validates Name (First Name / Last Name)
+ * Supports English and Sinhala Unicode letters, spaces, and standard name punctuation
  */
 export const validateName = (name, fieldName = 'First Name', isRequired = true) => {
   const trimmed = String(name || '').trim();
@@ -269,14 +283,14 @@ export const validateName = (name, fieldName = 'First Name', isRequired = true) 
     };
   }
 
-  if (trimmed.length < 2) {
+  if (trimmed.length < 1) {
     return {
       isValid: false,
-      message: `${fieldName} must be at least 2 characters.`,
+      message: `${fieldName} is required.`,
     };
   }
 
-  if (!/^[a-zA-Z\s.'-]+$/.test(trimmed)) {
+  if (!/^[a-zA-Z\u0D80-\u0DFF\s.'-]+$/.test(trimmed)) {
     return {
       isValid: false,
       message: `${fieldName} should contain only letters and spaces (no numbers or symbols).`,

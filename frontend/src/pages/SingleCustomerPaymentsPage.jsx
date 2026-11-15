@@ -33,7 +33,7 @@ import {
   savePaymentsToStorage,
   generateNextReceiptNo,
 } from '../utils/paymentsData';
-import { loadSavedCenters } from '../utils/centersData';
+import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
 import { loadSavedCustomers } from '../utils/customersData';
 import { formatLKR, formatDate, formatDateTime } from '../utils/formatters';
 import { printHtmlDocument } from '../utils/printUtils';
@@ -133,32 +133,67 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [lastPaymentRecord, setLastPaymentRecord] = useState(null);
 
-  // Sync fresh data from API / Supabase on mount
+  // Sync fresh data from API / Supabase on mount and listen to real-time events
   useEffect(() => {
     let isMounted = true;
 
-    // 1. Fetch Orders
+    // 1. Fetch Orders and merge safely
     apiRequest('/orders')
-      .then((data) => {
-        if (isMounted && Array.isArray(data) && data.length > 0) {
-          setOrders(data);
-          saveOrdersToStorage(data);
+      .then((res) => {
+        if (!isMounted) return;
+        const fetchedList = Array.isArray(res) ? res : res && Array.isArray(res.data) ? res.data : null;
+        if (fetchedList && fetchedList.length > 0) {
+          setOrders((prev) => {
+            const dbIds = new Set(fetchedList.map((d) => d.id));
+            const dbContracts = new Set(
+              fetchedList.map((d) => (d.contract_no || '').trim().toUpperCase()).filter(Boolean)
+            );
+            const localOnly = prev.filter(
+              (p) => !dbIds.has(p.id) && !dbContracts.has((p.contract_no || '').trim().toUpperCase())
+            );
+            const merged = [...fetchedList, ...localOnly];
+            saveOrdersToStorage(merged);
+            return merged;
+          });
         }
       })
       .catch((err) => console.warn('Could not sync orders from API:', err));
 
-    // 2. Fetch Payments
+    // 2. Fetch Payments and merge safely
     apiRequest('/payments')
       .then((res) => {
-        if (isMounted && res && Array.isArray(res.data) && res.data.length > 0) {
-          setPayments(res.data);
-          savePaymentsToStorage(res.data);
+        if (!isMounted) return;
+        const fetchedPayments = Array.isArray(res) ? res : res && Array.isArray(res.data) ? res.data : null;
+        if (fetchedPayments && fetchedPayments.length > 0) {
+          setPayments((prev) => {
+            const dbIds = new Set(fetchedPayments.map((d) => d.id));
+            const localOnly = prev.filter((p) => !dbIds.has(p.id));
+            const merged = [...fetchedPayments, ...localOnly];
+            savePaymentsToStorage(merged);
+            return merged;
+          });
         }
       })
       .catch((err) => console.warn('Could not sync payments from API:', err));
 
+    // Real-time synchronization event listeners
+    const handleStorage = () => {
+      setPayments(loadSavedPayments());
+      setOrders(loadSavedOrders());
+      setCustomers(loadSavedCustomers());
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('dnd_orders_updated', handleStorage);
+    window.addEventListener('dnd_payments_updated', handleStorage);
+    window.addEventListener('dnd_customers_updated', handleStorage);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('dnd_orders_updated', handleStorage);
+      window.removeEventListener('dnd_payments_updated', handleStorage);
+      window.removeEventListener('dnd_customers_updated', handleStorage);
     };
   }, []);
 
@@ -187,14 +222,57 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
     }
   }, [selectedOrder, payments]);
 
-  // Overall Financial Statistics
+  // Single customer predicate: island-wide weekly route or customers with Single/C004 assignment
+  const isSingleCustomerOrder = (o) => {
+    if (!o) return false;
+    const cCode = formatCenterCode(o.center_code || '');
+    if (cCode === 'Single' || cCode === 'C004' || cCode === 'CSINGLE' || cCode === 'DIRECT' || !cCode) return true;
+
+    // Match linked customer's center
+    const cust = customers.find(
+      (c) =>
+        (o.customer_id && (c.id === o.customer_id || c.customer_id === o.customer_id || c.nic === o.customer_id)) ||
+        (o.customer_nic && c.nic === o.customer_nic) ||
+        (o.customer_name && c.name && c.name.trim().toLowerCase() === o.customer_name.trim().toLowerCase())
+    );
+    if (cust) {
+      const custCC = formatCenterCode(cust.center_code || '');
+      if (custCC === 'Single' || custCC === 'C004' || custCC === 'CSINGLE' || custCC === 'DIRECT' || !custCC) return true;
+    }
+
+    // Check if contract does not strictly belong to regional centers C001, C002, C003
+    const contract = String(o.contract_no || '').toUpperCase();
+    if (contract && !contract.includes('/C001/') && !contract.includes('/C002/') && !contract.includes('/C003/')) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Portfolio of single customer orders (island-wide weekly route)
+  const singleOrders = useMemo(() => {
+    const list = orders.filter(isSingleCustomerOrder);
+    return list.length > 0 ? list : orders;
+  }, [orders, customers]);
+
+  // Overall Financial Statistics for Single Customers
   const stats = useMemo(() => {
-    const activeOrders = orders.filter((o) => (Number(o.balance_due) || 0) > 0);
-    const totalOutstanding = orders.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0);
+    const activeOrders = singleOrders.filter((o) => (Number(o.balance_due) || 0) > 0);
+    const totalOutstanding = singleOrders.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0);
 
     // Today's collections
     const todayStr = new Date().toISOString().slice(0, 10);
-    const todayPayments = payments.filter((p) => String(p.date || '').slice(0, 10) === todayStr);
+    const singleOrderIds = new Set(singleOrders.map((o) => o.id));
+    const singleContracts = new Set(singleOrders.map((o) => o.contract_no).filter(Boolean));
+    const todayPayments = payments.filter((p) => {
+      const isDate = String(p.date || '').slice(0, 10) === todayStr;
+      if (!isDate) return false;
+      return (
+        singleOrderIds.has(p.order_id) ||
+        singleContracts.has(p.contract_no) ||
+        isSingleCustomerOrder(p)
+      );
+    });
     const todayCollected = todayPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     // Overdue or due today count
@@ -207,7 +285,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       }
     });
 
-    const settledCount = orders.filter((o) => (Number(o.balance_due) || 0) <= 0).length;
+    const settledCount = singleOrders.filter((o) => (Number(o.balance_due) || 0) <= 0).length;
 
     return {
       totalOutstanding,
@@ -217,15 +295,12 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       dueSoonCount,
       settledCount,
     };
-  }, [orders, payments]);
+  }, [singleOrders, payments]);
 
-  // 5-Day Weekly Stats Distribution (Monday to Friday)
+  // 5-Day Weekly Stats Distribution (Monday to Friday) for Single Customers
   const weeklyStats = useMemo(() => {
-    const relevantOrders = selectedCenter === 'all'
-      ? orders
-      : orders.filter((o) => o.center_code === selectedCenter || o.branch_code === selectedCenter);
-    return calculate5DayWeeklyStats(relevantOrders, payments);
-  }, [orders, payments, selectedCenter]);
+    return calculate5DayWeeklyStats(singleOrders, payments);
+  }, [singleOrders, payments]);
 
   // Active day statistics and client lists
   const activeDayStat = weeklyStats[selectedWeekday] || weeklyStats.monday;
@@ -238,16 +313,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
 
   // Filtered Orders List (Directory & Search)
   const filteredAccounts = useMemo(() => {
-    return orders.filter((order) => {
-      // Center filter
-      if (selectedCenter !== 'all') {
-        const centerMatch =
-          order.center_code === selectedCenter ||
-          order.branch_code === selectedCenter ||
-          order.id?.includes(selectedCenter);
-        if (!centerMatch) return false;
-      }
-
+    return singleOrders.filter((order) => {
       // Status filter
       const balanceVal = Number(order.balance_due) || 0;
       if (statusFilter === 'active' && balanceVal <= 0) return false;
@@ -278,15 +344,16 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
         const matchInvoice = order.invoice_no?.toLowerCase().includes(q);
         const matchItem = order.item_name?.toLowerCase().includes(q);
         const matchCenter = order.center_code?.toLowerCase().includes(q);
+        const matchAddress = (order.customer_address || '')?.toLowerCase().includes(q);
 
-        if (!matchName && !matchNic && !matchPhone && !matchContract && !matchInvoice && !matchItem && !matchCenter) {
+        if (!matchName && !matchNic && !matchPhone && !matchContract && !matchInvoice && !matchItem && !matchCenter && !matchAddress) {
           return false;
         }
       }
 
       return true;
     });
-  }, [orders, payments, selectedCenter, statusFilter, searchQuery, startDate, endDate]);
+  }, [singleOrders, payments, statusFilter, searchQuery, startDate, endDate]);
 
   // Next payment details for currently selected order
   const currentNextDetails = useMemo(() => {
