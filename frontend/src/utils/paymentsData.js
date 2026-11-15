@@ -116,15 +116,74 @@ export const INITIAL_PAYMENTS = [
   },
 ];
 
+// Purges any orphaned payments that belonged to deleted orders
+export function sanitizeOrphanedPayments(paymentsList, ordersList) {
+  if (!Array.isArray(paymentsList)) return [];
+
+  let currentOrders = ordersList;
+  if (!Array.isArray(currentOrders)) {
+    try {
+      const raw = localStorage.getItem('dnd_orders_list_v2');
+      if (raw) currentOrders = JSON.parse(raw);
+    } catch (_) {}
+  }
+  if (!Array.isArray(currentOrders)) {
+    return paymentsList;
+  }
+
+  const validOrderIds = new Set(currentOrders.map((o) => o.id));
+  const validContracts = new Set(currentOrders.map((o) => o.contract_no).filter(Boolean));
+  const validInvoices = new Set(currentOrders.map((o) => o.invoice_no).filter(Boolean));
+  const seedIds = new Set(INITIAL_PAYMENTS.map((p) => p.id));
+
+  return paymentsList.filter((p) => {
+    // Keep initial system seed transactions
+    if (seedIds.has(p.id)) return true;
+
+    // If payment is explicitly linked to an order_id, that order MUST still exist
+    if (p.order_id) {
+      return validOrderIds.has(p.order_id);
+    }
+
+    // Fallback checks for legacy records without order_id
+    if (p.invoice_no && validInvoices.has(p.invoice_no)) {
+      return true;
+    }
+    if (p.contract_no && validContracts.has(p.contract_no)) {
+      return true;
+    }
+
+    // Orphaned payment from a deleted order - purge!
+    return false;
+  });
+}
+
 export function loadSavedPayments() {
   try {
     const raw = localStorage.getItem(PAYMENTS_STORAGE_KEY);
-    if (!raw) {
+    let list = INITIAL_PAYMENTS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        list = parsed;
+      }
+    } else {
       localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(INITIAL_PAYMENTS));
       return INITIAL_PAYMENTS;
     }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_PAYMENTS;
+
+    // Automatically purge orphaned payments belonging to deleted orders
+    const sanitized = sanitizeOrphanedPayments(list);
+    if (sanitized.length !== list.length) {
+      localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(sanitized));
+      try {
+        localStorage.setItem('dnd_payments_list', JSON.stringify(sanitized));
+        localStorage.setItem('dnd_payments', JSON.stringify(sanitized));
+      } catch (_) {}
+      return sanitized;
+    }
+
+    return list;
   } catch (err) {
     console.error('Error loading payments:', err);
     return INITIAL_PAYMENTS;
@@ -134,6 +193,9 @@ export function loadSavedPayments() {
 export function savePaymentsToStorage(payments) {
   try {
     localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(payments));
+    // Synchronize secondary storage keys for legacy compatibility
+    localStorage.setItem('dnd_payments_list', JSON.stringify(payments));
+    localStorage.setItem('dnd_payments', JSON.stringify(payments));
     window.dispatchEvent(new Event('storage'));
   } catch (err) {
     console.error('Error saving payments:', err);

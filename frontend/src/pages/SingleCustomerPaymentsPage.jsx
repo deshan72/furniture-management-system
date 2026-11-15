@@ -25,13 +25,20 @@ import {
   ExternalLink,
   Wallet,
   MessageCircle,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import Modal from '../components/Modal';
-import { loadSavedOrders, saveOrdersToStorage } from '../utils/ordersData';
+import {
+  loadSavedOrders,
+  saveOrdersToStorage,
+  deleteOrderWithCascadePayments,
+} from '../utils/ordersData';
 import {
   loadSavedPayments,
   savePaymentsToStorage,
   generateNextReceiptNo,
+  sanitizeOrphanedPayments,
 } from '../utils/paymentsData';
 import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
 import { loadSavedCustomers } from '../utils/customersData';
@@ -133,6 +140,21 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [lastPaymentRecord, setLastPaymentRecord] = useState(null);
 
+  // Top-Up Toast Alert State (Auto-dismissing floating banner)
+  const [topUpToast, setTopUpToast] = useState(null);
+
+  // Quick Collect Cash Modal State
+  const [isQuickCollectModalOpen, setIsQuickCollectModalOpen] = useState(false);
+
+  // Auto-dismiss top-up toast notification
+  useEffect(() => {
+    if (!topUpToast) return;
+    const timer = setTimeout(() => {
+      setTopUpToast(null);
+    }, 5500);
+    return () => clearTimeout(timer);
+  }, [topUpToast]);
+
   // Sync fresh data from API / Supabase on mount and listen to real-time events
   useEffect(() => {
     let isMounted = true;
@@ -159,7 +181,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       })
       .catch((err) => console.warn('Could not sync orders from API:', err));
 
-    // 2. Fetch Payments and merge safely
+    // 2. Fetch Payments and merge safely (purging any orphaned payments from deleted orders)
     apiRequest('/payments')
       .then((res) => {
         if (!isMounted) return;
@@ -169,8 +191,9 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
             const dbIds = new Set(fetchedPayments.map((d) => d.id));
             const localOnly = prev.filter((p) => !dbIds.has(p.id));
             const merged = [...fetchedPayments, ...localOnly];
-            savePaymentsToStorage(merged);
-            return merged;
+            const clean = sanitizeOrphanedPayments(merged, loadSavedOrders());
+            savePaymentsToStorage(clean);
+            return clean;
           });
         }
       })
@@ -202,13 +225,22 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
     setReceiptNo(generateNextReceiptNo(payments));
   }, [payments]);
 
+  // Helper to strictly match receipts to an order without cross-order leakage
+  const getOrderPayments = (order, allPayments = payments) => {
+    if (!order) return [];
+    return allPayments.filter((p) => {
+      if (p.order_id) return p.order_id === order.id;
+      if (p.invoice_no && order.invoice_no) return p.invoice_no === order.invoice_no;
+      if (p.contract_no && order.contract_no) return p.contract_no === order.contract_no;
+      return false;
+    });
+  };
+
   // When a customer/order is selected, prefill installment amount
   useEffect(() => {
     if (selectedOrder) {
-      const nextDetails = calculateNextPaymentDetails(
-        selectedOrder,
-        payments.filter((p) => p.order_id === selectedOrder.id || p.contract_no === selectedOrder.contract_no)
-      );
+      const ordReceipts = getOrderPayments(selectedOrder, payments);
+      const nextDetails = calculateNextPaymentDetails(selectedOrder, ordReceipts);
       if (nextDetails && nextDetails.nextDueAmount > 0) {
         setPaymentAmount(String(nextDetails.nextDueAmount));
       } else if (Number(selectedOrder.balance_due) > 0) {
@@ -287,25 +319,28 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
     const activeOrders = singleOrders.filter((o) => (Number(o.balance_due) || 0) > 0);
     const totalOutstanding = singleOrders.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0);
 
-    // Today's collections
+    // Today's collections strictly for active single customer orders
     const todayStr = new Date().toISOString().slice(0, 10);
     const singleOrderIds = new Set(singleOrders.map((o) => o.id));
-    const singleContracts = new Set(singleOrders.map((o) => o.contract_no).filter(Boolean));
+    const singleInvoices = new Set(singleOrders.map((o) => o.invoice_no).filter(Boolean));
+
     const todayPayments = payments.filter((p) => {
       const isDate = String(p.date || '').slice(0, 10) === todayStr;
       if (!isDate) return false;
-      return (
-        singleOrderIds.has(p.order_id) ||
-        singleContracts.has(p.contract_no) ||
-        isSingleCustomerOrder(p)
-      );
+      if (p.order_id) {
+        return singleOrderIds.has(p.order_id);
+      }
+      if (p.invoice_no && singleInvoices.has(p.invoice_no)) {
+        return true;
+      }
+      return false;
     });
     const todayCollected = todayPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     // Overdue or due today count
     let dueSoonCount = 0;
     activeOrders.forEach((o) => {
-      const ordReceipts = payments.filter((p) => p.order_id === o.id || p.contract_no === o.contract_no);
+      const ordReceipts = getOrderPayments(o, payments);
       const details = calculateNextPaymentDetails(o, ordReceipts);
       if (details && (details.statusType === 'today' || details.statusType === 'overdue')) {
         dueSoonCount += 1;
@@ -349,7 +384,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       // Due Today / Overdue filter
       if (statusFilter === 'due_today') {
         if (balanceVal <= 0) return false;
-        const ordReceipts = payments.filter((p) => p.order_id === order.id || p.contract_no === order.contract_no);
+        const ordReceipts = getOrderPayments(order, payments);
         const details = calculateNextPaymentDetails(order, ordReceipts);
         if (!details || (details.statusType !== 'today' && details.statusType !== 'overdue')) {
           return false;
@@ -385,36 +420,38 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
   // Next payment details for currently selected order
   const currentNextDetails = useMemo(() => {
     if (!selectedOrder) return null;
-    const ordReceipts = payments.filter(
-      (p) => p.order_id === selectedOrder.id || p.contract_no === selectedOrder.contract_no
-    );
+    const ordReceipts = getOrderPayments(selectedOrder, payments);
     return calculateNextPaymentDetails(selectedOrder, ordReceipts);
   }, [selectedOrder, payments]);
 
   // Receipts history for currently selected order
   const selectedOrderReceipts = useMemo(() => {
     if (!selectedOrder) return [];
-    return payments
-      .filter((p) => p.order_id === selectedOrder.id || p.contract_no === selectedOrder.contract_no)
+    return getOrderPayments(selectedOrder, payments)
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   }, [selectedOrder, payments]);
 
-  // Fast pick client into payment desk
-  const handlePickClientForPayment = (client) => {
+  // Fast pick client into payment desk or open quick collection modal
+  const handlePickClientForPayment = (client, openModal = true) => {
     setSelectedOrder(client);
-    const ordReceipts = payments.filter((p) => p.order_id === client.id || p.contract_no === client.contract_no);
+    const ordReceipts = getOrderPayments(client, payments);
     const details = calculateNextPaymentDetails(client, ordReceipts);
     if (details && details.nextDueAmount > 0) {
       setPaymentAmount(String(details.nextDueAmount));
     } else if (Number(client.balance_due) > 0) {
       setPaymentAmount(String(client.balance_due));
-    }
-    // Scroll smoothly to active payment desk
-    const deskElem = document.getElementById('single-customer-payment-desk');
-    if (deskElem) {
-      deskElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
-      window.scrollTo({ top: 380, behavior: 'smooth' });
+      setPaymentAmount('');
+    }
+    if (openModal) {
+      setIsQuickCollectModalOpen(true);
+    } else {
+      const deskElem = document.getElementById('single-customer-payment-desk');
+      if (deskElem) {
+        deskElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        window.scrollTo({ top: 380, behavior: 'smooth' });
+      }
     }
   };
 
@@ -544,7 +581,18 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
         targetTab: 'single-customer-payments',
       });
 
-      // 7. Show Success Modal with WhatsApp and Print actions
+      // 7. Close Quick Modal if open
+      setIsQuickCollectModalOpen(false);
+
+      // 8. Trigger Prominent Top-Up Toast Banner
+      setTopUpToast({
+        type: 'success',
+        title: '🎉 Cash Collected Successfully!',
+        desc: `Receipt #${newPayment.receipt_no} for Rs. ${formatLKR(payAmt)} collected from ${selectedOrder.customer_name}. Remaining Balance: Rs. ${formatLKR(nextBal)}.`,
+        actionReceipt: newPayment,
+      });
+
+      // 9. Show Success Modal with WhatsApp and Print actions
       setLastPaymentRecord(newPayment);
       setIsSuccessModalOpen(true);
       setPaymentNotes('');
@@ -553,6 +601,79 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
       alert('Failed to record payment. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Delete Customer Order Record & Cascade Delete Associated Payments
+  // -------------------------------------------------------------
+  const handleDeleteOrderRecord = async (order) => {
+    if (!order) return;
+    const custName = order.customer_name || 'Customer';
+    const refNo = order.contract_no || order.invoice_no || order.id;
+
+    const isConfirmed = window.confirm(
+      `⚠️ PERMANENT RECORD DELETION\n\nAre you sure you want to delete this customer record?\n\n• Customer: ${custName}\n• Contract / Invoice: ${refNo}\n\nNotice: This will CASCADE DELETE all associated payments, installments, and receipts from the system. This action cannot be undone.`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      // 1. Delete order + all linked payments cascade in localStorage & broadcast events
+      deleteOrderWithCascadePayments(order.id, order.contract_no, order.invoice_no);
+
+      // 2. Cascade delete from backend API
+      if (order.id) {
+        apiRequest(`/orders/${order.id}`, { method: 'DELETE' }).catch((err) =>
+          console.warn('Backend order delete error:', err)
+        );
+      }
+
+      // 3. Update React active state
+      setOrders((prev) =>
+        prev.filter(
+          (o) =>
+            o.id !== order.id &&
+            (!order.contract_no || o.contract_no !== order.contract_no) &&
+            (!order.invoice_no || o.invoice_no !== order.invoice_no)
+        )
+      );
+      setPayments((prev) =>
+        prev.filter(
+          (p) =>
+            p.order_id !== order.id &&
+            (!order.contract_no || p.contract_no !== order.contract_no) &&
+            (!order.invoice_no || p.invoice_no !== order.invoice_no)
+        )
+      );
+
+      // 4. Clear selectedOrder if it was selected
+      if (
+        selectedOrder &&
+        (selectedOrder.id === order.id ||
+          (order.contract_no && selectedOrder.contract_no === order.contract_no) ||
+          (order.invoice_no && selectedOrder.invoice_no === order.invoice_no))
+      ) {
+        setSelectedOrder(null);
+      }
+
+      // 5. Display Top-Up Toast Notification
+      setTopUpToast({
+        type: 'delete',
+        title: '🗑️ Record & Linked Payments Deleted',
+        desc: `Record for "${custName}" (${refNo}) and all linked payments have been permanently removed.`,
+      });
+
+      // 6. Push Live Notification
+      addLiveNotification({
+        title: `Record Deleted: ${custName}`,
+        desc: `Order ${refNo} and linked receipts were removed.`,
+        category: 'orders',
+        type: 'warning',
+        targetTab: 'single-customer-payments',
+      });
+    } catch (err) {
+      console.error('Error deleting record:', err);
+      alert('Failed to delete record: ' + err.message);
     }
   };
 
@@ -806,6 +927,110 @@ Thank you for choosing D N S Home Solutions!`;
       className="single-customer-payments-container"
       style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}
     >
+      {/* Floating Animated Top-Up Toast Alert */}
+      {topUpToast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 9999,
+            minWidth: '340px',
+            maxWidth: '480px',
+            background: topUpToast.type === 'delete' ? '#7F1D1D' : '#064E3B',
+            color: '#FFFFFF',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15)',
+            border: `1.5px solid ${topUpToast.type === 'delete' ? '#F87171' : '#34D399'}`,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '14px',
+            animation: 'fadeIn 0.25s ease-out',
+          }}
+        >
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: topUpToast.type === 'delete' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {topUpToast.type === 'delete' ? <Trash2 size={20} color="#FCA5A5" /> : <CheckCircle size={20} color="#6EE7B7" />}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 900, fontSize: '0.96rem', letterSpacing: '0.2px' }}>
+              {topUpToast.title}
+            </div>
+            <div style={{ fontSize: '0.8rem', opacity: 0.9, marginTop: '3px', lineHeight: 1.4 }}>
+              {topUpToast.desc}
+            </div>
+            {topUpToast.actionReceipt && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => handlePrintReceipt(topUpToast.actionReceipt)}
+                  style={{
+                    background: '#FFFFFF',
+                    color: '#064E3B',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '5px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Printer size={12} /> Print Receipt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendWhatsAppReceipt(topUpToast.actionReceipt)}
+                  style={{
+                    background: '#25D366',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '5px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Share2 size={12} /> WhatsApp
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setTopUpToast(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#FFFFFF',
+              opacity: 0.7,
+              cursor: 'pointer',
+              padding: '2px',
+            }}
+            title="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* 1. Header Banner & Action Bar */}
       <div
         className="panel"
@@ -1235,22 +1460,30 @@ Thank you for choosing D N S Home Solutions!`;
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
-                          {/* Collect Cash Button */}
+                          {/* User Friendly Collect Cash Pill Button */}
                           <button
                             type="button"
-                            onClick={() => handlePickClientForPayment(client)}
-                            className={`btn ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => handlePickClientForPayment(client, true)}
                             style={{
-                              padding: '5px 12px',
-                              fontSize: '0.76rem',
+                              background: isPaid
+                                ? '#F1F5F9'
+                                : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                              color: isPaid ? '#475569' : '#FFFFFF',
+                              border: isPaid ? '1px solid #CBD5E1' : 'none',
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              fontSize: '0.78rem',
                               fontWeight: 800,
+                              cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '4px',
+                              gap: '5px',
+                              boxShadow: isPaid ? 'none' : '0 2px 6px rgba(16, 185, 129, 0.3)',
+                              transition: 'all 0.15s ease',
                             }}
-                            title="Open cash collection desk for this client"
+                            title="Quick collect cash & issue receipt"
                           >
-                            <DollarSign size={13} /> {isSelected ? 'Active' : 'Collect Cash'}
+                            <DollarSign size={13} /> {isPaid ? 'Collect More' : '💵 Collect Cash'}
                           </button>
 
                           {/* WhatsApp Reminder Button */}
@@ -1308,6 +1541,29 @@ Thank you for choosing D N S Home Solutions!`;
                               <Printer size={13} /> Slip
                             </button>
                           )}
+
+                          {/* Delete Customer Record Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteOrderRecord(client)}
+                            style={{
+                              background: '#FEF2F2',
+                              color: '#DC2626',
+                              border: '1px solid #FECACA',
+                              padding: '5px 8px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              transition: 'all 0.15s ease',
+                            }}
+                            title="Delete customer record & cascade delete associated payments"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1975,19 +2231,23 @@ Thank you for choosing D N S Home Solutions!`;
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="btn btn-primary"
                 style={{
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '8px',
                   padding: '12px 20px',
-                  fontWeight: 800,
-                  fontSize: '0.94rem',
+                  fontWeight: 900,
+                  fontSize: '0.96rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
-                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                  cursor: 'pointer',
                 }}
               >
-                <CheckCircle size={18} /> {isSubmitting ? 'Recording Payment...' : 'Collect Cash & Issue Official Receipt'}
+                <CheckCircle size={18} /> {isSubmitting ? 'Recording Payment...' : '✓ Confirm & Collect Cash'}
               </button>
             </form>
           </div>
@@ -2169,21 +2429,50 @@ Thank you for choosing D N S Home Solutions!`;
                         {formatLKR(ord.installment_value || 0)}
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => handlePickClientForPayment(ord)}
-                          className={`btn ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{
-                            padding: '6px 14px',
-                            fontSize: '0.78rem',
-                            fontWeight: 800,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          <DollarSign size={13} /> {isSelected ? 'Active Desk' : 'Collect Cash'}
-                        </button>
+                        <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => handlePickClientForPayment(ord, true)}
+                            style={{
+                              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              fontSize: '0.78rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)',
+                            }}
+                            title="Quick collect cash & issue receipt"
+                          >
+                            <DollarSign size={13} /> 💵 Collect Cash
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteOrderRecord(ord)}
+                            style={{
+                              background: '#FEF2F2',
+                              color: '#DC2626',
+                              border: '1px solid #FECACA',
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              transition: 'all 0.15s ease',
+                            }}
+                            title="Permanently delete this customer record & cascade-delete all payments"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2194,7 +2483,203 @@ Thank you for choosing D N S Home Solutions!`;
         </div>
       </div>
 
-      {/* 8. Payment Success Modal with 1-Click WhatsApp & Print */}
+      {/* 8. Quick Cash Collection Modal (Triggered directly by "Collect Cash" button) */}
+      <Modal
+        isOpen={isQuickCollectModalOpen}
+        onClose={() => setIsQuickCollectModalOpen(false)}
+        title={selectedOrder ? `💵 Collect Cash: ${selectedOrder.customer_name}` : 'Collect Cash'}
+      >
+        {selectedOrder && (
+          <form onSubmit={handleCollectCashPayment} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Customer & Item Overview Banner */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)',
+                border: '1px solid #86EFAC',
+                borderRadius: '10px',
+                padding: '14px 16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 900, color: '#14532D', fontSize: '1.05rem' }}>
+                  {selectedOrder.customer_name}
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#166534', marginTop: '2px' }}>
+                  📞 {selectedOrder.customer_phone} • NIC: {selectedOrder.customer_nic || selectedOrder.customer_id}
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#15803D', fontWeight: 700, marginTop: '3px' }}>
+                  🛋️ {selectedOrder.item_name} ({selectedOrder.contract_no})
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Remaining Balance
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#DC2626' }}>
+                  {formatLKR(selectedOrder.balance_due)}
+                </div>
+                {currentNextDetails?.nextDueAmount > 0 && (
+                  <div style={{ fontSize: '0.72rem', color: '#15803D', fontWeight: 800, marginTop: '2px' }}>
+                    Weekly Installment: {formatLKR(currentNextDetails.nextDueAmount)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment Amount Input */}
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F172A', display: 'block', marginBottom: '6px' }}>
+                Payment Amount (LKR) *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '12px', top: '10px', fontWeight: 900, color: '#64748B' }}>Rs.</span>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  required
+                  autoFocus
+                  className="form-input"
+                  style={{ paddingLeft: '44px', fontSize: '1.2rem', fontWeight: 900, color: '#15803D' }}
+                  placeholder="Enter cash amount..."
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                />
+              </div>
+
+              {/* 1-Click Quick Amount Presets */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                {currentNextDetails?.nextDueAmount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentAmount(String(currentNextDetails.nextDueAmount))}
+                    style={{ fontSize: '0.74rem', background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 800 }}
+                  >
+                    Exact Installment: {formatLKR(currentNextDetails.nextDueAmount)}
+                  </button>
+                )}
+                {Number(selectedOrder.balance_due) > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentAmount(String(selectedOrder.balance_due))}
+                    style={{ fontSize: '0.74rem', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 800 }}
+                  >
+                    Full Balance: {formatLKR(selectedOrder.balance_due)}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPaymentAmount('1000')}
+                  style={{ fontSize: '0.74rem', background: '#F8FAFC', color: '#475569', border: '1px solid #CBD5E1', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Rs. 1,000
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentAmount('2000')}
+                  style={{ fontSize: '0.74rem', background: '#F8FAFC', color: '#475569', border: '1px solid #CBD5E1', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Rs. 2,000
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentAmount('5000')}
+                  style={{ fontSize: '0.74rem', background: '#F8FAFC', color: '#475569', border: '1px solid #CBD5E1', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Rs. 5,000
+                </button>
+              </div>
+            </div>
+
+            {/* Payment Method & Date */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Payment Method
+                </label>
+                <select
+                  className="form-input"
+                  style={{ fontSize: '0.82rem' }}
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                >
+                  <option value="Cash">Cash (Showroom / Field)</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Online Deposit">Online Deposit</option>
+                  <option value="Cheque">Cheque</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Payment Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  className="form-input"
+                  style={{ fontSize: '0.82rem' }}
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                Payment Notes / Remarks (Optional)
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                style={{ fontSize: '0.82rem' }}
+                placeholder="e.g. Field cash collection, receipt issued..."
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px', borderTop: '1px solid #E2E8F0', paddingTop: '14px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsQuickCollectModalOpen(false)}
+                style={{ padding: '10px 18px', fontWeight: 700 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '10px 22px',
+                  fontWeight: 900,
+                  fontSize: '0.94rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+                }}
+              >
+                <CheckCircle size={18} /> {isSubmitting ? 'Recording...' : '✓ Confirm & Collect Cash'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* 9. Payment Success Modal with 1-Click WhatsApp & Print */}
       <Modal
         isOpen={isSuccessModalOpen}
         onClose={() => setIsSuccessModalOpen(false)}

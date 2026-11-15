@@ -207,13 +207,13 @@ export const calculateCenterCollectionStats = ({
     const expectedDue = Math.min(balDue, instVal > 0 ? instVal : balDue);
     targetAmount += expectedDue;
 
-    // Check if there is a payment today for this contract/customer
-    const paymentsForOrder = centerPaymentsToday.filter(
-      (p) =>
-        p.contract_no === order.contract_no ||
-        (p.customer_nic && order.customer_nic && p.customer_nic === order.customer_nic) ||
-        (p.order_id && p.order_id === order.id)
-    );
+    // Check if there is a payment today for this specific order
+    const paymentsForOrder = centerPaymentsToday.filter((p) => {
+      if (p.order_id) return p.order_id === order.id;
+      if (p.invoice_no && order.invoice_no) return p.invoice_no === order.invoice_no;
+      if (p.contract_no && order.contract_no) return p.contract_no === order.contract_no;
+      return false;
+    });
 
     const amountPaidToday = paymentsForOrder.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const hasPaidToday = paymentsForOrder.length > 0 || amountPaidToday > 0;
@@ -714,10 +714,13 @@ export const calculate5DayWeeklyStats = (orders = [], payments = []) => {
     const bal = Number(order.balance_due) || 0;
     const isSettled = bal <= 0;
 
-    // Filter receipts for this order
-    const ordReceipts = payments.filter(
-      (p) => p.order_id === order.id || (order.contract_no && p.contract_no === order.contract_no)
-    );
+    // Filter receipts strictly for this order (prioritizing order.id to prevent cross-order leakage)
+    const ordReceipts = payments.filter((p) => {
+      if (p.order_id) return p.order_id === order.id;
+      if (p.invoice_no && order.invoice_no) return p.invoice_no === order.invoice_no;
+      if (p.contract_no && order.contract_no) return p.contract_no === order.contract_no;
+      return false;
+    });
 
     // Payments collected today for this order
     const todayReceipts = ordReceipts.filter(

@@ -34,6 +34,7 @@ import {
   saveOrdersToStorage,
   generateNextPassbookNo,
   buildContractNumber,
+  deleteOrderWithCascadePayments,
 } from '../utils/ordersData';
 import { loadSavedCustomers, saveCustomersToStorage, unmarkCustomerDeleted } from '../utils/customersData';
 import { loadSavedPayments, savePaymentsToStorage, generateNextReceiptNo } from '../utils/paymentsData';
@@ -1137,13 +1138,18 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     alert(`Installment of ${formatLKR(amt)} recorded! Remaining balance: ${formatLKR(newBal)}`);
   };
 
-  // Cancel / Delete Order
+  // Cancel / Delete Order & Cascade Remove Associated Payments
   const handleDeleteOrder = (orderId, contractNo) => {
-    if (window.confirm(`Are you sure you want to cancel order "${contractNo}"?`)) {
+    if (window.confirm(`Are you sure you want to cancel order "${contractNo}" and remove all related payment records?`)) {
       const removed = orders.find((o) => o.id === orderId);
-      const updated = orders.filter((o) => o.id !== orderId);
-      setOrders(updated);
-      saveOrdersToStorage(updated);
+      const res = deleteOrderWithCascadePayments(orderId, contractNo, removed?.invoice_no);
+      if (res && res.updatedOrders) {
+        setOrders(res.updatedOrders);
+      } else {
+        const updated = orders.filter((o) => o.id !== orderId);
+        setOrders(updated);
+        saveOrdersToStorage(updated);
+      }
       if (activeSelectedOrder && activeSelectedOrder.id === orderId) {
         setIsViewDetailsModalOpen(false);
         setActiveSelectedOrder(null);
@@ -1154,8 +1160,8 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       });
 
       addLiveNotification({
-        title: `Order Cancelled`,
-        desc: `Order ${removed?.invoice_no || contractNo} was removed from the active register.`,
+        title: `Order & Payments Cancelled`,
+        desc: `Order ${removed?.invoice_no || contractNo} and all associated payment receipts were removed.`,
         category: 'alerts',
         type: 'warning',
         targetTab: 'orders',

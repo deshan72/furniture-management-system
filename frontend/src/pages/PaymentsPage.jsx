@@ -44,6 +44,7 @@ import {
 import {
   loadSavedOrders,
   saveOrdersToStorage,
+  deleteOrderWithCascadePayments,
 } from '../utils/ordersData';
 import { loadSavedCenters, formatCenterCode } from '../utils/centersData';
 import { loadSavedCustomers } from '../utils/customersData';
@@ -982,12 +983,18 @@ export default function PaymentsPage({
     }
   };
 
-  // Delete/Cancel contract account
+  // Delete/Cancel contract account & Cascade Remove Associated Payments
   const handleDeleteContract = (orderId, contractNo) => {
-    if (window.confirm(`Are you sure you want to remove contract record "${contractNo}"?`)) {
-      const updated = orders.filter((o) => o.id !== orderId);
-      setOrders(updated);
-      saveOrdersToStorage(updated);
+    if (window.confirm(`Are you sure you want to remove contract record "${contractNo}" and all related payments?`)) {
+      const removed = orders.find((o) => o.id === orderId);
+      const res = deleteOrderWithCascadePayments(orderId, contractNo, removed?.invoice_no);
+      if (res && res.updatedOrders) {
+        setOrders(res.updatedOrders);
+      } else {
+        const updated = orders.filter((o) => o.id !== orderId);
+        setOrders(updated);
+        saveOrdersToStorage(updated);
+      }
 
       apiRequest(`/orders/${orderId}`, { method: 'DELETE' }).catch((err) => {
         console.warn('Order DB delete notice:', err);
@@ -997,8 +1004,8 @@ export default function PaymentsPage({
       }
 
       addLiveNotification({
-        title: `Contract Account Removed`,
-        desc: `Contract record "${contractNo}" was removed from the system.`,
+        title: `Contract & Payments Removed`,
+        desc: `Contract record "${contractNo}" and all associated payment receipts were removed.`,
         category: 'alerts',
         type: 'warning',
         targetTab: 'payments',
@@ -1841,11 +1848,11 @@ export default function PaymentsPage({
   // Find receipts corresponding to a selected contract
   const contractReceiptsHistory = useMemo(() => {
     if (!selectedContractForView) return [];
-    return payments.filter(
-      (p) =>
-        p.contract_no === selectedContractForView.contract_no ||
-        p.order_id === selectedContractForView.id
-    );
+    return payments.filter((p) => {
+      if (p.order_id) return p.order_id === selectedContractForView.id;
+      if (p.invoice_no && selectedContractForView.invoice_no) return p.invoice_no === selectedContractForView.invoice_no;
+      return selectedContractForView.contract_no && p.contract_no === selectedContractForView.contract_no;
+    });
   }, [payments, selectedContractForView]);
 
   // Calculate next payment due date, next installment amount, and repayment schedule

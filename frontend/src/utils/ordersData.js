@@ -1,5 +1,6 @@
 // Orders & Installment Contracts Data Store
 // Aligned with D&S Furniture System specifications
+import { loadSavedPayments, savePaymentsToStorage, PAYMENTS_STORAGE_KEY } from './paymentsData.js';
 
 export const ORDERS_STORAGE_KEY = 'dnd_orders_list_v2';
 
@@ -467,4 +468,61 @@ export const formatDate = (dateString) => {
   }
 };
 
+/**
+ * Permanently removes an order and CASCADE DELETES all associated payments & receipts.
+ * Automatically synchronizes localStorage and broadcasts system-wide update events.
+ */
+export const deleteOrderWithCascadePayments = (orderId, contractNo, invoiceNo) => {
+  try {
+    // 1. Delete order from orders list
+    const savedOrders = loadSavedOrders();
+    const targetOrder = savedOrders.find(
+      (o) =>
+        (orderId && o.id === orderId) ||
+        (contractNo && o.contract_no === contractNo) ||
+        (invoiceNo && o.invoice_no === invoiceNo)
+    );
+    const updatedOrders = savedOrders.filter(
+      (o) =>
+        (!orderId || o.id !== orderId) &&
+        (!contractNo || o.contract_no !== contractNo) &&
+        (!invoiceNo || o.invoice_no !== invoiceNo)
+    );
+    saveOrdersToStorage(updatedOrders);
+    window.dispatchEvent(new Event('dnd_orders_updated'));
 
+    // 2. Cascade delete all matching payments from payments list
+    const targetOrderId = orderId || targetOrder?.id;
+    const targetContract = contractNo || targetOrder?.contract_no;
+    const targetInvoice = invoiceNo || targetOrder?.invoice_no;
+
+    const currentPayments = loadSavedPayments();
+    const remainingPayments = currentPayments.filter((p) => {
+      // If payment has order_id, match against targetOrderId
+      if (targetOrderId && p.order_id === targetOrderId) return false;
+      // If payment matches invoice
+      if (targetInvoice && p.invoice_no === targetInvoice) return false;
+      // If payment matches contract_no and belongs to this order
+      if (targetContract && p.contract_no === targetContract) {
+        if (!p.order_id || p.order_id === targetOrderId) return false;
+      }
+      return true;
+    });
+
+    savePaymentsToStorage(remainingPayments);
+
+    // Also sync secondary storage keys
+    try {
+      localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(remainingPayments));
+      localStorage.setItem('dnd_payments_list', JSON.stringify(remainingPayments));
+      localStorage.setItem('dnd_payments', JSON.stringify(remainingPayments));
+    } catch (_) {}
+
+    window.dispatchEvent(new Event('dnd_payments_updated'));
+
+    return { success: true, removedOrder: targetOrder, updatedOrders };
+  } catch (err) {
+    console.error('Error cascading order and payments deletion:', err);
+    return { success: false, error: err };
+  }
+};

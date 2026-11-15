@@ -337,6 +337,15 @@ export const updateOrder = async (req, res, next) => {
 export const deleteOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
+
+    // Cascade delete any payments linked to this order in database
+    try {
+      await supabase.from('payments').delete().eq('order_id', id);
+      await supabase.from('monthly_payments').delete().eq('order_id', id);
+    } catch (e) {
+      console.warn('Notice cascading payments deletion in DB:', e.message);
+    }
+
     const { error } = await supabase
       .from('orders')
       .delete()
