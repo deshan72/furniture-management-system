@@ -49,6 +49,7 @@ import {
   validateAmount,
   sanitizeNicInput,
   sanitizePhoneInput,
+  extractDobFromNic,
 } from '../utils/validators';
 
 // WhatsApp Official SVG Icon Component
@@ -233,11 +234,12 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     first_name: '',
     last_name: '',
     nic: '',
+    dob: '',
     phone: '',
     city: 'Maharagama',
     address: '',
-    branch_code: 'MHG',
-    center_code: 'C001',
+    branch_code: '',
+    center_code: 'Single',
   });
 
   // ==========================================
@@ -744,18 +746,19 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     }
 
     const fullName = `${quickClient.first_name} ${quickClient.last_name || ''}`.trim();
+    const extractedDob = extractDobFromNic(cleanNic);
     const newCust = {
       id: `cust-${Date.now()}`,
       customer_id: cleanNic,
-      branch_code: quickClient.branch_code || 'MHG',
-      center_code: formatCenterCode(quickClient.center_code || 'C001'),
+      branch_code: quickClient.branch_code || formBranchCode || '',
+      center_code: formatCenterCode(quickClient.center_code || formCenterCode || 'Single'),
       contract_no: '1',
       item_code: '',
       first_name: quickClient.first_name,
       last_name: quickClient.last_name || '',
       name: fullName,
       civil_status: 'Single',
-      dob: '',
+      dob: quickClient.dob || extractedDob?.dob || '',
       phone: cleanPhone,
       whatsapp: cleanPhone,
       nic: cleanNic,
@@ -2496,7 +2499,15 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                       maxLength={12}
                       placeholder="198512345678 or 851234567V"
                       value={quickClient.nic}
-                      onChange={(e) => setQuickClient({ ...quickClient, nic: sanitizeNicInput(e.target.value) })}
+                      onChange={(e) => {
+                        const val = sanitizeNicInput(e.target.value);
+                        const extracted = extractDobFromNic(val);
+                        setQuickClient({
+                          ...quickClient,
+                          nic: val,
+                          dob: extracted?.dob || quickClient.dob || '',
+                        });
+                      }}
                     />
                   </div>
                   <div className="form-group">

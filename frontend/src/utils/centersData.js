@@ -25,8 +25,13 @@ export const getBranchTheme = (branchCode) => {
 
 // Normalizes and formats center codes into 'C001' style (C followed by 3 digits)
 export const formatCenterCode = (val) => {
-  let clean = String(val || '').trim().toUpperCase();
+  let clean = String(val || '').trim();
   if (!clean) return '';
+  const upper = clean.toUpperCase();
+  if (upper === 'SINGLE' || upper === 'NONE' || upper === 'ALL' || upper === 'DIRECT') {
+    return 'Single';
+  }
+  clean = upper;
   if (clean.includes('/')) {
     const parts = clean.split('/');
     clean = parts[parts.length - 1].trim();

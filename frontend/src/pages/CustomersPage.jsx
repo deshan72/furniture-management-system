@@ -52,6 +52,7 @@ import {
   validateAmount,
   sanitizeNicInput,
   sanitizePhoneInput,
+  extractDobFromNic,
 } from '../utils/validators';
 
 // Helper to compress and convert customer photo to optimized Base64 Data URL (~30-60 KB)
@@ -246,8 +247,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Form State for Add Customer (NIC is the primary identifier)
   const [newCustomer, setNewCustomer] = useState({
     customer_id: '',
-    branch_code: 'MHG',
-    center_code: 'C001',
+    branch_code: '',
+    center_code: 'Single',
     contract_no: '1',
     item_code: '',
     photo: '',
@@ -505,14 +506,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   // Open Add New Customer Modal (NIC is the primary customer identifier)
   const handleOpenAddModal = () => {
     setMatchedCustomerAlert(null);
-    const defaultCenter = selectedCenter && selectedCenter !== 'all'
-      ? (selectedCenter.includes('/') ? selectedCenter.split('/')[1] : selectedCenter)
-      : (availableCenters[0]?.center_code || 'C001');
 
     setNewCustomer({
       customer_id: '',
       branch_code: '',
-      center_code: defaultCenter,
+      center_code: 'Single',
       contract_no: '1',
       item_code: '',
       photo: '',
@@ -677,8 +675,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     const createdRecord = {
       id: newId,
       customer_id: assignedCustomerId,
-      branch_code: normalizeIdPart('branch_code', newCustomer.branch_code || 'MHG'),
-      center_code: normalizeIdPart('center_code', newCustomer.center_code || 'C001'),
+      branch_code: newCustomer.center_code && newCustomer.center_code !== 'Single' ? normalizeIdPart('branch_code', newCustomer.branch_code || 'MHG') : '',
+      center_code: newCustomer.center_code && newCustomer.center_code !== 'Single' ? normalizeIdPart('center_code', newCustomer.center_code) : 'Single',
       contract_no: String(totalOrders),
       item_code: '',
       photo: newCustomer.photo || newCustomer.image_url || '',
@@ -735,8 +733,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     setMatchedCustomerAlert(null);
     setNewCustomer({
       customer_id: '',
-      branch_code: 'MHG',
-      center_code: 'C001',
+      branch_code: '',
+      center_code: 'Single',
       contract_no: '1',
       item_code: '',
       photo: '',
@@ -1191,8 +1189,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       nic: cleanNic,
       phone: cleanPhone,
       whatsapp: cleanWa,
-      branch_code: normalizeIdPart('branch_code', editingCustomer.branch_code || 'MHG'),
-      center_code: normalizeIdPart('center_code', editingCustomer.center_code || 'C001'),
+      branch_code: editingCustomer.center_code && editingCustomer.center_code !== 'Single' ? normalizeIdPart('branch_code', editingCustomer.branch_code || 'MHG') : '',
+      center_code: editingCustomer.center_code && editingCustomer.center_code !== 'Single' ? normalizeIdPart('center_code', editingCustomer.center_code) : 'Single',
       civil_status: editingCustomer.civil_status || 'Single',
       dob: editingCustomer.dob || '',
       outstanding_balance: Number(editingCustomer.outstanding_balance) || 0,
@@ -2229,7 +2227,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Date of Birth</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Date of Birth</span>
+                {extractDobFromNic(newCustomer.nic) && (
+                  <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                    🎂 Auto-detected from NIC
+                  </span>
+                )}
+              </label>
               <input
                 type="date"
                 className="form-input"
@@ -2237,6 +2242,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={newCustomer.dob || ''}
                 onChange={(e) => setNewCustomer({ ...newCustomer, dob: e.target.value })}
               />
+              {extractDobFromNic(newCustomer.nic) && (
+                <div style={{ fontSize: '0.72rem', color: '#15803D', marginTop: '3px', fontWeight: 600 }}>
+                  ✓ Auto-filled: <strong>{extractDobFromNic(newCustomer.nic).dob}</strong> ({extractDobFromNic(newCustomer.nic).gender})
+                </div>
+              )}
             </div>
 
             {/* Row 3: NIC & Phone Number */}
@@ -2258,8 +2268,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={newCustomer.nic || ''}
                 onChange={(e) => {
                   const val = sanitizeNicInput(e.target.value);
+                  const extracted = extractDobFromNic(val);
                   setNewCustomer((prev) => {
-                    const next = { ...prev, nic: val, customer_id: val.trim().toUpperCase() };
+                    const next = {
+                      ...prev,
+                      nic: val,
+                      customer_id: val.trim().toUpperCase(),
+                      dob: extracted?.dob ? extracted.dob : prev.dob,
+                    };
                     handleCheckExistingCustomer('nic', val, next);
                     return next;
                   });
@@ -2273,6 +2289,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   <>
                     {validateNic(newCustomer.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
                     <span>{validateNic(newCustomer.nic).message}</span>
+                    {extractDobFromNic(newCustomer.nic) && (
+                      <span style={{ marginLeft: '6px', color: '#16A34A', fontWeight: 700 }}>
+                        • DOB: {extractDobFromNic(newCustomer.nic).dob}
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
@@ -2350,19 +2371,24 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Assigned Center</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Assigned Center (Optional)</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 600 }}>Default: Single Customer</span>
+              </label>
               <select
                 className="form-select-full"
-                value={newCustomer.center_code || 'C001'}
+                value={newCustomer.center_code || 'Single'}
                 onChange={(e) => {
                   const val = e.target.value;
+                  const matchedCenter = availableCenters.find((c) => c.center_code === val);
                   setNewCustomer((prev) => ({
                     ...prev,
-                    branch_code: '',
-                    center_code: val,
+                    branch_code: matchedCenter?.branch_code || '',
+                    center_code: val || 'Single',
                   }));
                 }}
               >
+                <option value="Single">Single (Direct Customer)</option>
                 {availableCenters.map((cntr) => (
                   <option key={cntr.id || cntr.center_code} value={cntr.center_code}>
                     {cntr.center_code} — {cntr.name} ({cntr.city})
@@ -2922,7 +2948,14 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Date of Birth</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Date of Birth</span>
+                {extractDobFromNic(editingCustomer.nic) && (
+                  <span style={{ fontSize: '0.72rem', color: '#16A34A', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                    🎂 Auto-detected from NIC
+                  </span>
+                )}
+              </label>
               <input
                 type="date"
                 className="form-input"
@@ -2930,6 +2963,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={editingCustomer.dob || ''}
                 onChange={(e) => setEditingCustomer({ ...editingCustomer, dob: e.target.value })}
               />
+              {extractDobFromNic(editingCustomer.nic) && (
+                <div style={{ fontSize: '0.72rem', color: '#15803D', marginTop: '3px', fontWeight: 600 }}>
+                  ✓ Extracted from NIC: <strong>{extractDobFromNic(editingCustomer.nic).dob}</strong> ({extractDobFromNic(editingCustomer.nic).gender})
+                </div>
+              )}
             </div>
 
             {/* Row 3: NIC & Phone Number */}
@@ -2951,11 +2989,13 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                 value={editingCustomer.nic || ''}
                 onChange={(e) => {
                   const val = sanitizeNicInput(e.target.value);
-                  setEditingCustomer({
-                    ...editingCustomer,
+                  const extracted = extractDobFromNic(val);
+                  setEditingCustomer((prev) => ({
+                    ...prev,
                     nic: val,
                     customer_id: val.trim().toUpperCase(),
-                  });
+                    dob: extracted?.dob ? extracted.dob : prev.dob,
+                  }));
                 }}
               />
               <div
@@ -2966,6 +3006,11 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                   <>
                     {validateNic(editingCustomer.nic).isValid ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
                     <span>{validateNic(editingCustomer.nic).message}</span>
+                    {extractDobFromNic(editingCustomer.nic) && (
+                      <span style={{ marginLeft: '6px', color: '#16A34A', fontWeight: 700 }}>
+                        • DOB: {extractDobFromNic(editingCustomer.nic).dob}
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span>Format: 10 chars (9 digits + V/X) or 12 digits</span>
@@ -3042,19 +3087,24 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             </div>
 
             <div className="form-group">
-              <label className="form-label">Assigned Center</label>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Assigned Center (Optional)</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--ash-500)', fontWeight: 600 }}>Optional</span>
+              </label>
               <select
                 className="form-select-full"
-                value={editingCustomer.center_code || 'C001'}
+                value={editingCustomer.center_code || 'Single'}
                 onChange={(e) => {
                   const val = e.target.value;
+                  const matchedCenter = availableCenters.find((c) => c.center_code === val);
                   setEditingCustomer((prev) => ({
                     ...prev,
-                    branch_code: '',
-                    center_code: val,
+                    branch_code: matchedCenter?.branch_code || '',
+                    center_code: val || 'Single',
                   }));
                 }}
               >
+                <option value="Single">Single (Direct Customer)</option>
                 {availableCenters.map((cntr) => (
                   <option key={cntr.id || cntr.center_code} value={cntr.center_code}>
                     {cntr.center_code} — {cntr.name} ({cntr.city})

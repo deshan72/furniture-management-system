@@ -115,6 +115,81 @@ export const sanitizeNicInput = (value) => {
 };
 
 /**
+ * Extracts Date of Birth (and gender) from a Sri Lankan NIC number.
+ * Supports both Old Format (9 digits + V/X, e.g. 851234567V)
+ * and New Format (12 digits, e.g. 198512345678, 200127502100).
+ *
+ * @param {string} nic
+ * @returns {{ year: number, month: number, day: number, dob: string, gender: string } | null}
+ */
+export const extractDobFromNic = (nic) => {
+  if (!nic) return null;
+  const clean = String(nic).trim().toUpperCase();
+
+  let year = null;
+  let dayOfYear = null;
+  let gender = 'Male';
+
+  if (NIC_REGEX_OLD.test(clean)) {
+    year = 1900 + parseInt(clean.substring(0, 2), 10);
+    dayOfYear = parseInt(clean.substring(2, 5), 10);
+  } else if (NIC_REGEX_NEW.test(clean)) {
+    year = parseInt(clean.substring(0, 4), 10);
+    dayOfYear = parseInt(clean.substring(4, 7), 10);
+  } else {
+    return null;
+  }
+
+  if (dayOfYear > 500) {
+    gender = 'Female';
+    dayOfYear -= 500;
+  }
+
+  if (dayOfYear < 1 || dayOfYear > 366) {
+    return null;
+  }
+
+  // Month days lookup based on Sri Lankan DRP 366-day leap reference calendar
+  const monthDays = [
+    { month: 1, days: 31 },
+    { month: 2, days: 29 },
+    { month: 3, days: 31 },
+    { month: 4, days: 30 },
+    { month: 5, days: 31 },
+    { month: 6, days: 30 },
+    { month: 7, days: 31 },
+    { month: 8, days: 31 },
+    { month: 9, days: 30 },
+    { month: 10, days: 31 },
+    { month: 11, days: 30 },
+    { month: 12, days: 31 },
+  ];
+
+  let m = 0;
+  let d = dayOfYear;
+  for (let i = 0; i < monthDays.length; i++) {
+    if (d <= monthDays[i].days) {
+      m = monthDays[i].month;
+      break;
+    }
+    d -= monthDays[i].days;
+  }
+
+  if (m === 0 || d <= 0) return null;
+
+  const mm = String(m).padStart(2, '0');
+  const dd = String(d).padStart(2, '0');
+
+  return {
+    year,
+    month: m,
+    day: d,
+    dob: `${year}-${mm}-${dd}`,
+    gender,
+  };
+};
+
+/**
  * Validates Sri Lankan Phone / Mobile Number
  * 10 digits without letters, starts with 0 (e.g. 077XXXXXXX)
  *
