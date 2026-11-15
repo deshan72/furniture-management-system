@@ -163,7 +163,12 @@ export const calculateNextPaymentDetails = (order, receipts = []) => {
   };
 };
 
-export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
+export default function PaymentsPage({
+  selectedCenter = 'all',
+  onNavigate,
+  initialSubView,
+  pageTitle = 'Center Cash Payments',
+}) {
   // Master Data State
   const [payments, setPayments] = useState(() => loadSavedPayments());
   const [orders, setOrders] = useState(() => loadSavedOrders());
@@ -172,8 +177,15 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
 
   // Active Sub-view: 'collection_day' (Daily Center Collection) vs 'accounts' vs 'ledger'
   const [activeSubView, setActiveSubView] = useState(() => {
+    if (initialSubView) return initialSubView;
     return localStorage.getItem('dnd_active_payments_subview') || 'collection_day';
   });
+
+  useEffect(() => {
+    if (initialSubView) {
+      setActiveSubView(initialSubView);
+    }
+  }, [initialSubView]);
 
   // Center Collection Mode State
   const [selectedCollectionCenterId, setSelectedCollectionCenterId] = useState(() => {
@@ -1692,7 +1704,7 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
       >
         <div>
           <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, color: 'var(--ash-900)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <CreditCard size={24} color="var(--primary)" /> Payments & Customer Advances
+            <Building2 size={24} color="var(--primary)" /> {pageTitle || 'Center Cash Payments'}
           </h2>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '4px', fontSize: '0.82rem', color: 'var(--ash-500)' }}>
             <span>Total Accounts: <strong style={{ color: 'var(--ash-900)' }}>{orders.length}</strong></span>
@@ -1714,7 +1726,19 @@ export default function PaymentsPage({ selectedCenter = 'all', onNavigate }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {onNavigate && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => onNavigate('single-customer-payments')}
+              style={{ padding: '8px 14px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+              title="Switch to Single Customer Cash Payments desk"
+            >
+              <User size={14} color="#2563EB" /> Single Customer Payments
+            </button>
+          )}
+
           <button
             type="button"
             className="btn btn-secondary"

@@ -100,6 +100,16 @@ export const generateWhatsAppInvoiceMessage = (order) => {
 • Payment Status: Fully Paid (Settled)`;
   }
 
+  const baseUrl = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+  const invoiceParam = encodeURIComponent(order.invoice_no || order.id || '');
+  const invoicePdfUrl = baseUrl ? `${baseUrl}/?invoice=${invoiceParam}` : '';
+
+  const onlinePdfSection = invoicePdfUrl ? `
+───────────────────────────
+📥 *DOWNLOAD & VIEW OFFICIAL DETAILED PDF INVOICE:*
+👉 ${invoicePdfUrl}
+*(Click link above to view your full signed agreement, official warranty terms, and 1-click Download / Save as PDF)*` : '';
+
   return `🛋️ *D N S HOME SOLUTIONS*
 *Official Customer Sales Invoice & Agreement*
 ───────────────────────────
@@ -119,6 +129,7 @@ ${order.customer_address ? `• Delivery Address: ${order.customer_address}\n` :
 • Unit Price: ${formatLKR(order.unit_price || 0)}
 ${Number(order.document_charge) > 0 ? `• Agreement / Doc Fee: ${formatLKR(order.document_charge)}\n` : ''}
 ${paymentSection}
+${onlinePdfSection}
 
 ───────────────────────────
 ✨ *Thank you for your business with D N S Home Solutions!*

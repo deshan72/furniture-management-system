@@ -10,6 +10,9 @@ import CentersPage from './pages/CentersPage';
 import OrdersPage from './pages/OrdersPage';
 import CashHandlingPage from './pages/CashHandlingPage';
 import PaymentsPage from './pages/PaymentsPage';
+import CenterCashPaymentsPage from './pages/CenterCashPaymentsPage';
+import SingleCustomerPaymentsPage from './pages/SingleCustomerPaymentsPage';
+import PublicInvoicePage from './pages/PublicInvoicePage';
 import SalesTargetsPage from './pages/SalesTargetsPage';
 import ReturnsRepairsPage from './pages/ReturnsRepairsPage';
 import UsersPage from './pages/UsersPage';
@@ -23,6 +26,23 @@ import { loadSavedCenters } from './utils/centersData';
 import { getActiveUser, setActiveRole, hasPageAccess, ROLES_METADATA } from './utils/rolesData';
 import { getAuthenticatedUser, logoutUser } from './utils/authData';
 import { normalizeActiveTab } from './utils/navigationUtils';
+
+// Helper to detect if current URL is requesting an online public invoice
+const getPublicInvoiceId = () => {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const invoiceParam = params.get('invoice') || params.get('inv');
+    if (invoiceParam && invoiceParam.trim()) return invoiceParam.trim();
+
+    if (window.location.hash && window.location.hash.startsWith('#/invoice/')) {
+      const hashInv = window.location.hash.replace('#/invoice/', '').trim();
+      if (hashInv) return hashInv;
+    }
+  } catch (err) {
+    console.warn('Error checking public invoice query:', err);
+  }
+  return null;
+};
 
 // Helper to determine initial active tab on page load/refresh
 const getInitialActiveTab = () => {
@@ -57,6 +77,22 @@ export default function App() {
 
   // Active Authenticated User State
   const [currentUser, setCurrentUser] = useState(() => getAuthenticatedUser());
+
+  // Public Online Invoice URL state (no login required for customer invoice link)
+  const [publicInvoiceNo, setPublicInvoiceNo] = useState(() => getPublicInvoiceId());
+
+  // Listen for hash / popstate changes for public invoice
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setPublicInvoiceNo(getPublicInvoiceId());
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
 
   // Logout handler
   const handleLogout = () => {
@@ -254,10 +290,16 @@ export default function App() {
           title: 'Orders & Invoices',
           subtitle: 'Manage furniture customer orders, workshop specifications, and customer deliveries',
         };
+      case 'center-cash-payments':
       case 'payments':
         return {
-          title: 'Payments & Advances',
-          subtitle: 'Track customer advances, loan installment plans, and outstanding balance settlements',
+          title: 'Center Cash Payments',
+          subtitle: 'Daily center cash collection desk, center targets, scheduled payments, and field sheets',
+        };
+      case 'single-customer-payments':
+        return {
+          title: 'Single Customer Cash Payments',
+          subtitle: 'Collect cash installments, view individual customer balances, and issue official receipts',
         };
       case 'returns':
         return {
@@ -504,6 +546,15 @@ export default function App() {
     );
   };
 
+  // If public invoice URL is requested, render standalone invoice viewer directly (bypasses auth gate)
+  if (publicInvoiceNo) {
+    return (
+      <ErrorBoundary>
+        <PublicInvoicePage invoiceNo={publicInvoiceNo} />
+      </ErrorBoundary>
+    );
+  }
+
   // If not authenticated, render professional Login & Sign Up Page
   if (!currentUser) {
     return (
@@ -565,8 +616,11 @@ export default function App() {
               {activeTab === 'orders' && (
                 <OrdersPage headerCenter={selectedCenter} onNavigate={setActiveTab} />
               )}
-              {activeTab === 'payments' && (
-                <PaymentsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
+              {(activeTab === 'center-cash-payments' || activeTab === 'payments') && (
+                <CenterCashPaymentsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
+              )}
+              {activeTab === 'single-customer-payments' && (
+                <SingleCustomerPaymentsPage selectedCenter={selectedCenter} onNavigate={setActiveTab} />
               )}
               {activeTab === 'sales-targets' && (
                 <SalesTargetsPage currentUser={currentUser} onNavigate={setActiveTab} />
@@ -650,7 +704,7 @@ export default function App() {
 
               {/* Fallback to Dashboard if activeTab does not match any recognized route */}
               {![
-                'dashboard', 'orders', 'orders-new', 'orders-installments', 'payments', 'sales-targets', 'returns',
+                'dashboard', 'orders', 'orders-new', 'orders-installments', 'payments', 'center-cash-payments', 'single-customer-payments', 'sales-targets', 'returns',
                 'products', 'inventory', 'low-stock', 'customers', 'customer-overview',
                 'centers', 'centers-new', 'centers-assign', 'purchases', 'cash-handling',
                 'reports', 'reports-sales', 'reports-profit', 'settings', 'users', 'backup'

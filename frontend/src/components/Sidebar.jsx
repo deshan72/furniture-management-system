@@ -16,6 +16,7 @@ import {
   Database,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ClipboardList,
   Building2,
   PlusCircle,
@@ -35,6 +36,16 @@ export default function Sidebar({
   currentUser,
   onLogout,
 }) {
+  // Expandable submenus state: Payments & Advances expanded by default
+  const [expandedMenus, setExpandedMenus] = React.useState({ payments: true });
+
+  const toggleSubmenu = (menuId) => {
+    setExpandedMenus((prev) => ({
+      ...prev,
+      [menuId]: !prev[menuId],
+    }));
+  };
+
   // Navigation sections customized for Furniture Management (No POS)
   const navigationGroups = [
     {
@@ -47,7 +58,15 @@ export default function Sidebar({
       title: 'Orders & Billing',
       items: [
         { id: 'orders', label: 'Orders & Invoices', icon: ClipboardList },
-        { id: 'payments', label: 'Payments & Advances', icon: CreditCard },
+        {
+          id: 'payments',
+          label: 'Payments & Advances',
+          icon: CreditCard,
+          subItems: [
+            { id: 'center-cash-payments', label: 'Center Cash Payments', icon: Building2 },
+            { id: 'single-customer-payments', label: 'Single Customer Cash Payments', icon: UserCheck },
+          ],
+        },
         { id: 'sales-targets', label: 'Sales Targets', icon: Target },
       ],
     },
@@ -115,7 +134,12 @@ export default function Sidebar({
   const visibleGroups = navigationGroups
     .map((group) => {
       if (currentUser?.role === 'admin') return group;
-      const allowedItems = group.items.filter((item) => hasPageAccess(currentUser, item.id));
+      const allowedItems = group.items.filter((item) => {
+        if (item.subItems) {
+          return hasPageAccess(currentUser, item.id) || item.subItems.some((s) => hasPageAccess(currentUser, s.id));
+        }
+        return hasPageAccess(currentUser, item.id);
+      });
       return {
         ...group,
         items: allowedItems,
@@ -161,52 +185,131 @@ export default function Sidebar({
 
             {group.items.map((item) => {
               const Icon = item.icon;
+              const hasSubs = Array.isArray(item.subItems) && item.subItems.length > 0;
+              const isSubActive = hasSubs && item.subItems.some((s) => s.id === activeTab);
               const isActive =
                 activeTab === item.id ||
+                isSubActive ||
                 (item.id === 'reports' && activeTab === 'reports-sales');
               const isAllowed = hasPageAccess(currentUser, item.id);
+              const isExpanded = !!expandedMenus[item.id];
+
+              const handleParentClick = () => {
+                if (hasSubs) {
+                  if (isCollapsed) {
+                    setIsCollapsed(false);
+                    setExpandedMenus((prev) => ({ ...prev, [item.id]: true }));
+                    setActiveTab(item.subItems[0].id);
+                  } else {
+                    toggleSubmenu(item.id);
+                    if (!isSubActive) {
+                      setActiveTab(item.subItems[0].id);
+                    }
+                  }
+                } else {
+                  setActiveTab(item.id);
+                }
+              };
 
               return (
-                <button
-                  key={item.id}
-                  className={`nav-item-btn ${isActive ? 'active' : ''} ${!isAllowed ? 'nav-item-locked' : ''}`}
-                  title={isCollapsed ? `${item.label}${!isAllowed ? ' (Locked - Admin Required)' : ''}` : undefined}
-                  onClick={() => setActiveTab(item.id)}
-                  style={{
-                    opacity: !isAllowed ? 0.6 : 1,
-                  }}
-                >
-                  <div className="nav-item-content">
-                    <span className="nav-icon">
-                      <Icon size={18} strokeWidth={isActive ? 2.3 : 1.8} />
-                    </span>
-                    <span className="nav-label">{item.label}</span>
-                  </div>
+                <div key={item.id} className="nav-item-wrapper" style={{ display: 'flex', flexDirection: 'column' }}>
+                  <button
+                    type="button"
+                    className={`nav-item-btn ${isActive ? 'active' : ''} ${!isAllowed ? 'nav-item-locked' : ''}`}
+                    title={isCollapsed ? `${item.label}${!isAllowed ? ' (Locked - Admin Required)' : ''}` : undefined}
+                    onClick={handleParentClick}
+                    style={{
+                      opacity: !isAllowed ? 0.6 : 1,
+                    }}
+                  >
+                    <div className="nav-item-content">
+                      <span className="nav-icon">
+                        <Icon size={18} strokeWidth={isActive ? 2.3 : 1.8} />
+                      </span>
+                      <span className="nav-label">{item.label}</span>
+                    </div>
 
-                  {/* Badges / Chips */}
-                  {item.badge !== undefined && item.badge > 0 && isAllowed && (
-                    <span className={`nav-badge ${item.badgeType || 'info'}`}>
-                      {item.badge}
-                    </span>
-                  )}
+                    {/* Submenu Caret Toggle */}
+                    {hasSubs && !isCollapsed && (
+                      <span
+                        style={{
+                          marginLeft: 'auto',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          transition: 'transform 0.2s ease',
+                          transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          color: isActive ? '#ffffff' : 'var(--ash-400)',
+                        }}
+                      >
+                        <ChevronDown size={14} />
+                      </span>
+                    )}
 
-                  {/* Lock Indicator if role restricted */}
-                  {!isAllowed && (
-                    <span
-                      title="Admin Authorization Required"
+                    {/* Badges / Chips */}
+                    {!hasSubs && item.badge !== undefined && item.badge > 0 && isAllowed && (
+                      <span className={`nav-badge ${item.badgeType || 'info'}`}>
+                        {item.badge}
+                      </span>
+                    )}
+
+                    {/* Lock Indicator if role restricted */}
+                    {!isAllowed && (
+                      <span
+                        title="Admin Authorization Required"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--text-muted)',
+                          padding: '2px 4px',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        <Lock size={12} strokeWidth={2.5} />
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Sub-Items dropdown */}
+                  {hasSubs && isExpanded && !isCollapsed && (
+                    <div
+                      className="nav-subitems-container"
                       style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--text-muted)',
-                        padding: '2px 4px',
-                        fontSize: '0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        marginTop: '2px',
+                        marginBottom: '4px',
+                        borderLeft: '2px solid rgba(255, 255, 255, 0.14)',
+                        marginLeft: '20px',
+                        paddingLeft: '4px',
                       }}
                     >
-                      <Lock size={12} strokeWidth={2.5} />
-                    </span>
+                      {item.subItems.map((sub) => {
+                        const SubIcon = sub.icon;
+                        const isSubItemActive = activeTab === sub.id;
+                        const isSubAllowed = hasPageAccess(currentUser, sub.id);
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            className={`nav-subitem-btn ${isSubItemActive ? 'active' : ''} ${!isSubAllowed ? 'nav-item-locked' : ''}`}
+                            onClick={() => setActiveTab(sub.id)}
+                            style={{ opacity: !isSubAllowed ? 0.6 : 1 }}
+                            title={sub.label}
+                          >
+                            <div className="nav-item-content" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="nav-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <SubIcon size={14} strokeWidth={isSubItemActive ? 2.3 : 1.8} />
+                              </span>
+                              <span className="nav-label" style={{ fontSize: '0.8rem' }}>{sub.label}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
