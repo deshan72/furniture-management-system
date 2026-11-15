@@ -59,10 +59,13 @@ export default function LoginPage({ onLoginSuccess }) {
     setErrorMessage('');
     setFieldErrors({});
     if (type === 'admin') {
-      setSignInEmail('admin@dnshomesolutions.lk');
+      setSignInEmail('admin');
       setSignInPassword('admin123');
+    } else if (type === 'cashier') {
+      setSignInEmail('cashier');
+      setSignInPassword('cashier123');
     } else {
-      setSignInEmail('executive@dnshomesolutions.lk');
+      setSignInEmail('executive');
       setSignInPassword('exec123');
     }
   };
@@ -75,14 +78,18 @@ export default function LoginPage({ onLoginSuccess }) {
     setSuccessMessage('');
   };
 
-  // Validate Sign In
+  // Validate Sign In (Supports Username or Email)
   const validateSignIn = () => {
     const errors = {};
-    const emailClean = signInEmail.trim();
-    if (!emailClean) {
-      errors.email = 'Email address is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean)) {
-      errors.email = 'Please enter a valid email address.';
+    const idClean = signInEmail.trim();
+    if (!idClean) {
+      errors.email = 'Username or Email address is required.';
+    } else if (idClean.includes('@')) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(idClean)) {
+        errors.email = 'Please enter a valid email address.';
+      }
+    } else if (idClean.length < 2) {
+      errors.email = 'Username must be at least 2 characters.';
     }
 
     if (!signInPassword) {
@@ -596,7 +603,7 @@ export default function LoginPage({ onLoginSuccess }) {
                   <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
                     Quick Demo Credentials (One-Click Test):
                   </span>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                     <button
                       type="button"
                       onClick={() => handleFillDemo('admin')}
@@ -604,18 +611,18 @@ export default function LoginPage({ onLoginSuccess }) {
                         background: '#FAF5FF',
                         border: '1.5px solid #E9D5FF',
                         borderRadius: '10px',
-                        padding: '10px 14px',
+                        padding: '8px 10px',
                         cursor: 'pointer',
                         textAlign: 'left',
                         transition: 'all 0.15s ease',
                       }}
                       title="Full access to all modules including Administration"
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#9333EA', fontWeight: 800, fontSize: '0.84rem' }}>
-                        <Crown size={15} /> Administrator
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#9333EA', fontWeight: 800, fontSize: '0.8rem' }}>
+                        <Crown size={14} /> Admin
                       </div>
-                      <div style={{ fontSize: '0.72rem', color: '#6B21A8', marginTop: '3px', fontWeight: 600 }}>
-                        admin@dnshomesolutions.lk
+                      <div style={{ fontSize: '0.7rem', color: '#6B21A8', marginTop: '2px', fontWeight: 600 }}>
+                        @admin
                       </div>
                     </button>
 
@@ -626,33 +633,55 @@ export default function LoginPage({ onLoginSuccess }) {
                         background: '#EFF6FF',
                         border: '1.5px solid #BFDBFE',
                         borderRadius: '10px',
-                        padding: '10px 14px',
+                        padding: '8px 10px',
                         cursor: 'pointer',
                         textAlign: 'left',
                         transition: 'all 0.15s ease',
                       }}
-                      title="Operational access only (Orders, Advances, Loans, Stock)"
+                      title="Operational access (Orders, Advances, Loans, Stock)"
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563EB', fontWeight: 800, fontSize: '0.84rem' }}>
-                        <Briefcase size={15} /> Executive Staff
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#2563EB', fontWeight: 800, fontSize: '0.8rem' }}>
+                        <Briefcase size={14} /> Exec
                       </div>
-                      <div style={{ fontSize: '0.72rem', color: '#1E40AF', marginTop: '3px', fontWeight: 600 }}>
-                        executive@dnshomesolutions.lk
+                      <div style={{ fontSize: '0.7rem', color: '#1E40AF', marginTop: '2px', fontWeight: 600 }}>
+                        @executive
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleFillDemo('cashier')}
+                      style={{
+                        background: '#ECFDF5',
+                        border: '1.5px solid #A7F3D0',
+                        borderRadius: '10px',
+                        padding: '8px 10px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Cash collections, payments, receipts and cashbook"
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#059669', fontWeight: 800, fontSize: '0.8rem' }}>
+                        <CreditCard size={14} /> Cashier
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#065F46', marginTop: '2px', fontWeight: 600 }}>
+                        @cashier
                       </div>
                     </button>
                   </div>
                 </div>
 
-                {/* Email Field */}
+                {/* Username or Email Field */}
                 <div style={{ marginBottom: '18px' }}>
                   <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#1E293B', marginBottom: '6px' }}>
-                    Corporate Email Address *
+                    Username or Corporate Email *
                   </label>
                   <div style={{ position: 'relative' }}>
-                    <Mail size={18} style={{ position: 'absolute', left: '14px', top: '14px', color: '#94A3B8' }} />
+                    <User size={18} style={{ position: 'absolute', left: '14px', top: '14px', color: '#94A3B8' }} />
                     <input
-                      type="email"
-                      placeholder="e.g. admin@dnshomesolutions.lk"
+                      type="text"
+                      placeholder="e.g. admin, cashier, or admin@dnshomesolutions.lk"
                       value={signInEmail}
                       onChange={(e) => setSignInEmail(e.target.value)}
                       style={{
@@ -668,6 +697,7 @@ export default function LoginPage({ onLoginSuccess }) {
                       }}
                       onFocus={(e) => (e.target.style.background = '#FFFFFF')}
                       onBlur={(e) => (e.target.style.background = '#F8FAFC')}
+                      autoComplete="username"
                     />
                   </div>
                   {fieldErrors.email && (

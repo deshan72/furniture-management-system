@@ -204,7 +204,7 @@ export const SYSTEM_MODULES = [
 
 // Default Permission Presets by Role
 export const DEFAULT_ROLE_PERMISSIONS = {
-  // Super Admin: All 21 modules unconditionally allowed
+  // Super Admin: All modules unconditionally allowed
   admin: SYSTEM_MODULES.map((m) => m.id),
 
   // Executive Staff: Operational modules allowed by default
@@ -227,6 +227,23 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'add-client-to-center',
     'reports',
     'reports-sales',
+  ],
+
+  // Showroom Cashier: Focus on cashier desk, orders, receipts, collections, and cashbook
+  cashier: [
+    'dashboard',
+    'orders',
+    'payments',
+    'center-cash-payments',
+    'single-customer-payments',
+    'sales-targets',
+    'returns',
+    'products',
+    'customers',
+    'customer-overview',
+    'outstanding',
+    'cashbook',
+    'day-close',
   ],
 };
 
@@ -255,6 +272,18 @@ export const ROLES_METADATA = {
     border: 'rgba(37, 99, 235, 0.35)',
     description: 'Operational privileges for showroom sales, order billing, checking furniture stocks, customer directory, and distribution centers. Confidential finance and admin pages can be toggled by the Admin.',
     iconName: 'Briefcase',
+  },
+  cashier: {
+    key: 'cashier',
+    label: 'Showroom Cashier (Cash & Collections)',
+    shortLabel: 'Cashier',
+    title_si: 'Showroom Cashier Role',
+    badgeClass: 'badge-pos',
+    color: '#059669',
+    bg: 'rgba(5, 150, 105, 0.14)',
+    border: 'rgba(5, 150, 105, 0.35)',
+    description: 'Operational privileges for showroom cashier desk, customer installment collections, center field sheets, receipt issuance, and daily cashbook.',
+    iconName: 'CreditCard',
   },
 };
 
@@ -315,6 +344,36 @@ export const INITIAL_SYSTEM_ROLES = [
     status: 'Active',
     created_at: '2026-01-01T00:00:00Z',
   },
+  {
+    id: 'cashier',
+    name: 'Showroom Cashier & Collector',
+    name_si: 'Showroom Cashier & Collector',
+    shortLabel: 'Cashier',
+    badgeClass: 'badge-pos',
+    color: '#059669',
+    bg: 'rgba(5, 150, 105, 0.14)',
+    border: 'rgba(5, 150, 105, 0.35)',
+    description: 'Cash desk management, collecting customer installments, center collections, issuing payment receipts, and daily cashbook.',
+    isSystem: true,
+    canDelete: false,
+    permissions: [
+      'dashboard',
+      'orders',
+      'payments',
+      'center-cash-payments',
+      'single-customer-payments',
+      'sales-targets',
+      'returns',
+      'products',
+      'customers',
+      'customer-overview',
+      'outstanding',
+      'cashbook',
+      'day-close',
+    ],
+    status: 'Active',
+    created_at: '2026-01-01T00:00:00Z',
+  },
 ];
 
 // Helper: Load All Roles (System + Custom Roles)
@@ -351,6 +410,15 @@ export const loadAllRoles = () => {
           permissions: legacyPerms?.executive || r.permissions || INITIAL_SYSTEM_ROLES[1].permissions,
         };
       }
+      if (r.id === 'cashier') {
+        return {
+          ...r,
+          name: 'Showroom Cashier & Collector',
+          name_si: 'Showroom Cashier & Collector',
+          description: INITIAL_SYSTEM_ROLES[2].description,
+          permissions: r.permissions || INITIAL_SYSTEM_ROLES[2].permissions,
+        };
+      }
 
       // Sanitize custom roles to remove any legacy Sinhala characters
       const cleanName = (r.name || '').replace(/[\u0D80-\u0DFF]/g, '').trim();
@@ -365,11 +433,13 @@ export const loadAllRoles = () => {
       };
     });
 
-    // Ensure system roles (admin & executive) are always present
+    // Ensure system roles (admin, executive & cashier) are always present
     const hasAdmin = roles.some((r) => r.id === 'admin');
     const hasExec = roles.some((r) => r.id === 'executive');
+    const hasCashier = roles.some((r) => r.id === 'cashier');
     if (!hasAdmin) roles.unshift(INITIAL_SYSTEM_ROLES[0]);
     if (!hasExec) roles.splice(1, 0, INITIAL_SYSTEM_ROLES[1]);
+    if (!hasCashier) roles.splice(2, 0, INITIAL_SYSTEM_ROLES[2]);
 
     // Persist cleaned roles back to localStorage immediately
     try {
@@ -525,10 +595,14 @@ export const setActiveRole = (role) => {
 // Helper: Determine if a role has access to a specific page
 export const hasPageAccess = (roleOrUser, pageId) => {
   let role = 'admin';
+  let customPerms = null;
   if (typeof roleOrUser === 'string') {
     role = roleOrUser;
   } else if (roleOrUser && typeof roleOrUser === 'object') {
     role = roleOrUser.role || 'admin';
+    if (Array.isArray(roleOrUser.customPermissions)) {
+      customPerms = roleOrUser.customPermissions;
+    }
   }
 
   // Admin has unconditional access to all modules
@@ -545,6 +619,11 @@ export const hasPageAccess = (roleOrUser, pageId) => {
     targetIds = ['payments', 'center-cash-payments', 'single-customer-payments'];
   }
 
+  // If user has specific custom permissions override
+  if (customPerms && Array.isArray(customPerms)) {
+    return targetIds.some((id) => customPerms.includes(id));
+  }
+
   // Check from live roles catalog
   try {
     const roles = loadAllRoles();
@@ -556,9 +635,9 @@ export const hasPageAccess = (roleOrUser, pageId) => {
     console.error(e);
   }
 
-  // Fallback to legacy executive permissions
+  // Fallback to legacy permissions
   const rolePerms = loadRolePermissions();
-  const allowed = rolePerms.executive || DEFAULT_ROLE_PERMISSIONS.executive;
+  const allowed = rolePerms[role] || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.executive;
   return targetIds.some((id) => allowed.includes(id));
 };
 
