@@ -235,40 +235,6 @@ export const INITIAL_ORDERS = [
     notes: 'Maththegoda Center installment plan for Royal Teak dining set.',
     created_at: '2026-11-13T10:00:00Z',
   },
-  {
-    id: 'ORD-KASUN',
-    invoice_no: 'DS-INV-9090',
-    contract_no: 'PN/SINGLE/WD-002',
-    passbook_no: 'PN',
-    date: '2026-11-14',
-    customer_id: '200126702110',
-    customer_name: 'Kasun Nirmal',
-    customer_phone: '0751207890',
-    customer_whatsapp: '0751207890',
-    customer_nic: '200126702110',
-    customer_address: '14/15, Kudamaduwa Road, Maharagama',
-    branch_code: 'ISLAND',
-    center_code: 'Single',
-    item_id: 'prod-2',
-    item_code: 'WD-002',
-    item_name: 'Mahogany 3-Door Wardrobe (Almirah)',
-    category: 'wood',
-    quantity: 1,
-    unit_price: 78000,
-    gross_amount: 78000,
-    advance_paid: 20000,
-    balance_due: 58000,
-    payment_type: 'installment',
-    loan_frequency: 'weekly',
-    loan_terms: 12,
-    installment_value: 4834,
-    first_due_date: '2026-11-16', // Monday
-    installments_paid: 1,
-    payment_method: 'Cash',
-    status: 'Active Loan',
-    notes: 'Single direct customer weekly route installment plan.',
-    created_at: '2026-11-14T11:00:00Z',
-  },
 ];
 
 // Standard NIC mapping for known initial customers if old branch/center format was saved
@@ -405,21 +371,6 @@ export const loadSavedOrders = () => {
           const sachinthaSeed = INITIAL_ORDERS.find((io) => io.id === 'ORD-SACHINTHA');
           if (sachinthaSeed) {
             cleaned.unshift({ ...sachinthaSeed });
-            changed = true;
-          }
-        }
-
-        // Ensure active installment order for Kasun Nirmal exists for Single Customers
-        const hasKasunOrder = cleaned.some(
-          (o) =>
-            o.customer_nic === '200126702110' ||
-            (o.customer_name && o.customer_name.toLowerCase().includes('kasun nirmal')) ||
-            o.id === 'ORD-KASUN'
-        );
-        if (!hasKasunOrder) {
-          const kasunSeed = INITIAL_ORDERS.find((io) => io.id === 'ORD-KASUN');
-          if (kasunSeed) {
-            cleaned.push({ ...kasunSeed });
             changed = true;
           }
         }

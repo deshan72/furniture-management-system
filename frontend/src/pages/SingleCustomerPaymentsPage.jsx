@@ -222,13 +222,26 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
     }
   }, [selectedOrder, payments]);
 
-  // Single customer predicate: island-wide weekly route or customers with Single/C004 assignment
+  // Single customer predicate: STRICTLY single customers (Island Wide / Direct).
+  // Anyone assigned to any regional center (C001, C002, C003, C004, etc.) is EXCLUDED.
   const isSingleCustomerOrder = (o) => {
     if (!o) return false;
-    const cCode = formatCenterCode(o.center_code || '');
-    if (cCode === 'Single' || cCode === 'C004' || cCode === 'CSINGLE' || cCode === 'DIRECT' || !cCode) return true;
 
-    // Match linked customer's center
+    const rawCenter = String(o.center_code || '').trim();
+    const cUpper = rawCenter.toUpperCase();
+    const contract = String(o.contract_no || '').toUpperCase();
+
+    // 1. If assigned to any regional center (C001, C002, C003, C004, or any C followed by digits) -> strictly exclude
+    if (/^C\d{3}$/i.test(rawCenter) || /^(C001|C002|C003|C004|C005)/i.test(rawCenter)) {
+      return false;
+    }
+
+    // 2. If contract belongs to a regional center (e.g. /C001/, /C002/, /C003/, /C004/, etc.) -> strictly exclude
+    if (/\/C\d{3}\//i.test(contract) || /-C\d{3}-/i.test(contract) || /\/C\d{3}$/i.test(contract)) {
+      return false;
+    }
+
+    // 3. Check linked customer: if customer has a regional center assigned, strictly exclude
     const cust = customers.find(
       (c) =>
         (o.customer_id && (c.id === o.customer_id || c.customer_id === o.customer_id || c.nic === o.customer_id)) ||
@@ -236,23 +249,37 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
         (o.customer_name && c.name && c.name.trim().toLowerCase() === o.customer_name.trim().toLowerCase())
     );
     if (cust) {
-      const custCC = formatCenterCode(cust.center_code || '');
-      if (custCC === 'Single' || custCC === 'C004' || custCC === 'CSINGLE' || custCC === 'DIRECT' || !custCC) return true;
+      const custCenter = String(cust.center_code || '').trim().toUpperCase();
+      if (/^C\d{3}$/i.test(custCenter) || /^(C001|C002|C003|C004|C005)/i.test(custCenter)) {
+        return false;
+      }
     }
 
-    // Check if contract does not strictly belong to regional centers C001, C002, C003
-    const contract = String(o.contract_no || '').toUpperCase();
-    if (contract && !contract.includes('/C001/') && !contract.includes('/C002/') && !contract.includes('/C003/')) {
+    // 4. Pure Single customer matching:
+    // - center_code is 'Single', 'Direct', or contract contains '/SINGLE/'
+    if (cUpper === 'SINGLE' || cUpper === 'DIRECT' || contract.includes('/SINGLE/')) {
+      return true;
+    }
+
+    // If center_code is empty and not associated with any center
+    if (!rawCenter || rawCenter === 'Single') {
       return true;
     }
 
     return false;
   };
 
-  // Portfolio of single customer orders (island-wide weekly route)
+  // Portfolio of single customer orders ONLY (Strictly excludes all center customers)
   const singleOrders = useMemo(() => {
     const list = orders.filter(isSingleCustomerOrder);
-    return list.length > 0 ? list : orders;
+    const seen = new Set();
+    return list.filter((o) => {
+      const key = o.id || o.contract_no;
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [orders, customers]);
 
   // Overall Financial Statistics for Single Customers
@@ -940,25 +967,6 @@ Thank you for choosing D N S Home Solutions!`;
                   boxShadow: isSelected ? `0 4px 12px ${tabStat.color}25` : 'none',
                 }}
               >
-                {isToday && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: '-8px',
-                      right: '8px',
-                      background: '#DC2626',
-                      color: '#fff',
-                      fontSize: '0.62rem',
-                      fontWeight: 900,
-                      padding: '1px 6px',
-                      borderRadius: '10px',
-                      letterSpacing: '0.5px',
-                      boxShadow: '0 2px 4px rgba(220,38,38,0.3)',
-                    }}
-                  >
-                    ★ TODAY
-                  </span>
-                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.9rem', fontWeight: 900, color: isSelected ? tabStat.color : '#1E293B' }}>
                     {tabStat.nameEn}
@@ -1026,11 +1034,6 @@ Thank you for choosing D N S Home Solutions!`;
                 <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0F172A' }}>
                   {activeDayStat.nameEn} ({activeDayStat.nameSi}) Cash Collection Route
                 </h3>
-                {todayWeekdayKey === selectedWeekday && (
-                  <span style={{ background: '#DC2626', color: '#fff', fontSize: '0.68rem', fontWeight: 900, padding: '2px 8px', borderRadius: '12px' }}>
-                    TODAY'S SCHEDULE
-                  </span>
-                )}
               </div>
               <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '2px' }}>
                 Weekly recurring installment schedule for single customers assigned to {activeDayStat.nameEn}
