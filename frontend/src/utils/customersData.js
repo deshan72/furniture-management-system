@@ -234,6 +234,26 @@ export const markCustomerAsDeleted = (customer) => {
   }
 };
 
+export const unmarkCustomerDeleted = (customerOrNic) => {
+  try {
+    const deletedSet = getDeletedCustomerIds();
+    if (!customerOrNic) return;
+    const targets = [];
+    if (typeof customerOrNic === 'string') {
+      targets.push(customerOrNic.trim().toUpperCase());
+    } else if (typeof customerOrNic === 'object') {
+      if (customerOrNic.id) targets.push(String(customerOrNic.id).trim().toUpperCase());
+      if (customerOrNic.customer_id) targets.push(String(customerOrNic.customer_id).trim().toUpperCase());
+      if (customerOrNic.nic) targets.push(String(customerOrNic.nic).trim().toUpperCase());
+      if (customerOrNic.name) targets.push(String(customerOrNic.name).trim().toUpperCase());
+    }
+    targets.forEach((t) => deletedSet.delete(t));
+    localStorage.setItem(DELETED_CUSTOMERS_KEY, JSON.stringify(Array.from(deletedSet)));
+  } catch (e) {
+    console.warn('Failed to unmark customer as deleted:', e);
+  }
+};
+
 export const isCustomerDeleted = (c, deletedSet = null) => {
   if (!c) return false;
   const set = deletedSet || getDeletedCustomerIds();
@@ -243,10 +263,10 @@ export const isCustomerDeleted = (c, deletedSet = null) => {
   const cName = c.name ? String(c.name).trim().toUpperCase() : '';
 
   return (
-    (cId && set.has(cId)) ||
-    (cCustId && set.has(cCustId)) ||
-    (cNic && set.has(cNic)) ||
-    (cName && set.has(cName))
+    (Boolean(cId) && set.has(cId)) ||
+    (Boolean(cCustId) && set.has(cCustId)) ||
+    (Boolean(cNic) && set.has(cNic)) ||
+    (Boolean(cName) && set.has(cName))
   );
 };
 
@@ -263,7 +283,7 @@ export const loadSavedCustomers = () => {
           .map((c) => {
             const cleanNic = String(c.nic || c.customer_id || '').trim().toUpperCase();
             const cleanName = (c.name || '').trim().toLowerCase();
-            let centerCode = formatCenterCode(c.center_code || 'C001');
+            let centerCode = c.center_code === 'Single' ? 'Single' : formatCenterCode(c.center_code || 'Single');
 
             // Business rule: Sunil Jayawardena strictly belongs to Maharagama (C001)
             if (cleanName.includes('sunil') || cleanNic === '197814502391') {

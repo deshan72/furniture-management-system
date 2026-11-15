@@ -41,6 +41,7 @@ import {
   saveCustomersToStorage,
   getDeletedCustomerIds,
   markCustomerAsDeleted,
+  unmarkCustomerDeleted,
   isCustomerDeleted,
   isTestCustomer,
 } from '../utils/customersData';
@@ -219,6 +220,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
   const [debtFilter, setDebtFilter] = useState(initialDebtFilter); // 'all', 'debt', 'settled', 'high_debt'
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all', 'custom_order', 'showroom', 'wholesale'
   const [cityFilter, setCityFilter] = useState('all');
+  const [centerFilter, setCenterFilter] = useState('all'); // 'all' | 'Single' | 'C001' | 'C002'...
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'debt_desc', 'debt_asc', 'spent_desc', 'name_asc'
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'cards'
 
@@ -450,20 +452,13 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
           return false;
         }
 
-        // 5. Global Center Filter (from Header)
-        if (selectedCenter && selectedCenter !== 'all') {
-          const parts = String(cust.customer_id || '').split('/');
-          const bCode = (cust.branch_code || (parts.length === 4 ? parts[0] : '')).toUpperCase();
-          const cCode = formatCenterCode(cust.center_code || (parts.length === 4 ? parts[1] : ''));
-          if (selectedCenter.includes('/')) {
-            const [selB, selC] = selectedCenter.split('/');
-            if (bCode !== selB.toUpperCase() || cCode !== formatCenterCode(selC)) {
-              return false;
-            }
+        // 5. Regional Center & Single Customer Filter
+        if (centerFilter !== 'all') {
+          const cCode = formatCenterCode(cust.center_code || '');
+          if (centerFilter === 'Single') {
+            if (cCode !== 'Single') return false;
           } else {
-            if (cCode !== formatCenterCode(selectedCenter)) {
-              return false;
-            }
+            if (cCode !== formatCenterCode(centerFilter)) return false;
           }
         }
 
@@ -485,7 +480,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
         // 'recent' by default
         return new Date(b.created_at || 0) - new Date(a.created_at || 0);
       });
-  }, [customers, searchQuery, debtFilter, categoryFilter, cityFilter, sortBy, selectedCenter]);
+  }, [customers, searchQuery, debtFilter, categoryFilter, cityFilter, centerFilter, sortBy]);
 
   // Reset all filters
   const handleResetFilters = () => {
@@ -493,6 +488,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     setDebtFilter('all');
     setCategoryFilter('all');
     setCityFilter('all');
+    setCenterFilter('all');
     setSortBy('recent');
   };
 
@@ -501,6 +497,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     debtFilter !== 'all' ||
     categoryFilter !== 'all' ||
     cityFilter !== 'all' ||
+    centerFilter !== 'all' ||
     sortBy !== 'recent';
 
   // Open Add New Customer Modal (NIC is the primary customer identifier)
@@ -701,9 +698,19 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     };
 
     // 1. Immediately update React state and localStorage so directory view updates instantaneously
+    unmarkCustomerDeleted(cleanNic);
+    unmarkCustomerDeleted(newId);
     const updatedList = [createdRecord, ...customers];
     setCustomers(updatedList);
     saveCustomersToStorage(updatedList);
+
+    // Reset all filters so the newly created client is immediately visible at the very top of directory
+    setSearchQuery('');
+    setDebtFilter('all');
+    setCategoryFilter('all');
+    setCityFilter('all');
+    setCenterFilter('all');
+    setSortBy('recent');
 
     // 2. Persist to database (Supabase REST direct fallback or Express API)
     try {
@@ -1441,6 +1448,25 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
             ))}
           </select>
 
+          {/* Regional Center & Direct Single Clients Filter */}
+          <select
+            className="filter-select"
+            value={centerFilter}
+            onChange={(e) => setCenterFilter(e.target.value)}
+            title="Filter by Regional Center or Direct Single Customers"
+          >
+            <option value="all">🏢 All Centers & Direct Clients</option>
+            <option value="Single">👤 Single / Direct Customers Only</option>
+            {availableCenters.map((cntr) => {
+              const cCode = formatCenterCode(cntr.center_code);
+              return (
+                <option key={cntr.id || cCode} value={cCode}>
+                  📍 {cCode} — {cntr.name} ({cntr.city})
+                </option>
+              );
+            })}
+          </select>
+
           {/* Sort Order Dropdown */}
           <select
             className="filter-select"
@@ -1640,7 +1666,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                             <div className="customer-meta">
                               {cust.center_code && (
                                 <span className="nic-pill">
-                                  📍 {cust.center_code}
+                                  📍 {cust.center_code === 'Single' ? 'Single (Direct Client)' : cust.center_code}
                                 </span>
                               )}
                               {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}
@@ -1859,7 +1885,7 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
                         <div className="customer-meta">
                           {cust.center_code && (
                             <span className="nic-pill">
-                              📍 {cust.center_code}
+                              📍 {cust.center_code === 'Single' ? 'Single (Direct Client)' : cust.center_code}
                             </span>
                           )}
                           {cust.civil_status && <span className="nic-pill">{cust.civil_status}</span>}

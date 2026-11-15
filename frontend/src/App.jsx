@@ -202,8 +202,6 @@ export default function App() {
         'ds_furniture_role_permissions_v3',
         'ds_furniture_store_settings_v2',
         'dnd_centers_list',
-        'dnd_customers_list',
-        'dnd_products_list',
       ];
       keys.forEach((k) => {
         const item = localStorage.getItem(k);

@@ -35,7 +35,7 @@ import {
   generateNextPassbookNo,
   buildContractNumber,
 } from '../utils/ordersData';
-import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
+import { loadSavedCustomers, saveCustomersToStorage, unmarkCustomerDeleted } from '../utils/customersData';
 import { loadSavedPayments, savePaymentsToStorage, generateNextReceiptNo } from '../utils/paymentsData';
 import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
@@ -773,6 +773,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       created_at: new Date().toISOString(),
     };
 
+    unmarkCustomerDeleted(cleanNic);
     const updated = [newCust, ...customers];
     setCustomers(updated);
     saveCustomersToStorage(updated);
