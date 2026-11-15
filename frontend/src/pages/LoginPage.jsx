@@ -54,22 +54,6 @@ export default function LoginPage({ onLoginSuccess }) {
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // One-Click Demo Credential Handler
-  const handleFillDemo = (type) => {
-    setErrorMessage('');
-    setFieldErrors({});
-    if (type === 'admin') {
-      setSignInEmail('admin');
-      setSignInPassword('admin123');
-    } else if (type === 'cashier') {
-      setSignInEmail('cashier');
-      setSignInPassword('cashier123');
-    } else {
-      setSignInEmail('executive');
-      setSignInPassword('exec123');
-    }
-  };
-
   // Switch Auth Mode
   const switchMode = (mode) => {
     setAuthMode(mode);
@@ -598,80 +582,6 @@ export default function LoginPage({ onLoginSuccess }) {
                 ========================================================= */}
             {authMode === 'signin' && (
               <form onSubmit={handleSignInSubmit}>
-                {/* One-Click Quick Demo Pill Buttons */}
-                <div style={{ marginBottom: '20px' }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
-                    Quick Demo Credentials (One-Click Test):
-                  </span>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleFillDemo('admin')}
-                      style={{
-                        background: '#FAF5FF',
-                        border: '1.5px solid #E9D5FF',
-                        borderRadius: '10px',
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title="Full access to all modules including Administration"
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#9333EA', fontWeight: 800, fontSize: '0.8rem' }}>
-                        <Crown size={14} /> Admin
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#6B21A8', marginTop: '2px', fontWeight: 600 }}>
-                        @admin
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleFillDemo('exec')}
-                      style={{
-                        background: '#EFF6FF',
-                        border: '1.5px solid #BFDBFE',
-                        borderRadius: '10px',
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title="Operational access (Orders, Advances, Loans, Stock)"
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#2563EB', fontWeight: 800, fontSize: '0.8rem' }}>
-                        <Briefcase size={14} /> Exec
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#1E40AF', marginTop: '2px', fontWeight: 600 }}>
-                        @executive
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleFillDemo('cashier')}
-                      style={{
-                        background: '#ECFDF5',
-                        border: '1.5px solid #A7F3D0',
-                        borderRadius: '10px',
-                        padding: '8px 10px',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease',
-                      }}
-                      title="Cash collections, payments, receipts and cashbook"
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#059669', fontWeight: 800, fontSize: '0.8rem' }}>
-                        <CreditCard size={14} /> Cashier
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#065F46', marginTop: '2px', fontWeight: 600 }}>
-                        @cashier
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
                 {/* Username or Email Field */}
                 <div style={{ marginBottom: '18px' }}>
                   <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#1E293B', marginBottom: '6px' }}>
@@ -715,7 +625,7 @@ export default function LoginPage({ onLoginSuccess }) {
                     </label>
                     <button
                       type="button"
-                      onClick={() => alert('For demonstration, you can use:\n• Admin: admin123\n• Executive: exec123\nOr click the Quick Demo Credentials buttons above.')}
+                      onClick={() => alert('Please contact the System Administrator to reset your password.')}
                       style={{ background: 'transparent', border: 'none', color: '#2563EB', fontSize: '0.76rem', cursor: 'pointer', fontWeight: 700 }}
                     >
                       Forgot Password?
