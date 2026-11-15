@@ -3,6 +3,7 @@ import {
   ShoppingCart,
   Plus,
   Search,
+  Filter,
   Download,
   Printer,
   X,
@@ -35,6 +36,7 @@ import {
   buildContractNumber,
 } from '../utils/ordersData';
 import { loadSavedCustomers, saveCustomersToStorage } from '../utils/customersData';
+import { loadSavedPayments, savePaymentsToStorage, generateNextReceiptNo } from '../utils/paymentsData';
 import { loadSavedProducts } from '../utils/productUtils';
 import { INITIAL_CENTERS, formatCenterCode } from '../utils/centersData';
 import { addLiveNotification } from '../utils/notificationsData';
@@ -158,6 +160,60 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   // Main Page Filters & View Controls
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('table'); // Default to professional Table View
+  const [orderDatePreset, setOrderDatePreset] = useState('all'); // 'all' | 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom'
+  const [orderStartDate, setOrderStartDate] = useState('');
+  const [orderEndDate, setOrderEndDate] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all'); // 'all' | 'active' | 'settled' | 'installment' | 'cash'
+  const [orderCenterFilter, setOrderCenterFilter] = useState('all');
+
+  // Quick Date Preset Handler
+  const handleOrderDatePreset = (preset) => {
+    setOrderDatePreset(preset);
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (preset === 'all') {
+      setOrderStartDate('');
+      setOrderEndDate('');
+    } else if (preset === 'today') {
+      setOrderStartDate(todayStr);
+      setOrderEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      setOrderStartDate(yStr);
+      setOrderEndDate(yStr);
+    } else if (preset === 'this_week') {
+      const w = new Date();
+      w.setDate(w.getDate() - 6);
+      setOrderStartDate(w.toISOString().slice(0, 10));
+      setOrderEndDate(todayStr);
+    } else if (preset === 'this_month') {
+      const monthStart = `${todayStr.slice(0, 7)}-01`;
+      setOrderStartDate(monthStart);
+      setOrderEndDate(todayStr);
+    }
+  };
+
+  // Clear all filters handler
+  const handleResetOrderFilters = () => {
+    setSearchQuery('');
+    setOrderDatePreset('all');
+    setOrderStartDate('');
+    setOrderEndDate('');
+    setOrderStatusFilter('all');
+    setOrderCenterFilter('all');
+  };
+
+  const isAnyOrderFilterActive = Boolean(
+    searchQuery.trim() ||
+    orderStartDate ||
+    orderEndDate ||
+    orderDatePreset !== 'all' ||
+    orderStatusFilter !== 'all' ||
+    orderCenterFilter !== 'all'
+  );
 
   // Modals
   const [isAddOrderModalOpen, setIsAddOrderModalOpen] = useState(false);
@@ -538,16 +594,34 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
   const handleOpenAddOrderModal = () => {
     setFormPassbookNo('PN');
 
+    // Resolve default center: prioritize active headerCenter if specific, otherwise fallback to customer center or C001
+    let defaultCenter = 'C001';
+    let defaultBranch = 'MHG';
+    if (headerCenter && headerCenter !== 'all') {
+      defaultCenter = formatCenterCode(headerCenter);
+      const matchC = centers.find((c) => formatCenterCode(c.center_code) === defaultCenter);
+      if (matchC?.branch_code) defaultBranch = matchC.branch_code;
+    }
+
     const firstCust = activeCustomers[0] || null;
     if (firstCust) {
       setFormCustomerId(firstCust.id);
       setClientSearchText(`${firstCust.name} — NIC: ${firstCust.nic || firstCust.customer_id}`);
-      setFormCenterCode(formatCenterCode(firstCust.center_code || 'C001'));
-      setFormBranchCode(firstCust.branch_code || 'MHG');
+      if (headerCenter && headerCenter !== 'all') {
+        setFormCenterCode(defaultCenter);
+        setFormBranchCode(defaultBranch);
+      } else {
+        const custCenter = formatCenterCode(firstCust.center_code || defaultCenter);
+        setFormCenterCode(custCenter);
+        const matchC = centers.find((c) => formatCenterCode(c.center_code) === custCenter);
+        setFormBranchCode(firstCust.branch_code || matchC?.branch_code || defaultBranch);
+      }
       setFormDeliveryAddress(firstCust.address || '');
     } else {
       setFormCustomerId('');
       setClientSearchText('');
+      setFormCenterCode(defaultCenter);
+      setFormBranchCode(defaultBranch);
     }
 
     const firstProd = products[0] || null;
@@ -596,8 +670,14 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     setFormCustomerId(custId);
     const cust = activeCustomers.find((c) => c.id === custId);
     if (cust) {
-      if (cust.center_code) setFormCenterCode(formatCenterCode(cust.center_code));
-      if (cust.branch_code) setFormBranchCode(cust.branch_code);
+      if (!headerCenter || headerCenter === 'all') {
+        if (cust.center_code) {
+          const chosen = formatCenterCode(cust.center_code);
+          setFormCenterCode(chosen);
+          const matchC = centers.find((c) => formatCenterCode(c.center_code) === chosen);
+          if (matchC?.branch_code) setFormBranchCode(matchC.branch_code);
+        }
+      }
       if (cust.address) setFormDeliveryAddress(cust.address);
     }
   };
@@ -728,7 +808,9 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       formSelectedProduct?.item_code ||
       'WD-001'
     ).trim().toUpperCase();
-    const finalAssignedCenter = formatCenterCode(formSelectedCustomer?.center_code || formCenterCode || 'C001');
+    const finalAssignedCenter = formatCenterCode(formCenterCode || formSelectedCustomer?.center_code || 'C001');
+    const matchCenterObj = centers.find((c) => formatCenterCode(c.center_code) === finalAssignedCenter);
+    const finalAssignedBranch = formBranchCode || matchCenterObj?.branch_code || formSelectedCustomer?.branch_code || 'MHG';
     const finalContract = buildContractNumber(
       finalPassbook,
       finalAssignedCenter,
@@ -778,7 +860,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       customer_whatsapp: formSelectedCustomer.whatsapp || formSelectedCustomer.phone,
       customer_nic: formSelectedCustomer.nic || formSelectedCustomer.customer_id,
       customer_address: formDeliveryAddress || formSelectedCustomer.address,
-      branch_code: '',
+      branch_code: finalAssignedBranch,
       center_code: finalAssignedCenter,
       item_id: formSelectedProduct.id,
       item_code: formSelectedProduct.item_code,
@@ -807,6 +889,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     const updatedOrders = [newOrder, ...orders];
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
+    window.dispatchEvent(new Event('dnd_orders_updated'));
 
     // Persist new order & initial advance to database (Supabase / Express)
     try {
@@ -827,11 +910,13 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
         });
     } catch {}
 
-    // Update customer stats
+    // Update customer stats and assign to this center
     const updatedCustomers = customers.map((c) => {
-      if (c.id === formSelectedCustomer.id) {
+      if (c.id === formSelectedCustomer.id || c.nic === formSelectedCustomer.nic) {
         return {
           ...c,
+          center_code: finalAssignedCenter,
+          branch_code: finalAssignedBranch,
           outstanding_balance: (c.outstanding_balance || 0) + finalBalanceDue,
           total_spent: (c.total_spent || 0) + finalGross,
           total_orders: (c.total_orders || 0) + 1,
@@ -841,6 +926,7 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     });
     setCustomers(updatedCustomers);
     saveCustomersToStorage(updatedCustomers);
+    window.dispatchEvent(new Event('dnd_customers_updated'));
 
     // Broadcast live notifications for real-time order creation & advance payment
     addLiveNotification({
@@ -852,6 +938,44 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     });
 
     if (finalAdvance > 0) {
+      const advReceipt = {
+        id: `pay-${Date.now().toString().slice(-6)}`,
+        receipt_no: `DS-RCP-${Math.floor(1000 + Math.random() * 9000)}`,
+        order_id: newOrder.id,
+        invoice_no: newOrder.invoice_no,
+        contract_no: newOrder.contract_no,
+        passbook_no: newOrder.passbook_no,
+        customer_id: newOrder.customer_id,
+        customer_name: newOrder.customer_name,
+        customer_nic: newOrder.customer_nic,
+        customer_phone: newOrder.customer_phone,
+        customer_address: newOrder.customer_address,
+        date: newOrder.date,
+        amount: finalAdvance,
+        payment_method: formPaymentMethod || 'Cash',
+        payment_type: 'Order Advance',
+        branch_code: finalAssignedBranch,
+        center_code: finalAssignedCenter,
+        reference_no: `ADV-${Math.floor(1000 + Math.random() * 9000)}`,
+        collected_by: 'Center Desk',
+        notes: `Initial advance payment received at order creation for ${newOrder.item_name} (${newOrder.contract_no})`,
+        previous_balance: finalGross,
+        new_balance: finalBalanceDue,
+        status: 'Completed',
+        created_at: new Date().toISOString(),
+      };
+
+      const freshPayments = [advReceipt, ...loadSavedPayments()];
+      savePaymentsToStorage(freshPayments);
+      window.dispatchEvent(new Event('dnd_payments_updated'));
+
+      apiRequest('/payments', {
+        method: 'POST',
+        body: JSON.stringify(advReceipt),
+      }).catch((dbErr) => {
+        console.warn('Advance payment DB persist notice:', dbErr);
+      });
+
       addLiveNotification({
         title: `Advance Received: ${formatLKR(finalAdvance)}`,
         desc: `Initial down payment received for ${newOrder.contract_no} from ${newOrder.customer_name} via ${formPaymentMethod}.`,
@@ -1390,10 +1514,10 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
     printHtmlDocument(htmlContent, { title: `DNS_Invoice_${order.invoice_no || order.id}` });
   };
 
-  // Filtered orders list (Order Specifications focused)
+  // Filtered orders list (Order Specifications & Date Range focused)
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      // Search
+      // 1. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchInvoice = order.invoice_no?.toLowerCase().includes(q);
@@ -1408,17 +1532,39 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
         }
       }
 
-      // Header Center filter
-      if (headerCenter && headerCenter !== 'all') {
+      // 2. Center Scope Filter
+      if (orderCenterFilter !== 'all') {
+        const targetCode = formatCenterCode(orderCenterFilter);
+        const ordCenter = formatCenterCode(order.center_code);
+        if (ordCenter !== targetCode && order.branch_code !== orderCenterFilter) {
+          return false;
+        }
+      } else if (headerCenter && headerCenter !== 'all') {
         const parts = headerCenter.split('/');
         if (parts.length === 2 && formatCenterCode(order.center_code) !== formatCenterCode(parts[1])) {
           return false;
         }
       }
 
+      // 3. Status / Payment Type Filter
+      const bal = Number(order.balance_due) || 0;
+      if (orderStatusFilter === 'installment' && order.payment_type !== 'installment') return false;
+      if (orderStatusFilter === 'cash' && order.payment_type === 'installment') return false;
+      if (orderStatusFilter === 'active' && bal <= 0) return false;
+      if (orderStatusFilter === 'settled' && bal > 0) return false;
+
+      // 4. Date Range Filter (based on order.date or order.created_at)
+      const ordDate = String(order.date || order.created_at || '').slice(0, 10);
+      if (orderStartDate && ordDate) {
+        if (ordDate < orderStartDate) return false;
+      }
+      if (orderEndDate && ordDate) {
+        if (ordDate > orderEndDate) return false;
+      }
+
       return true;
     });
-  }, [orders, searchQuery, headerCenter]);
+  }, [orders, searchQuery, headerCenter, orderCenterFilter, orderStatusFilter, orderStartDate, orderEndDate]);
 
   // Cumulative totals for the order table view
   const filteredTotalValue = useMemo(() => {
@@ -1505,81 +1651,285 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
       </div>
 
       {/* =========================================================
-          2. SEARCH & FILTER BAR
+          2. SEARCH & ADVANCED DATE FILTER BAR
           ========================================================= */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        {/* Search Input */}
-        <div style={{ position: 'relative', flex: 1, minWidth: '320px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
-          <input
-            type="text"
-            className="form-input"
-            style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
-            placeholder="Search by client name, NIC, contract (PN/Center/Item), invoice, or item code..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
+      <div
+        className="panel"
+        style={{
+          background: '#FFFFFF',
+          border: '1px solid var(--border-subtle, var(--ash-200))',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+        }}
+      >
+        {/* Row 1: Search Input & Quick Date Presets & View Switcher */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          {/* Search Input */}
+          <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
+            <input
+              type="text"
+              className="form-input"
+              style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
+              placeholder="Search by client name, NIC, contract (PN/Center/Item), invoice, or item code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '9px',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--ash-400)',
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Quick Date Presets */}
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-500)', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Calendar size={13} /> Date:
+            </span>
+            {[
+              { id: 'all', label: 'All Dates' },
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'this_week', label: 'Last 7 Days' },
+              { id: 'this_month', label: 'This Month' },
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleOrderDatePreset(preset.id)}
+                style={{
+                  border: 'none',
+                  background: orderDatePreset === preset.id ? 'var(--primary)' : 'var(--ash-100)',
+                  color: orderDatePreset === preset.id ? '#FFFFFF' : 'var(--ash-700)',
+                  padding: '5px 11px',
+                  borderRadius: '6px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* View Layout Switcher */}
+          <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={() => setViewMode('cards')}
               style={{
-                position: 'absolute',
-                right: '10px',
-                top: '9px',
-                background: 'transparent',
                 border: 'none',
+                background: viewMode === 'cards' ? 'var(--bg-card, #fff)' : 'transparent',
+                color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontWeight: 700,
+                fontSize: '0.78rem',
                 cursor: 'pointer',
-                color: 'var(--ash-400)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               }}
             >
-              <X size={14} />
+              <LayoutGrid size={14} /> Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              style={{
+                border: 'none',
+                background: viewMode === 'table' ? 'var(--bg-card, #fff)' : 'transparent',
+                color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontWeight: 700,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              <List size={14} /> Table
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Date Pickers (From / To) + Status Dropdown + Center Dropdown + Reset Button */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            borderTop: '1px solid var(--border-subtle, var(--ash-200))',
+            paddingTop: '12px',
+          }}
+        >
+          {/* From Date Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+              From:
+            </label>
+            <input
+              type="date"
+              className="form-input"
+              style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+              value={orderStartDate}
+              onChange={(e) => {
+                setOrderStartDate(e.target.value);
+                setOrderDatePreset('custom');
+              }}
+            />
+          </div>
+
+          {/* To Date Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+              To:
+            </label>
+            <input
+              type="date"
+              className="form-input"
+              style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+              value={orderEndDate}
+              onChange={(e) => {
+                setOrderEndDate(e.target.value);
+                setOrderDatePreset('custom');
+              }}
+            />
+          </div>
+
+          {/* Order Status / Type Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+              Status:
+            </label>
+            <select
+              className="form-input"
+              style={{ padding: '5px 10px', fontSize: '0.8rem', width: 'auto' }}
+              value={orderStatusFilter}
+              onChange={(e) => setOrderStatusFilter(e.target.value)}
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active Balances Due (ණය ශේෂ)</option>
+              <option value="settled">Fully Settled (ගෙවා අවසන්)</option>
+              <option value="installment">Installment Loans Only (වාරික)</option>
+              <option value="cash">Full Cash Sales Only (අත්පිට)</option>
+            </select>
+          </div>
+
+          {/* Center Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+              Center:
+            </label>
+            <select
+              className="form-input"
+              style={{ padding: '5px 10px', fontSize: '0.8rem', width: 'auto' }}
+              value={orderCenterFilter}
+              onChange={(e) => setOrderCenterFilter(e.target.value)}
+            >
+              <option value="all">All Regional Centers</option>
+              {centers.map((c) => (
+                <option key={c.center_code || c.id} value={c.center_code}>
+                  {c.name} ({formatCenterCode(c.center_code)})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Reset Filters Button */}
+          {isAnyOrderFilterActive && (
+            <button
+              type="button"
+              onClick={handleResetOrderFilters}
+              style={{
+                border: '1px solid var(--ash-300)',
+                background: 'transparent',
+                color: 'var(--ash-600)',
+                padding: '5px 12px',
+                borderRadius: '6px',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                marginLeft: 'auto',
+              }}
+              title="Reset all search and date filters"
+            >
+              <RotateCcw size={12} /> Reset Filters
             </button>
           )}
         </div>
 
-        {/* View Layout Switcher */}
-        <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
-          <button
-            type="button"
-            onClick={() => setViewMode('cards')}
-            style={{
-              border: 'none',
-              background: viewMode === 'cards' ? 'var(--bg-card, #fff)' : 'transparent',
-              color: viewMode === 'cards' ? 'var(--primary)' : 'var(--ash-600)',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              fontWeight: 700,
-              fontSize: '0.78rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            }}
-          >
-            <LayoutGrid size={14} /> Cards View
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            style={{
-              border: 'none',
-              background: viewMode === 'table' ? 'var(--bg-card, #fff)' : 'transparent',
-              color: viewMode === 'table' ? 'var(--primary)' : 'var(--ash-600)',
-              padding: '6px 12px',
-              borderRadius: '6px',
-              fontWeight: 700,
-              fontSize: '0.78rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            }}
-          >
-            <List size={14} /> Table View
-          </button>
+        {/* Active Filters Result Indicator Bar */}
+        <div
+          style={{
+            background: 'var(--ash-50, #F8FAFC)',
+            border: '1px solid var(--ash-200)',
+            borderRadius: '8px',
+            padding: '8px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px',
+            fontSize: '0.78rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
+              📋 Filtered Orders: <strong>{filteredOrders.length}</strong> of {orders.length}
+            </span>
+            {orderStartDate && orderEndDate && (
+              <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                📅 {formatDate(orderStartDate)} — {formatDate(orderEndDate)}
+              </span>
+            )}
+            {orderStatusFilter !== 'all' && (
+              <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, textTransform: 'capitalize' }}>
+                Status: {orderStatusFilter}
+              </span>
+            )}
+            {orderCenterFilter !== 'all' && (
+              <span style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #CBD5E1', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                Center: {orderCenterFilter}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+            <span style={{ color: 'var(--ash-600)' }}>
+              Total Turnover: <strong style={{ color: 'var(--ash-900)', fontSize: '0.88rem' }}>{formatLKR(filteredTotalValue)}</strong>
+            </span>
+            <span style={{ color: 'var(--ash-600)' }}>
+              Units: <strong style={{ color: 'var(--ash-900)' }}>{filteredTotalUnits}</strong>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -2318,19 +2668,53 @@ export default function OrdersPage({ headerCenter = 'all', onNavigate }) {
                   background: 'var(--bg-card, #fff)',
                   border: '1px solid var(--border-subtle, var(--ash-200))',
                   borderRadius: '6px',
-                  padding: '8px 12px',
+                  padding: '10px 14px',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  fontSize: '0.78rem',
+                  fontSize: '0.8rem',
+                  flexWrap: 'wrap',
+                  gap: '10px',
                 }}
               >
                 <div>
                   Client: <strong style={{ color: 'var(--ash-900)' }}>{formSelectedCustomer.name}</strong> •{' '}
                   NIC: <strong style={{ color: 'var(--primary)', fontFamily: 'monospace' }}>{formSelectedCustomer.nic || formSelectedCustomer.customer_id}</strong>
                 </div>
-                <div style={{ color: 'var(--ash-600)' }}>
-                  📍 Center: <strong>{formCenterCode}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ color: 'var(--ash-700)', fontWeight: 700, margin: 0, fontSize: '0.78rem' }}>
+                    📍 Assigned Regional Center:
+                  </label>
+                  <select
+                    className="form-input"
+                    value={formCenterCode}
+                    onChange={(e) => {
+                      const chosen = formatCenterCode(e.target.value);
+                      setFormCenterCode(chosen);
+                      const matchC = centers.find((c) => formatCenterCode(c.center_code) === chosen);
+                      if (matchC?.branch_code) setFormBranchCode(matchC.branch_code);
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '0.8rem',
+                      fontWeight: 800,
+                      borderRadius: '6px',
+                      borderColor: 'var(--primary)',
+                      color: 'var(--primary)',
+                      background: 'var(--bg-card, #fff)',
+                      cursor: 'pointer',
+                      minWidth: '220px',
+                    }}
+                  >
+                    {centers.map((c) => {
+                      const cCode = formatCenterCode(c.center_code);
+                      return (
+                        <option key={c.id || c.center_code} value={cCode}>
+                          {c.branch_code ? `${c.branch_code}/` : ''}{cCode} — {c.name}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
               </div>
             )}

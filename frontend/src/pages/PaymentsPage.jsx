@@ -200,6 +200,26 @@ export default function PaymentsPage({
     return allCenters[0]?.id || allCenters[0]?.center_code || 'cntr-1';
   });
 
+  // Automatically sync collection center and collection date when header selectedCenter changes
+  useEffect(() => {
+    if (selectedCenter && selectedCenter !== 'all') {
+      const targetCode = formatCenterCode(selectedCenter);
+      const match = centers.find(
+        (c) =>
+          c.id === selectedCenter ||
+          c.center_code === selectedCenter ||
+          formatCenterCode(c.center_code) === targetCode ||
+          `${c.branch_code}/${formatCenterCode(c.center_code)}` === selectedCenter
+      );
+      if (match) {
+        setSelectedCollectionCenterId(match.id || match.center_code);
+        if (match.cash_collect_date) {
+          setCollectionDate(match.cash_collect_date);
+        }
+      }
+    }
+  }, [selectedCenter, centers]);
+
   const [collectionDate, setCollectionDate] = useState(() => {
     const storedDate = localStorage.getItem('dnd_active_collection_date');
     if (storedDate) return storedDate;
@@ -224,12 +244,111 @@ export default function PaymentsPage({
   // Filter & Search State for Accounts Tab (The requested table view)
   const [accountSearchQuery, setAccountSearchQuery] = useState('');
   const [accountStatusFilter, setAccountStatusFilter] = useState('all'); // 'all' | 'active' | 'paid'
+  const [accountDatePreset, setAccountDatePreset] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+  const [accountStartDate, setAccountStartDate] = useState('');
+  const [accountEndDate, setAccountEndDate] = useState('');
 
   // Filter & Search State for Receipts Ledger Tab
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'week' | 'month'
+  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+  const [receiptStartDate, setReceiptStartDate] = useState('');
+  const [receiptEndDate, setReceiptEndDate] = useState('');
   const [methodFilter, setMethodFilter] = useState('all'); // 'all' | 'Cash' | 'Bank Transfer' | 'Cheque' | 'Card'
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'Installment Loan' | 'Order Advance' | 'Full Settlement'
+
+  // Receipts Ledger Date Presets & Reset Handlers
+  const handleReceiptDatePreset = (preset) => {
+    setDateFilter(preset);
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (preset === 'all') {
+      setReceiptStartDate('');
+      setReceiptEndDate('');
+    } else if (preset === 'today') {
+      setReceiptStartDate(todayStr);
+      setReceiptEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      setReceiptStartDate(yStr);
+      setReceiptEndDate(yStr);
+    } else if (preset === 'week') {
+      const w = new Date();
+      w.setDate(w.getDate() - 6);
+      setReceiptStartDate(w.toISOString().slice(0, 10));
+      setReceiptEndDate(todayStr);
+    } else if (preset === 'month') {
+      const monthStart = `${todayStr.slice(0, 7)}-01`;
+      setReceiptStartDate(monthStart);
+      setReceiptEndDate(todayStr);
+    }
+  };
+
+  const handleResetReceiptFilters = () => {
+    setSearchQuery('');
+    setDateFilter('all');
+    setReceiptStartDate('');
+    setReceiptEndDate('');
+    setMethodFilter('all');
+    setTypeFilter('all');
+  };
+
+  const isAnyReceiptFilterActive = Boolean(
+    searchQuery.trim() ||
+    receiptStartDate ||
+    receiptEndDate ||
+    dateFilter !== 'all' ||
+    methodFilter !== 'all' ||
+    typeFilter !== 'all'
+  );
+
+  // Accounts Tab Date Presets & Reset Handlers
+  const handleAccountDatePreset = (preset) => {
+    setAccountDatePreset(preset);
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (preset === 'all') {
+      setAccountStartDate('');
+      setAccountEndDate('');
+    } else if (preset === 'today') {
+      setAccountStartDate(todayStr);
+      setAccountEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      setAccountStartDate(yStr);
+      setAccountEndDate(yStr);
+    } else if (preset === 'week') {
+      const w = new Date();
+      w.setDate(w.getDate() - 6);
+      setAccountStartDate(w.toISOString().slice(0, 10));
+      setAccountEndDate(todayStr);
+    } else if (preset === 'month') {
+      const monthStart = `${todayStr.slice(0, 7)}-01`;
+      setAccountStartDate(monthStart);
+      setAccountEndDate(todayStr);
+    }
+  };
+
+  const handleResetAccountFilters = () => {
+    setAccountSearchQuery('');
+    setAccountStatusFilter('all');
+    setAccountDatePreset('all');
+    setAccountStartDate('');
+    setAccountEndDate('');
+  };
+
+  const isAnyAccountFilterActive = Boolean(
+    accountSearchQuery.trim() ||
+    accountStartDate ||
+    accountEndDate ||
+    accountDatePreset !== 'all' ||
+    accountStatusFilter !== 'all'
+  );
 
   // Modals State
   const [isRecordPaymentModalOpen, setIsRecordPaymentModalOpen] = useState(false);
@@ -520,6 +639,8 @@ export default function PaymentsPage({
     });
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
+    window.dispatchEvent(new Event('dnd_payments_updated'));
+    window.dispatchEvent(new Event('dnd_orders_updated'));
 
     // 3. Persist to API / Supabase (Daily Payments table & Unified Ledger)
     try {
@@ -774,6 +895,8 @@ export default function PaymentsPage({
     });
     setOrders(updatedOrders);
     saveOrdersToStorage(updatedOrders);
+    window.dispatchEvent(new Event('dnd_payments_updated'));
+    window.dispatchEvent(new Event('dnd_orders_updated'));
 
     // Persist payment & order balance to database (Monthly Payments table & Unified Ledger)
     try {
@@ -885,13 +1008,13 @@ export default function PaymentsPage({
     return orders.filter((order) => {
       // 1. Center filter
       if (selectedCenter && selectedCenter !== 'all') {
-        const parts = selectedCenter.split('/');
-        if (parts.length === 2) {
-          const ordCenter = `${order.branch_code}/${order.center_code}`.toLowerCase();
-          const selClean = selectedCenter.toLowerCase();
-          if (ordCenter !== selClean && order.center_code?.toLowerCase() !== parts[1].toLowerCase()) {
-            return false;
-          }
+        const targetCode = formatCenterCode(selectedCenter);
+        const ordCode = formatCenterCode(order.center_code);
+        const contractHasCenter =
+          order.contract_no &&
+          order.contract_no.toUpperCase().includes(`/${targetCode}/`);
+        if (ordCode !== targetCode && !contractHasCenter) {
+          return false;
         }
       }
 
@@ -914,9 +1037,14 @@ export default function PaymentsPage({
         }
       }
 
+      // 4. Date range filter (by order/agreement date)
+      const ordDate = String(order.date || order.created_at || '').slice(0, 10);
+      if (accountStartDate && ordDate && ordDate < accountStartDate) return false;
+      if (accountEndDate && ordDate && ordDate > accountEndDate) return false;
+
       return true;
     });
-  }, [orders, selectedCenter, accountStatusFilter, accountSearchQuery]);
+  }, [orders, selectedCenter, accountStatusFilter, accountSearchQuery, accountStartDate, accountEndDate]);
 
   const activeLoansCount = orders.filter((o) => Number(o.balance_due) > 0).length;
   const settledCount = orders.filter((o) => Number(o.balance_due) <= 0).length;
@@ -1600,9 +1728,14 @@ export default function PaymentsPage({
     return payments.filter((p) => {
       // 1. Center filter from Header
       if (selectedCenter !== 'all') {
-        const centerClean = selectedCenter.replace('/', '').toLowerCase();
-        const pCenter = `${p.branch_code}${p.center_code}`.toLowerCase();
-        if (pCenter !== centerClean) return false;
+        const targetCode = formatCenterCode(selectedCenter);
+        const pCode = formatCenterCode(p.center_code);
+        const pContractHasCenter =
+          p.contract_no &&
+          p.contract_no.toUpperCase().includes(`/${targetCode}/`);
+        if (pCode !== targetCode && !pContractHasCenter) {
+          return false;
+        }
       }
 
       // 2. Method filter
@@ -1615,15 +1748,27 @@ export default function PaymentsPage({
         return false;
       }
 
-      // 4. Date filter
-      if (dateFilter !== 'all') {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        if (dateFilter === 'today' && p.date !== todayStr) return false;
-        if (dateFilter === 'month') {
-          const thisMonthPrefix = todayStr.slice(0, 7); // YYYY-MM
-          if (!p.date.startsWith(thisMonthPrefix)) return false;
-        }
+      // 4. Date filter & Custom Date Range
+      const pDate = String(p.date || p.created_at || '').slice(0, 10);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (dateFilter === 'today' && pDate !== todayStr) return false;
+      if (dateFilter === 'yesterday') {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        if (pDate !== y.toISOString().slice(0, 10)) return false;
       }
+      if (dateFilter === 'week') {
+        const w = new Date();
+        w.setDate(w.getDate() - 6);
+        const wStr = w.toISOString().slice(0, 10);
+        if (pDate < wStr || pDate > todayStr) return false;
+      }
+      if (dateFilter === 'month') {
+        const thisMonthPrefix = todayStr.slice(0, 7); // YYYY-MM
+        if (!pDate.startsWith(thisMonthPrefix)) return false;
+      }
+      if (receiptStartDate && pDate && pDate < receiptStartDate) return false;
+      if (receiptEndDate && pDate && pDate > receiptEndDate) return false;
 
       // 5. Search query
       if (searchQuery.trim()) {
@@ -1639,23 +1784,40 @@ export default function PaymentsPage({
 
       return true;
     });
-  }, [payments, selectedCenter, methodFilter, typeFilter, dateFilter, searchQuery]);
+  }, [payments, selectedCenter, methodFilter, typeFilter, dateFilter, searchQuery, receiptStartDate, receiptEndDate]);
 
   // Overall KPI Statistics
   const stats = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const thisMonthPrefix = todayStr.slice(0, 7);
 
-    const totalCollected = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const collectedToday = payments
+    let relevantPayments = payments;
+    let relevantOrders = orders;
+
+    if (selectedCenter && selectedCenter !== 'all') {
+      const targetCode = formatCenterCode(selectedCenter);
+      relevantPayments = payments.filter((p) => {
+        const pCode = formatCenterCode(p.center_code);
+        const pContract = p.contract_no && p.contract_no.toUpperCase().includes(`/${targetCode}/`);
+        return pCode === targetCode || pContract;
+      });
+      relevantOrders = orders.filter((o) => {
+        const ordCode = formatCenterCode(o.center_code);
+        const ordContract = o.contract_no && o.contract_no.toUpperCase().includes(`/${targetCode}/`);
+        return ordCode === targetCode || ordContract;
+      });
+    }
+
+    const totalCollected = relevantPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+    const collectedToday = relevantPayments
       .filter((p) => p.date === todayStr)
       .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-    const collectedThisMonth = payments
+    const collectedThisMonth = relevantPayments
       .filter((p) => p.date.startsWith(thisMonthPrefix))
       .reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
 
-    const outstandingTotal = orders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
-    const advancesTotal = orders.reduce((acc, o) => acc + (Number(o.advance_paid) || 0), 0);
+    const outstandingTotal = relevantOrders.reduce((acc, o) => acc + (Number(o.balance_due) || 0), 0);
+    const advancesTotal = relevantOrders.reduce((acc, o) => acc + (Number(o.advance_paid) || 0), 0);
 
     return {
       totalCollected,
@@ -1663,9 +1825,9 @@ export default function PaymentsPage({
       collectedThisMonth,
       outstandingTotal,
       advancesTotal,
-      totalCount: payments.length,
+      totalCount: relevantPayments.length,
     };
-  }, [payments, orders]);
+  }, [payments, orders, selectedCenter]);
 
   // Find receipts corresponding to a selected contract
   const contractReceiptsHistory = useMemo(() => {
@@ -1908,7 +2070,7 @@ export default function PaymentsPage({
               transition: 'all 0.15s ease',
             }}
           >
-            <CreditCard size={15} /> Active Loan Accounts & Advances ({orders.length})
+            <CreditCard size={15} /> Active Loan Accounts & Advances ({selectedCenter !== 'all' ? filteredAccounts.length : orders.length})
           </button>
           <button
             type="button"
@@ -1933,7 +2095,7 @@ export default function PaymentsPage({
               transition: 'all 0.15s ease',
             }}
           >
-            <Receipt size={15} /> Payment Receipts Ledger ({payments.length})
+            <Receipt size={15} /> Payment Receipts Ledger ({selectedCenter !== 'all' ? filteredPayments.length : payments.length})
           </button>
         </div>
       </div>
@@ -2608,57 +2770,75 @@ export default function PaymentsPage({
         </>
       ) : activeSubView === 'accounts' ? (
         <>
-          {/* Search & Filter Bar for Accounts */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            {/* Search Input */}
-            <div style={{ position: 'relative', flex: 1, minWidth: '320px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
-              <input
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
-                placeholder="Search by client name, NIC, contract (PN/Center/Item), invoice, or item code..."
-                value={accountSearchQuery}
-                onChange={(e) => setAccountSearchQuery(e.target.value)}
-              />
-              {accountSearchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setAccountSearchQuery('')}
-                  style={{ position: 'absolute', right: '10px', top: '9px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ash-400)' }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+          {/* Search & Advanced Date Filter Bar for Accounts */}
+          <div
+            className="panel"
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--border-subtle, var(--ash-200))',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+            }}
+          >
+            {/* Row 1: Search Input & Quick Date Presets & View Mode Toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              {/* Search Input */}
+              <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
+                  placeholder="Search by client name, NIC, contract (PN/Center/Item), invoice, or item code..."
+                  value={accountSearchQuery}
+                  onChange={(e) => setAccountSearchQuery(e.target.value)}
+                />
+                {accountSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setAccountSearchQuery('')}
+                    style={{ position: 'absolute', right: '10px', top: '9px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ash-400)' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
 
-            {/* Quick Filter Buttons & View Mode Toggle */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  className={`btn ${accountStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-                  onClick={() => setAccountStatusFilter('all')}
-                >
-                  All Accounts ({orders.length})
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${accountStatusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-                  onClick={() => setAccountStatusFilter('active')}
-                >
-                  Active Loans ({activeLoansCount})
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${accountStatusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
-                  onClick={() => setAccountStatusFilter('paid')}
-                >
-                  Fully Settled ({settledCount})
-                </button>
+              {/* Quick Date Presets */}
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-500)', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Calendar size={13} /> Agreement:
+                </span>
+                {[
+                  { id: 'all', label: 'All Dates' },
+                  { id: 'today', label: 'Today' },
+                  { id: 'yesterday', label: 'Yesterday' },
+                  { id: 'week', label: 'Last 7 Days' },
+                  { id: 'month', label: 'This Month' },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleAccountDatePreset(preset.id)}
+                    style={{
+                      border: 'none',
+                      background: accountDatePreset === preset.id ? 'var(--primary)' : 'var(--ash-100)',
+                      color: accountDatePreset === preset.id ? '#FFFFFF' : 'var(--ash-700)',
+                      padding: '5px 11px',
+                      borderRadius: '6px',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
               </div>
 
               {/* View Switcher: Cards View vs Table View */}
@@ -2682,7 +2862,7 @@ export default function PaymentsPage({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <LayoutGrid size={14} /> Cards View
+                  <LayoutGrid size={14} /> Cards
                 </button>
                 <button
                   type="button"
@@ -2703,8 +2883,148 @@ export default function PaymentsPage({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <List size={14} /> Table View
+                  <List size={14} /> Table
                 </button>
+              </div>
+            </div>
+
+            {/* Row 2: Date Range Pickers (From / To) + Status Filter Buttons + Reset Filter */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                borderTop: '1px solid var(--border-subtle, var(--ash-200))',
+                paddingTop: '12px',
+              }}
+            >
+              {/* From Date Picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+                  From:
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+                  value={accountStartDate}
+                  onChange={(e) => {
+                    setAccountStartDate(e.target.value);
+                    setAccountDatePreset('custom');
+                  }}
+                />
+              </div>
+
+              {/* To Date Picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+                  To:
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+                  value={accountEndDate}
+                  onChange={(e) => {
+                    setAccountEndDate(e.target.value);
+                    setAccountDatePreset('custom');
+                  }}
+                />
+              </div>
+
+              {/* Account Status Filter Buttons */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className={`btn ${accountStatusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
+                  onClick={() => setAccountStatusFilter('all')}
+                >
+                  All Accounts ({orders.length})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${accountStatusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
+                  onClick={() => setAccountStatusFilter('active')}
+                >
+                  Active Loans ({activeLoansCount})
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${accountStatusFilter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
+                  onClick={() => setAccountStatusFilter('paid')}
+                >
+                  Fully Settled ({settledCount})
+                </button>
+              </div>
+
+              {/* Reset Filters Button */}
+              {isAnyAccountFilterActive && (
+                <button
+                  type="button"
+                  onClick={handleResetAccountFilters}
+                  style={{
+                    border: '1px solid var(--ash-300)',
+                    background: 'transparent',
+                    color: 'var(--ash-600)',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginLeft: 'auto',
+                  }}
+                  title="Reset account search and date filters"
+                >
+                  <RotateCcw size={12} /> Reset Filters
+                </button>
+              )}
+            </div>
+
+            {/* Row 3: Active Filters Summary Result Bar */}
+            <div
+              style={{
+                background: 'var(--ash-50, #F8FAFC)',
+                border: '1px solid var(--ash-200)',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '8px',
+                fontSize: '0.78rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
+                  👤 Filtered Accounts: <strong>{filteredAccounts.length}</strong> of {orders.length}
+                </span>
+                {accountStartDate && accountEndDate && (
+                  <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    📅 Agreement: {formatDate(accountStartDate)} — {formatDate(accountEndDate)}
+                  </span>
+                )}
+                {accountStatusFilter !== 'all' && (
+                  <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, textTransform: 'capitalize' }}>
+                    Status: {accountStatusFilter}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                <span style={{ color: 'var(--ash-600)' }}>
+                  Total Advances: <strong style={{ color: '#16A34A' }}>{formatLKR(totalFilteredAccountsAdvances)}</strong>
+                </span>
+                <span style={{ color: 'var(--ash-600)' }}>
+                  Remaining Balance: <strong style={{ color: '#DC2626', fontSize: '0.88rem' }}>{formatLKR(totalFilteredAccountsBalance)}</strong>
+                </span>
               </div>
             </div>
           </div>
@@ -3399,70 +3719,76 @@ export default function PaymentsPage({
             VIEW 2: PAYMENT RECEIPTS LEDGER (HISTORICAL RECEIPTS)
             ========================================================= */
         <>
-          {/* Search & Advanced Filter Bar for Receipts */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            {/* Search Input */}
-            <div style={{ position: 'relative', flex: 1, minWidth: '320px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
-              <input
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
-                placeholder="Search receipts by slip no, contract code, client name, NIC, or reference..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  style={{ position: 'absolute', right: '10px', top: '9px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ash-400)' }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+          {/* Search & Advanced Date Filter Bar for Receipts */}
+          <div
+            className="panel"
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--border-subtle, var(--ash-200))',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+            }}
+          >
+            {/* Row 1: Search Input & Quick Date Presets & View Mode Toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              {/* Search Input */}
+              <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: 'var(--ash-400)' }} />
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ paddingLeft: '36px', fontSize: '0.85rem' }}
+                  placeholder="Search receipts by slip no, contract code, client name, NIC, or reference..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{ position: 'absolute', right: '10px', top: '9px', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ash-400)' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
 
-            {/* Filters Group */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-              {/* Date Filter */}
-              <select
-                className="form-input"
-                style={{ padding: '6px 10px', fontSize: '0.78rem', width: 'auto', fontWeight: 600 }}
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-              >
-                <option value="all">All Dates</option>
-                <option value="today">Today</option>
-                <option value="month">This Month</option>
-              </select>
-
-              {/* Payment Method Filter */}
-              <select
-                className="form-input"
-                style={{ padding: '6px 10px', fontSize: '0.78rem', width: 'auto', fontWeight: 600 }}
-                value={methodFilter}
-                onChange={(e) => setMethodFilter(e.target.value)}
-              >
-                <option value="all">All Methods</option>
-                <option value="Cash">Cash</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cheque">Cheque</option>
-                <option value="Card">Card</option>
-              </select>
-
-              {/* Payment Type Filter */}
-              <select
-                className="form-input"
-                style={{ padding: '6px 10px', fontSize: '0.78rem', width: 'auto', fontWeight: 600 }}
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-              >
-                <option value="all">All Types</option>
-                <option value="Installment Loan">Installment Payments</option>
-                <option value="Order Advance">Order Advances</option>
-                <option value="Full Settlement">Full Settlements</option>
-              </select>
+              {/* Quick Date Presets */}
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-500)', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Calendar size={13} /> Date:
+                </span>
+                {[
+                  { id: 'all', label: 'All Dates' },
+                  { id: 'today', label: 'Today' },
+                  { id: 'yesterday', label: 'Yesterday' },
+                  { id: 'week', label: 'Last 7 Days' },
+                  { id: 'month', label: 'This Month' },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleReceiptDatePreset(preset.id)}
+                    style={{
+                      border: 'none',
+                      background: dateFilter === preset.id ? 'var(--primary)' : 'var(--ash-100)',
+                      color: dateFilter === preset.id ? '#FFFFFF' : 'var(--ash-700)',
+                      padding: '5px 11px',
+                      borderRadius: '6px',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
 
               {/* View Switcher: Cards View vs Table View */}
               <div style={{ display: 'flex', background: 'var(--ash-100)', padding: '3px', borderRadius: '8px' }}>
@@ -3485,7 +3811,7 @@ export default function PaymentsPage({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <LayoutGrid size={14} /> Cards View
+                  <LayoutGrid size={14} /> Cards
                 </button>
                 <button
                   type="button"
@@ -3506,8 +3832,162 @@ export default function PaymentsPage({
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  <List size={14} /> Table View
+                  <List size={14} /> Table
                 </button>
+              </div>
+            </div>
+
+            {/* Row 2: Date Range Pickers (From / To) + Payment Method + Payment Type + Reset Filter */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                borderTop: '1px solid var(--border-subtle, var(--ash-200))',
+                paddingTop: '12px',
+              }}
+            >
+              {/* From Date Picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+                  From:
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+                  value={receiptStartDate}
+                  onChange={(e) => {
+                    setReceiptStartDate(e.target.value);
+                    setDateFilter('custom');
+                  }}
+                />
+              </div>
+
+              {/* To Date Picker */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+                  To:
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+                  value={receiptEndDate}
+                  onChange={(e) => {
+                    setReceiptEndDate(e.target.value);
+                    setDateFilter('custom');
+                  }}
+                />
+              </div>
+
+              {/* Payment Method Filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+                  Method:
+                </label>
+                <select
+                  className="form-input"
+                  style={{ padding: '5px 10px', fontSize: '0.8rem', width: 'auto', fontWeight: 600 }}
+                  value={methodFilter}
+                  onChange={(e) => setMethodFilter(e.target.value)}
+                >
+                  <option value="all">All Methods</option>
+                  <option value="Cash">Cash (මුදල්)</option>
+                  <option value="Bank Transfer">Bank Transfer (බැංකු)</option>
+                  <option value="Cheque">Cheque (චෙක්පත්)</option>
+                  <option value="Card">Card (කාඩ්පත්)</option>
+                </select>
+              </div>
+
+              {/* Payment Type Filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+                  Type:
+                </label>
+                <select
+                  className="form-input"
+                  style={{ padding: '5px 10px', fontSize: '0.8rem', width: 'auto', fontWeight: 600 }}
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                >
+                  <option value="all">All Types</option>
+                  <option value="Installment Loan">Installment Payments (වාරික)</option>
+                  <option value="Order Advance">Order Advances (අත්තිකාරම්)</option>
+                  <option value="Full Settlement">Full Settlements (පියවීම්)</option>
+                </select>
+              </div>
+
+              {/* Reset Filters Button */}
+              {isAnyReceiptFilterActive && (
+                <button
+                  type="button"
+                  onClick={handleResetReceiptFilters}
+                  style={{
+                    border: '1px solid var(--ash-300)',
+                    background: 'transparent',
+                    color: 'var(--ash-600)',
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginLeft: 'auto',
+                  }}
+                  title="Reset receipt search and date filters"
+                >
+                  <RotateCcw size={12} /> Reset Filters
+                </button>
+              )}
+            </div>
+
+            {/* Row 3: Active Filters Summary Result Bar */}
+            <div
+              style={{
+                background: 'var(--ash-50, #F8FAFC)',
+                border: '1px solid var(--ash-200)',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '8px',
+                fontSize: '0.78rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
+                  🧾 Filtered Receipts: <strong>{filteredPayments.length}</strong> of {payments.length}
+                </span>
+                {receiptStartDate && receiptEndDate && (
+                  <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    📅 {formatDate(receiptStartDate)} — {formatDate(receiptEndDate)}
+                  </span>
+                )}
+                {methodFilter !== 'all' && (
+                  <span style={{ background: '#F1F5F9', color: '#334155', border: '1px solid #CBD5E1', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    Method: {methodFilter}
+                  </span>
+                )}
+                {typeFilter !== 'all' && (
+                  <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    Type: {typeFilter}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                <span style={{ color: 'var(--ash-600)' }}>
+                  Total Filtered Collections:{' '}
+                  <strong style={{ color: '#16A34A', fontSize: '0.92rem' }}>
+                    {formatLKR(filteredPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0))}
+                  </strong>
+                </span>
               </div>
             </div>
           </div>

@@ -44,14 +44,23 @@ export const isCenterScheduledForDate = (center, dateStr) => {
 export const isItemInCenter = (item, center) => {
   if (!item || !center) return false;
   const targetCode = formatCenterCode(center.center_code);
-  const targetBranch = (center.branch_code || '').trim().toUpperCase();
 
   const itemCenter = formatCenterCode(item.center_code || item.centerCode);
-  const itemBranch = (item.branch_code || item.branchCode || '').trim().toUpperCase();
 
   // If center code matches
-  if (itemCenter && itemCenter === targetCode) {
-    if (!targetBranch || !itemBranch || itemBranch === targetBranch) {
+  if (itemCenter && targetCode && itemCenter === targetCode) {
+    return true;
+  }
+
+  // Contract number check (e.g. PN/C003/MEL-001)
+  if (item.contract_no && typeof item.contract_no === 'string') {
+    const cUpper = item.contract_no.toUpperCase();
+    if (
+      cUpper.includes(`/${targetCode}/`) ||
+      cUpper.includes(`-${targetCode}-`) ||
+      cUpper.includes(`/${targetCode}`) ||
+      cUpper.includes(`${targetCode}/`)
+    ) {
       return true;
     }
   }
@@ -147,29 +156,19 @@ export const calculateCenterCollectionStats = ({
   };
 
   // Filter orders that belong to this center
-  // Fundamental Business Rule: The customer's assigned center is the single source of truth!
   const centerOrders = orders.filter((o) => {
-    // 1. Resolve registered customer record for this order
+    // 1. Direct match on order's own center properties
+    if (isItemInCenter(o, center)) return true;
+    if (formatCenterCode(o.center_code) === targetCenterCode) return true;
+    if (o.contract_no && o.contract_no.toUpperCase().includes(`/${targetCenterCode}/`)) return true;
+
+    // 2. Resolve registered customer record for this order
     const cust = findCustomer(o.customer_id, o.customer_nic, o.customer_name);
-    if (cust) {
-      return isCustomerInCenter(cust, center) || isItemInCenter(cust, center);
+    if (cust && (isCustomerInCenter(cust, center) || isItemInCenter(cust, center))) {
+      return true;
     }
 
-    // 2. Strict safeguards for known entities if customer record not yet in local state:
-    const oName = (o.customer_name || '').trim().toLowerCase();
-    const oNic = String(o.customer_nic || o.customer_id || '').trim().toUpperCase();
-
-    // Sunil Jayawardena strictly belongs to Maharagama (C001)
-    if (oName.includes('sunil') || oNic === '197814502391') {
-      return targetCenterCode === 'C001';
-    }
-    // Sachintha Deshan strictly belongs to Maththegoda (C003)
-    if (oName.includes('sachintha') || oNic === '200127502100') {
-      return targetCenterCode === 'C003';
-    }
-
-    // 3. Fallback: check order center metadata
-    return isItemInCenter(o, center);
+    return false;
   });
 
   // Filter active installment accounts (balance_due > 0 and status !== 'Cancelled')
@@ -221,18 +220,10 @@ export const calculateCenterCollectionStats = ({
 
     const verifiedCust = findCustomer(order.customer_id, order.customer_nic, order.customer_name);
 
-    let finalCustName = verifiedCust?.name || order.customer_name || 'Valued Client';
-    let finalCustNic = verifiedCust?.nic || verifiedCust?.customer_id || order.customer_nic || '-';
-    let finalCustPhone = verifiedCust?.phone || order.customer_phone || '-';
-    let finalCustAddress = verifiedCust?.address || order.customer_address || order.delivery_address || '-';
-
-    // Direct safeguard: In C003 (Maththegoda), ensure Sachintha Deshan's identity is shown
-    if (targetCenterCode === 'C003' && finalCustName.toLowerCase().includes('sunil')) {
-      finalCustName = 'Sachintha Deshan';
-      finalCustNic = '200127502100';
-      finalCustPhone = '0771234567';
-      finalCustAddress = 'No. 24, Main Road, Maththegoda';
-    }
+    const finalCustName = order.customer_name || verifiedCust?.name || 'Valued Client';
+    const finalCustNic = order.customer_nic || verifiedCust?.nic || verifiedCust?.customer_id || '-';
+    const finalCustPhone = order.customer_phone || verifiedCust?.phone || '-';
+    const finalCustAddress = order.customer_address || order.delivery_address || verifiedCust?.address || '-';
 
     const enrichedItem = {
       order,

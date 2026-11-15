@@ -63,9 +63,58 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
   const [dayClientSubTab, setDayClientSubTab] = useState('pending'); // 'pending' | 'confirmed' | 'all'
   const todayWeekdayKey = useMemo(() => getCurrentWeekdayKey(), []);
 
-  // Search & Filter
+  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('active'); // 'all' | 'active' | 'due_today' | 'settled'
+  const [datePreset, setDatePreset] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  // Quick Date Presets Handler
+  const handleDatePreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset === 'today') {
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = y.toISOString().slice(0, 10);
+      setStartDate(yStr);
+      setEndDate(yStr);
+    } else if (preset === 'week') {
+      const w = new Date();
+      w.setDate(w.getDate() - 6);
+      setStartDate(w.toISOString().slice(0, 10));
+      setEndDate(todayStr);
+    } else if (preset === 'month') {
+      const monthStart = `${todayStr.slice(0, 7)}-01`;
+      setStartDate(monthStart);
+      setEndDate(todayStr);
+    }
+  };
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('active');
+    setDatePreset('all');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  const isAnyFilterActive = Boolean(
+    searchQuery.trim() ||
+    startDate ||
+    endDate ||
+    datePreset !== 'all' ||
+    statusFilter !== 'active'
+  );
 
   // Selected Order / Customer Account for Cash Payment Desk
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -214,6 +263,11 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
         }
       }
 
+      // Date range filter (by order date, first due date, or created date)
+      const ordDate = String(order.date || order.first_due_date || order.created_at || '').slice(0, 10);
+      if (startDate && ordDate && ordDate < startDate) return false;
+      if (endDate && ordDate && ordDate > endDate) return false;
+
       // Live search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -232,7 +286,7 @@ export default function SingleCustomerPaymentsPage({ selectedCenter = 'all', onN
 
       return true;
     });
-  }, [orders, payments, selectedCenter, statusFilter, searchQuery]);
+  }, [orders, payments, selectedCenter, statusFilter, searchQuery, startDate, endDate]);
 
   // Next payment details for currently selected order
   const currentNextDetails = useMemo(() => {
@@ -1205,6 +1259,7 @@ Thank you for choosing D N S Home Solutions!`;
           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}
       >
+        {/* Row 1: Search Input & Quick Date Presets */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: '300px' }}>
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '11px', color: '#94A3B8' }} />
@@ -1235,12 +1290,92 @@ Thank you for choosing D N S Home Solutions!`;
             )}
           </div>
 
+          {/* Quick Date Presets */}
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-500)', textTransform: 'uppercase', marginRight: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Calendar size={13} /> Date:
+            </span>
+            {[
+              { id: 'all', label: 'All Dates' },
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'week', label: 'Last 7 Days' },
+              { id: 'month', label: 'This Month' },
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => handleDatePreset(preset.id)}
+                style={{
+                  border: 'none',
+                  background: datePreset === preset.id ? 'var(--primary)' : 'var(--ash-100)',
+                  color: datePreset === preset.id ? '#FFFFFF' : 'var(--ash-700)',
+                  padding: '5px 11px',
+                  borderRadius: '6px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 2: Date Pickers (From / To) + Status Filter Buttons + Reset Filter Button */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            borderTop: '1px solid #E2E8F0',
+            paddingTop: '12px',
+            marginTop: '12px',
+          }}
+        >
+          {/* From Date Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+              From:
+            </label>
+            <input
+              type="date"
+              className="form-input"
+              style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setDatePreset('custom');
+              }}
+            />
+          </div>
+
+          {/* To Date Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--ash-600)' }}>
+              To:
+            </label>
+            <input
+              type="date"
+              className="form-input"
+              style={{ padding: '5px 8px', fontSize: '0.8rem', width: '135px' }}
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setDatePreset('custom');
+              }}
+            />
+          </div>
+
           {/* Filter Status Buttons */}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             <button
               type="button"
               className={`btn ${statusFilter === 'active' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+              style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
               onClick={() => setStatusFilter('active')}
             >
               Active Balances ({stats.activeClientsCount})
@@ -1248,7 +1383,7 @@ Thank you for choosing D N S Home Solutions!`;
             <button
               type="button"
               className={`btn ${statusFilter === 'due_today' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+              style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
               onClick={() => setStatusFilter('due_today')}
             >
               Due Today / Overdue ({stats.dueSoonCount})
@@ -1256,7 +1391,7 @@ Thank you for choosing D N S Home Solutions!`;
             <button
               type="button"
               className={`btn ${statusFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+              style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
               onClick={() => setStatusFilter('all')}
             >
               All Clients ({orders.length})
@@ -1264,11 +1399,78 @@ Thank you for choosing D N S Home Solutions!`;
             <button
               type="button"
               className={`btn ${statusFilter === 'settled' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700 }}
+              style={{ padding: '5px 12px', fontSize: '0.76rem', fontWeight: 700 }}
               onClick={() => setStatusFilter('settled')}
             >
               Settled ({stats.settledCount})
             </button>
+          </div>
+
+          {/* Reset Filters Button */}
+          {isAnyFilterActive && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              style={{
+                border: '1px solid var(--ash-300)',
+                background: 'transparent',
+                color: 'var(--ash-600)',
+                padding: '5px 12px',
+                borderRadius: '6px',
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                marginLeft: 'auto',
+              }}
+              title="Reset search, date, and status filters"
+            >
+              <RotateCcw size={12} /> Reset Filters
+            </button>
+          )}
+        </div>
+
+        {/* Row 3: Active Filters Summary Result Bar */}
+        <div
+          style={{
+            background: 'var(--ash-50, #F8FAFC)',
+            border: '1px solid var(--ash-200)',
+            borderRadius: '8px',
+            padding: '8px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px',
+            fontSize: '0.78rem',
+            marginTop: '10px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, color: 'var(--primary)' }}>
+              👤 Filtered Customers: <strong>{filteredAccounts.length}</strong> of {orders.length}
+            </span>
+            {startDate && endDate && (
+              <span style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                📅 Date: {formatDate(startDate)} — {formatDate(endDate)}
+              </span>
+            )}
+            {statusFilter !== 'all' && (
+              <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, textTransform: 'capitalize' }}>
+                Status: {statusFilter.replace('_', ' ')}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+            <span style={{ color: 'var(--ash-600)' }}>
+              Total Balance Due:{' '}
+              <strong style={{ color: '#DC2626', fontSize: '0.88rem' }}>
+                {formatLKR(filteredAccounts.reduce((sum, o) => sum + (Number(o.balance_due) || 0), 0))}
+              </strong>
+            </span>
           </div>
         </div>
 

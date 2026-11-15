@@ -25,23 +25,7 @@ function deserializeOrderFromDb(row) {
   let cNic = meta.c_nic || (row.customers?.nic) || '';
   let cPhone = meta.c_phone || (row.customers?.phone) || '-';
   let cAddr = meta.c_addr || (row.customers?.address) || '';
-  let centerCode = meta.center || 'C001';
-
-  // Center & Client Integrity Rule: C003 belongs strictly to Sachintha Deshan
-  if (centerCode === 'C003' || (meta.contract && meta.contract.includes('/C003/'))) {
-    if (cName.toLowerCase().includes('sunil') || cNic === '197814502391') {
-      cName = 'Sachintha Deshan';
-      cNic = '200127502100';
-      cPhone = '0771234567';
-      cAddr = 'No. 24, Main Road, Maththegoda';
-      centerCode = 'C003';
-    }
-  }
-
-  // Sunil Jayawardena strictly belongs to Maharagama (C001)
-  if ((cName.toLowerCase().includes('sunil') || cNic === '197814502391') && centerCode !== 'C001') {
-    centerCode = 'C001';
-  }
+  let centerCode = meta.center || row.center_code || 'C001';
 
   return {
     id: row.id,
