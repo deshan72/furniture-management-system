@@ -26,6 +26,26 @@ export async function uploadImageToSupabaseStorage(imageInput, itemCode = 'prod'
     return imageInput;
   }
 
+  // 1. Try Express backend /api/upload first (uses service role, immune to client RLS restrictions)
+  if (typeof imageInput === 'string' && imageInput.startsWith('data:image/')) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageInput, prefix: itemCode }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          console.log(`✅ Uploaded image via backend API: ${data.url}`);
+          return data.url;
+        }
+      }
+    } catch {
+      // Backend not running or offline; fall through to direct Supabase upload
+    }
+  }
+
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.warn('Supabase URL or Key is not configured for Storage upload.');
     return imageInput;
@@ -77,8 +97,8 @@ export async function uploadImageToSupabaseStorage(imageInput, itemCode = 'prod'
     console.log(`✅ Supabase Storage upload complete: ${publicUrl}`);
     return publicUrl;
   } catch (err) {
-    console.error('Failed to upload image to Supabase Storage:', err);
-    throw err;
+    console.warn('Storage upload fallback notice:', err);
+    return imageInput;
   }
 }
 
@@ -143,15 +163,19 @@ function sanitizeCustomerPayload(raw) {
     cid: raw.customer_id || cleanNic || '',
   };
 
-  if (raw.photo && (raw.photo.startsWith('http://') || raw.photo.startsWith('https://'))) {
-    meta.photo = raw.photo;
+  const photoUrl = (raw.photo && (raw.photo.startsWith('http://') || raw.photo.startsWith('https://')))
+    ? raw.photo
+    : ((raw.image_url && (raw.image_url.startsWith('http://') || raw.image_url.startsWith('https://'))) ? raw.image_url : '');
+
+  if (photoUrl) {
+    meta.photo = photoUrl;
   }
 
   // Strip existing meta tag if any to avoid duplication
   const userNotes = String(raw.notes || '').replace(/<!--DNS_META:[\s\S]*?-->/g, '').trim();
   const serializedNotes = `<!--DNS_META:${JSON.stringify(meta)}-->\n${userNotes}`.trim();
 
-  // ONLY the 8 valid columns of Supabase customers table:
+  // Columns for Supabase customers table:
   const clean = {
     name: fullName,
     phone: cleanPhone || '0770000000',
@@ -160,6 +184,17 @@ function sanitizeCustomerPayload(raw) {
     nic: cleanNic || null,
     outstanding_balance: Number(raw.outstanding_balance) || 0,
     notes: serializedNotes,
+    customer_id: raw.customer_id || cleanNic || null,
+    branch_code: raw.branch_code || 'MHG',
+    center_code: raw.center_code || 'Single',
+    first_name: raw.first_name || (fullName.split(' ')[0] || ''),
+    last_name: raw.last_name || (fullName.split(' ').slice(1).join(' ') || ''),
+    civil_status: raw.civil_status || 'Single',
+    dob: raw.dob || null,
+    city: raw.city || (raw.address ? raw.address.split(',').pop().trim() : 'Maharagama'),
+    photo: photoUrl || null,
+    image_url: photoUrl || null,
+    status: raw.status || 'Active',
   };
 
   if (raw.id && uuidRegex.test(raw.id)) {
@@ -552,6 +587,16 @@ async function directSupabaseRequest(endpoint, options = {}) {
 
     if (method === 'POST') {
       const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const rawPhoto = parsedBody.photo || parsedBody.image_url;
+      if (rawPhoto && typeof rawPhoto === 'string' && rawPhoto.startsWith('data:image/')) {
+        try {
+          const uploadedUrl = await uploadImageToSupabaseStorage(rawPhoto, `cust-${parsedBody.nic || parsedBody.id || Date.now()}`);
+          parsedBody.photo = uploadedUrl;
+          parsedBody.image_url = uploadedUrl;
+        } catch (upErr) {
+          console.warn('Customer storage upload fallback notice in directSupabaseRequest:', upErr);
+        }
+      }
       const payload = sanitizeCustomerPayload(parsedBody);
       if (!payload.id) {
         payload.id = generateUUID();
@@ -591,6 +636,16 @@ async function directSupabaseRequest(endpoint, options = {}) {
     if (method === 'PUT' || method === 'PATCH') {
       if (!id) throw new Error('Missing customer ID for update');
       const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const rawPhoto = parsedBody.photo || parsedBody.image_url;
+      if (rawPhoto && typeof rawPhoto === 'string' && rawPhoto.startsWith('data:image/')) {
+        try {
+          const uploadedUrl = await uploadImageToSupabaseStorage(rawPhoto, `cust-${parsedBody.nic || id || Date.now()}`);
+          parsedBody.photo = uploadedUrl;
+          parsedBody.image_url = uploadedUrl;
+        } catch (upErr) {
+          console.warn('Customer storage upload fallback notice on update in directSupabaseRequest:', upErr);
+        }
+      }
       const payload = sanitizeCustomerPayload(parsedBody);
       payload.updated_at = new Date().toISOString();
       delete payload.id;

@@ -1,5 +1,45 @@
 import { supabaseAdmin as supabase } from '../config/supabase.js';
 
+const STORAGE_BUCKET = 'project product image';
+
+// Helper to upload Base64 customer photo directly to Supabase Storage bucket
+async function uploadBase64ToStorage(base64Str, prefix = 'customer') {
+  if (!base64Str || typeof base64Str !== 'string' || !base64Str.startsWith('data:image/')) {
+    return base64Str;
+  }
+  try {
+    const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return base64Str;
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    let ext = contentType.split('/')[1] || 'jpg';
+    if (ext === 'jpeg') ext = 'jpg';
+    const cleanPrefix = (prefix || 'customer').replace(/[^a-zA-Z0-9_-]/g, '-');
+    const fileName = `${cleanPrefix}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(fileName, buffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.warn('Customer storage upload notice in controller:', uploadError.message);
+      return base64Str;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(fileName);
+
+    return urlData?.publicUrl || base64Str;
+  } catch (err) {
+    console.warn('Customer storage upload exception:', err.message);
+    return base64Str;
+  }
+}
+
 // Serializes frontend customer payload to match exact Supabase customers schema
 function serializeCustomerToDb(raw) {
   const fullName = raw.name || `${raw.first_name || ''} ${raw.last_name || ''}`.trim() || 'Valued Customer';
@@ -22,7 +62,7 @@ function serializeCustomerToDb(raw) {
     cid: raw.customer_id || cleanNic || '',
   };
 
-  if (raw.photo && (raw.photo.startsWith('http://') || raw.photo.startsWith('https://'))) {
+  if (raw.photo) {
     meta.photo = raw.photo;
   }
 
@@ -37,6 +77,17 @@ function serializeCustomerToDb(raw) {
     nic: cleanNic,
     outstanding_balance: Number(raw.outstanding_balance) || 0,
     notes: serializedNotes,
+    photo: raw.photo || null,
+    image_url: raw.image_url || raw.photo || null,
+    customer_id: raw.customer_id || cleanNic || null,
+    branch_code: raw.branch_code || 'MHG',
+    center_code: raw.center_code || 'Single',
+    first_name: raw.first_name || (fullName.split(' ')[0] || ''),
+    last_name: raw.last_name || (fullName.split(' ').slice(1).join(' ') || ''),
+    civil_status: raw.civil_status || 'Single',
+    dob: raw.dob || null,
+    city: raw.city || (raw.address ? raw.address.split(',').pop().trim() : 'Maharagama'),
+    status: raw.status || 'Active',
   };
 
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -192,6 +243,11 @@ export const createCustomer = async (req, res, next) => {
       }
     }
 
+    if (req.body.photo && typeof req.body.photo === 'string' && req.body.photo.startsWith('data:image/')) {
+      req.body.photo = await uploadBase64ToStorage(req.body.photo, `cust-${nic || 'new'}`);
+      req.body.image_url = req.body.photo;
+    }
+
     const insertPayload = serializeCustomerToDb(req.body);
 
     let customerResult = null;
@@ -235,6 +291,10 @@ export const createCustomer = async (req, res, next) => {
 export const updateCustomer = async (req, res, next) => {
   try {
     const { id } = req.params;
+    if (req.body.photo && typeof req.body.photo === 'string' && req.body.photo.startsWith('data:image/')) {
+      req.body.photo = await uploadBase64ToStorage(req.body.photo, `cust-${req.body.nic || id}`);
+      req.body.image_url = req.body.photo;
+    }
     const updates = serializeCustomerToDb(req.body);
     delete updates.id;
 

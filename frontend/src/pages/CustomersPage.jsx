@@ -33,7 +33,7 @@ import {
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import { printHtmlDocument } from '../utils/printUtils';
-import { apiRequest } from '../services/api';
+import { apiRequest, uploadImageToSupabaseStorage } from '../services/api';
 import { INITIAL_CENTERS } from '../utils/centersData';
 import {
   INITIAL_CUSTOMERS,
@@ -678,6 +678,16 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
 
     unmarkCustomerDeleted(newId);
 
+    // Upload customer photo to Supabase Storage bucket if it is a Base64 data URL
+    let finalPhotoUrl = newCustomer.photo || newCustomer.image_url || existingWithNic?.photo || '';
+    if (finalPhotoUrl && finalPhotoUrl.startsWith('data:image/')) {
+      try {
+        finalPhotoUrl = await uploadImageToSupabaseStorage(finalPhotoUrl, `cust-${cleanNic || newId}`);
+      } catch (uploadErr) {
+        console.warn('Customer photo storage upload notice:', uploadErr);
+      }
+    }
+
     const createdRecord = {
       ...(existingWithNic || {}),
       id: newId,
@@ -686,8 +696,8 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
       center_code: newCustomer.center_code && newCustomer.center_code !== 'Single' ? normalizeIdPart('center_code', newCustomer.center_code) : 'Single',
       contract_no: String(totalOrders),
       item_code: '',
-      photo: newCustomer.photo || newCustomer.image_url || existingWithNic?.photo || '',
-      image_url: newCustomer.photo || newCustomer.image_url || existingWithNic?.image_url || '',
+      photo: finalPhotoUrl,
+      image_url: finalPhotoUrl,
       first_name: newCustomer.first_name || (nameParts[0] || ''),
       middle_name: newCustomer.middle_name || '',
       last_name: newCustomer.last_name || '',
@@ -1206,10 +1216,21 @@ export default function CustomersPage({ initialDebtFilter = 'all', selectedCente
     }
 
     const { legacy_customer_id: _legacyId, ...editingData } = editingCustomer;
+
+    // Upload updated customer photo to Supabase Storage bucket if it is a Base64 data URL
+    let finalEditPhotoUrl = editingCustomer.photo || editingCustomer.image_url || '';
+    if (finalEditPhotoUrl && finalEditPhotoUrl.startsWith('data:image/')) {
+      try {
+        finalEditPhotoUrl = await uploadImageToSupabaseStorage(finalEditPhotoUrl, `cust-${cleanNic || editingCustomer.id}`);
+      } catch (uploadErr) {
+        console.warn('Customer photo storage upload notice on edit:', uploadErr);
+      }
+    }
+
     const updated = {
       ...editingData,
-      photo: editingCustomer.photo || editingCustomer.image_url || '',
-      image_url: editingCustomer.photo || editingCustomer.image_url || '',
+      photo: finalEditPhotoUrl,
+      image_url: finalEditPhotoUrl,
       name: fullName,
       first_name: editingCustomer.first_name || '',
       middle_name: editingCustomer.middle_name || '',

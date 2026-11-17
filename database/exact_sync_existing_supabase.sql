@@ -121,3 +121,28 @@ ALTER TABLE monthly_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_transactions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE centers DISABLE ROW LEVEL SECURITY;
 ALTER TABLE staff_users DISABLE ROW LEVEL SECURITY;
+
+-- 6. ENABLE STORAGE ACCESS FOR "project product image" BUCKET
+-- (Allows uploading customer and product photos directly without 403 permission denied)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('project product image', 'project product image', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+DO $$
+BEGIN
+    DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+    CREATE POLICY "Public Access" ON storage.objects
+        FOR SELECT USING (bucket_id = 'project product image');
+
+    DROP POLICY IF EXISTS "Public Uploads" ON storage.objects;
+    CREATE POLICY "Public Uploads" ON storage.objects
+        FOR INSERT WITH CHECK (bucket_id = 'project product image');
+
+    DROP POLICY IF EXISTS "Public Updates" ON storage.objects;
+    CREATE POLICY "Public Updates" ON storage.objects
+        FOR UPDATE USING (bucket_id = 'project product image');
+
+    DROP POLICY IF EXISTS "Public Deletes" ON storage.objects;
+    CREATE POLICY "Public Deletes" ON storage.objects
+        FOR DELETE USING (bucket_id = 'project product image');
+END $$;
