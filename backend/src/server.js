@@ -18,6 +18,7 @@ import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import cashbookRoutes from './routes/cashbookRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/cashbook', cashbookRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/users', userRoutes);
 
 // Error Handling
 app.use(notFoundHandler);

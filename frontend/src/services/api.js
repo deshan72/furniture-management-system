@@ -304,7 +304,7 @@ function deserializeOrderFromDb(row) {
       try {
         meta = JSON.parse(match[1]);
         notes = notes.replace(match[0], '').trim();
-      } catch {}
+      } catch { }
     }
   }
 
@@ -411,7 +411,7 @@ function deserializePaymentFromDb(row) {
       try {
         meta = JSON.parse(match[1]);
         notes = notes.replace(match[0], '').trim();
-      } catch {}
+      } catch { }
     }
   }
 
@@ -664,7 +664,7 @@ async function directSupabaseRequest(endpoint, options = {}) {
               if (meta.dd && !dd) dd = meta.dd;
               if (meta.cd && !cd) cd = meta.cd;
             }
-          } catch (_) {}
+          } catch (_) { }
         }
         return {
           ...c,
@@ -1074,6 +1074,75 @@ async function directSupabaseRequest(endpoint, options = {}) {
           method: 'DELETE',
           headers,
         });
+      }
+      return { success: true };
+    }
+  }
+
+  // 8. Staff Users route handling (Admin, Executive, Cashier multi-device login)
+  if (cleanEndpoint.startsWith('/users') || cleanEndpoint.startsWith('/staff_users')) {
+    const parts = cleanEndpoint.split('/').filter(Boolean);
+    const id = parts[1];
+
+    if (method === 'GET') {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/staff_users?select=*&order=created_at.desc`, { headers });
+      if (!res.ok) {
+        console.warn('Direct Supabase staff_users query notice:', res.status);
+        return { success: true, count: 0, data: [] };
+      }
+      const data = await res.json();
+      return { success: true, count: data.length, data: Array.isArray(data) ? data : [] };
+    }
+
+    if (method === 'POST') {
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const payload = {
+        user_code: parsedBody.user_code || `usr_${Date.now().toString().slice(-6)}`,
+        name: parsedBody.name || 'Staff Member',
+        username: (parsedBody.username || parsedBody.email?.split('@')[0] || `user_${Date.now().toString().slice(-4)}`).toLowerCase().trim(),
+        email: parsedBody.email || null,
+        phone: parsedBody.phone || null,
+        password: parsedBody.password || 'dns123',
+        role: parsedBody.role || 'executive',
+        nic: parsedBody.nic || null,
+        dob: parsedBody.dob || null,
+        age: Number(parsedBody.age) || null,
+        gender: parsedBody.gender || 'Not Specified',
+        photo: parsedBody.photo || null,
+        branch_code: parsedBody.branch_code || 'MHG',
+        center_code: parsedBody.center_code || 'C001',
+        assigned_center: parsedBody.assigned_center || parsedBody.assignedCenter || 'all',
+        status: parsedBody.status || 'Active',
+      };
+      if (parsedBody.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsedBody.id)) {
+        payload.id = parsedBody.id;
+      }
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/staff_users`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        return { success: true, data: { ...parsedBody, id: payload.id || generateUUID() } };
+      }
+      const data = await res.json();
+      return { success: true, data: Array.isArray(data) ? data[0] : (data || payload) };
+    }
+
+    if (method === 'PUT' || method === 'PATCH') {
+      if (!id) throw new Error('Missing user ID for update');
+      const parsedBody = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : {};
+      const payload = { ...parsedBody, updated_at: new Date().toISOString() };
+      delete payload.id;
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        await fetch(`${SUPABASE_URL}/rest/v1/staff_users?id=eq.${id}`, { method: 'PATCH', headers, body: JSON.stringify(payload) });
+      }
+      return { success: true, data: parsedBody };
+    }
+
+    if (method === 'DELETE') {
+      if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+        await fetch(`${SUPABASE_URL}/rest/v1/staff_users?id=eq.${id}`, { method: 'DELETE', headers });
       }
       return { success: true };
     }
